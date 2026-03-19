@@ -55,7 +55,7 @@ mkdir delyvr && cd delyvr
 
 ```yaml
 services:
-  metransfer:
+  delyvr:
     image: tiritibambix/delyvr:main-latest
     restart: unless-stopped
     ports:

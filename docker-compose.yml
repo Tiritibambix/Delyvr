@@ -1,6 +1,6 @@
 services:
-  metransfer:
-    image: andrepadua/metransfer:latest
+  delyvr:
+    image: andrepadua/delyvr:latest
     restart: unless-stopped
     ports:
       - "${PORT:-3000}:3000"
