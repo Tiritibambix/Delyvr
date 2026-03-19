@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="public/logo.svg" alt="Delyvr" width="200">
+  <img src="public/logo.svg" alt="Delyvr" width="400">
 </div>
 # Delyvr
 
