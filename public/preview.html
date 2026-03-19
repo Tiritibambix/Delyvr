@@ -232,12 +232,83 @@
         }
 
         .photo-name {
-            flex: 1;
-            font-size: 0.85rem;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            padding-right: 12px;
+            display: none;
+        }
+
+        .photo-favorite {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 36px;
+            height: 36px;
+            background: rgba(255,255,255,0.15);
+            backdrop-filter: blur(4px);
+            border: none;
+            border-radius: 50%;
+            color: white;
+            cursor: pointer;
+            transition: all 0.2s;
+            flex-shrink: 0;
+        }
+
+        .photo-favorite:hover {
+            background: rgba(255,255,255,0.25);
+            transform: scale(1.1);
+        }
+
+        .photo-favorite.favorited {
+            background: rgba(220, 50, 80, 0.85);
+            color: white;
+        }
+
+        .photo-favorite svg {
+            width: 18px;
+            height: 18px;
+            transition: fill 0.2s;
+        }
+
+        .photo-favorite.favorited svg {
+            fill: white;
+        }
+
+        .lightbox-favorite-btn {
+            position: absolute;
+            top: 20px;
+            right: 140px;
+            width: 48px;
+            height: 48px;
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border);
+            border-radius: 50%;
+            color: var(--text-primary);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s;
+            z-index: 1010;
+        }
+
+        .lightbox-favorite-btn:hover {
+            background: var(--bg-secondary);
+            border-color: #dc3250;
+            color: #dc3250;
+        }
+
+        .lightbox-favorite-btn.favorited {
+            background: #dc3250;
+            border-color: #dc3250;
+            color: white;
+        }
+
+        .lightbox-favorite-btn svg {
+            width: 20px;
+            height: 20px;
+            transition: fill 0.2s;
+        }
+
+        .lightbox-favorite-btn.favorited svg {
+            fill: white;
         }
 
         .photo-download {
@@ -473,6 +544,12 @@
                 width: 40px;
                 height: 40px;
             }
+
+            .lightbox-favorite-btn {
+                right: 120px;
+                width: 40px;
+                height: 40px;
+            }
         }
     </style>
 </head>
@@ -513,6 +590,11 @@
                 <path d="M12 4v12m0 0l-4-4m4 4l4-4M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2" stroke-linecap="round" stroke-linejoin="round"/>
             </svg>
         </a>
+        <button class="lightbox-favorite-btn" id="lightboxFavorite" onclick="toggleFavoriteFromLightbox()" title="Favorite">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+        </button>
         <button class="lightbox-nav lightbox-prev" onclick="navigateLightbox(-1)">‹</button>
         <button class="lightbox-nav lightbox-next" onclick="navigateLightbox(1)">›</button>
         <div class="lightbox-content">
@@ -616,6 +698,50 @@
         let photos = [];
         let currentPhotoIndex = 0;
 
+        // Favorites state — persisted locally, synced to server
+        let localFavorites = new Set();
+
+        async function toggleFavorite(filename) {
+            const wasFavorited = localFavorites.has(filename);
+            // Optimistic update
+            if (wasFavorited) { localFavorites.delete(filename); } else { localFavorites.add(filename); }
+
+            // Update card button
+            const btn = document.querySelector(`.photo-favorite[data-filename="${CSS.escape(filename)}"]`);
+            if (btn) {
+                btn.classList.toggle('favorited', !wasFavorited);
+                btn.querySelector('svg').setAttribute('fill', wasFavorited ? 'none' : 'white');
+            }
+
+            // Update lightbox button if same photo is open
+            if (photos[currentPhotoIndex] && photos[currentPhotoIndex].filename === filename) {
+                const favBtn = document.getElementById('lightboxFavorite');
+                favBtn.classList.toggle('favorited', !wasFavorited);
+                favBtn.querySelector('svg').setAttribute('fill', wasFavorited ? 'none' : 'white');
+            }
+
+            // Sync to server
+            try {
+                await fetch(`/api/gallery/${galleryId}/favorites`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ filename })
+                });
+            } catch (e) {
+                // Revert on network error
+                if (wasFavorited) { localFavorites.add(filename); } else { localFavorites.delete(filename); }
+                if (btn) {
+                    btn.classList.toggle('favorited', wasFavorited);
+                    btn.querySelector('svg').setAttribute('fill', wasFavorited ? 'white' : 'none');
+                }
+            }
+        }
+
+        function toggleFavoriteFromLightbox() {
+            const photo = photos[currentPhotoIndex];
+            if (photo) toggleFavorite(photo.filename);
+        }
+
         async function loadGallery() {
             try {
                 // Get gallery info
@@ -678,17 +804,24 @@
 
         function renderGallery(downloadsEnabled = true) {
             const grid = document.getElementById('galleryGrid');
-            
-            grid.innerHTML = photos.map((photo, index) => `
+
+            grid.innerHTML = photos.map((photo, index) => {
+                const isFav = localFavorites.has(photo.filename);
+                return `
                 <div class="photo-card" onclick="openLightbox(${index})">
                     <div class="loading"></div>
-                    <img 
-                        data-src="${photo.thumbnailUrl}" 
+                    <img
+                        data-src="${photo.thumbnailUrl}"
                         alt="${photo.filename}"
                         onload="this.classList.add('loaded'); this.previousElementSibling.style.display='none';"
                     >
                     <div class="photo-overlay">
                         <span class="photo-name">${photo.filename}</span>
+                        <button class="photo-favorite ${isFav ? 'favorited' : ''}" data-filename="${photo.filename}" onclick="event.stopPropagation(); toggleFavorite('${photo.filename.replace(/'/g, "\\'")}')">
+                            <svg viewBox="0 0 24 24" fill="${isFav ? 'white' : 'none'}" stroke="currentColor" stroke-width="2">
+                                <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" stroke-linecap="round" stroke-linejoin="round"/>
+                            </svg>
+                        </button>
                         ${downloadsEnabled ? `
                         <a class="photo-download" href="/api/gallery/${galleryId}/download/${encodeURIComponent(photo.filename)}" onclick="event.stopPropagation();" download>
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -696,8 +829,8 @@
                             </svg>
                         </a>` : ''}
                     </div>
-                </div>
-            `).join('');
+                </div>`;
+            }).join('');
 
             // Lazy load images
             lazyLoadImages();
@@ -742,6 +875,10 @@
             document.getElementById('lightboxImg').src = photo.url;
             document.getElementById('lightboxDownload').href = `/api/gallery/${galleryId}/download/${encodeURIComponent(photo.filename)}`;
             document.getElementById('lightboxDownload').setAttribute('download', photo.filename);
+            const isFav = localFavorites.has(photo.filename);
+            const favBtn = document.getElementById('lightboxFavorite');
+            favBtn.classList.toggle('favorited', isFav);
+            favBtn.querySelector('svg').setAttribute('fill', isFav ? 'white' : 'none');
         }
 
         // Keyboard navigation
