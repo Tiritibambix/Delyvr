@@ -1370,7 +1370,7 @@
                             <label class="downloads-toggle" title="Allow clients to download photos">
                                 <span class="toggle-switch">
                                     <input type="checkbox" ${g.downloadsEnabled !== false ? 'checked' : ''}
-                                           onchange="toggleDownloads('${g.id}', this.checked)">
+                                           onchange="toggleDownloads('${g.id}', this.checked, this)">
                                     <span class="toggle-track"></span>
                                 </span>
                                 Downloads
@@ -1565,7 +1565,8 @@
             }
         }
 
-        async function toggleDownloads(galleryId, enabled) {
+        async function toggleDownloads(galleryId, enabled, checkbox) {
+            checkbox.disabled = true;
             try {
                 const res = await fetch(`/api/gallery/${galleryId}/downloads`, {
                     method: 'PATCH',
@@ -1576,9 +1577,13 @@
                     body: JSON.stringify({ enabled })
                 });
                 if (!res.ok) throw new Error('Toggle failed');
+                const data = await res.json();
+                checkbox.checked = data.downloadsEnabled;
             } catch (err) {
                 alert('Could not update download setting: ' + err.message);
-                loadGalleries(); // revert UI to server state
+                checkbox.checked = !enabled; // revert
+            } finally {
+                checkbox.disabled = false;
             }
         }
 

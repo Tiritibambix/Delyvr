@@ -193,6 +193,7 @@
                 photos: 'photos',
                 downloadAll: 'Download All',
                 browseIndividually: 'Or browse photos individually →',
+                browseOnly: 'Browse photos →',
                 notFoundTitle: 'Gallery Not Found',
                 notFoundText: 'This gallery may have been removed or the link is incorrect.'
             },
@@ -202,6 +203,7 @@
                 photos: 'fotos',
                 downloadAll: 'Baixar Todas',
                 browseIndividually: 'Ou navegue pelas fotos individualmente →',
+                browseOnly: 'Ver as fotos →',
                 notFoundTitle: 'Galeria Não Encontrada',
                 notFoundText: 'Esta galeria pode ter sido removida ou o link está incorreto.'
             },
@@ -211,6 +213,7 @@
                 photos: 'fotos',
                 downloadAll: 'Descargar Todas',
                 browseIndividually: 'O navega por las fotos individualmente →',
+                browseOnly: 'Ver las fotos →',
                 notFoundTitle: 'Galería No Encontrada',
                 notFoundText: 'Esta galería puede haber sido eliminada o el enlace es incorrecto.'
             },
@@ -220,6 +223,7 @@
                 photos: 'foto',
                 downloadAll: 'Scarica Tutte',
                 browseIndividually: 'Oppure sfoglia le foto singolarmente →',
+                browseOnly: 'Sfoglia le foto →',
                 notFoundTitle: 'Galleria Non Trovata',
                 notFoundText: 'Questa galleria potrebbe essere stata rimossa o il link non è corretto.'
             },
@@ -229,6 +233,7 @@
                 photos: 'photos',
                 downloadAll: 'Tout Télécharger',
                 browseIndividually: 'Ou parcourir les photos individuellement →',
+                browseOnly: 'Parcourir les photos →',
                 notFoundTitle: 'Galerie Introuvable',
                 notFoundText: 'Cette galerie a peut-être été supprimée ou le lien est incorrect.'
             }
@@ -285,9 +290,10 @@
                 // Set download link
                 document.getElementById('downloadBtn').href = `/api/gallery/${galleryId}/download`;
 
-                // Hide download button if downloads are disabled
+                // Hide download button and update browse text if downloads are disabled
                 if (data.downloadsEnabled === false) {
                     document.getElementById('downloadBtn').style.display = 'none';
+                    document.getElementById('browseText').textContent = t.browseOnly;
                 }
 
                 // Set preview link
