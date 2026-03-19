@@ -55,6 +55,10 @@ const galleries = new Map();
 // File to persist gallery metadata
 const GALLERIES_FILE = path.join(DATA_DIR, 'galleries.json');
 
+// Data store for collections
+const collections = new Map();
+const COLLECTIONS_FILE = path.join(DATA_DIR, 'collections.json');
+
 // Load galleries from file on startup
 function loadGalleries() {
     if (fs.existsSync(GALLERIES_FILE)) {
@@ -71,6 +75,24 @@ function loadGalleries() {
 function saveGalleries() {
     const data = Array.from(galleries.values());
     fs.writeFileSync(GALLERIES_FILE, JSON.stringify(data, null, 2));
+}
+
+// Load collections from file on startup
+function loadCollections() {
+    if (fs.existsSync(COLLECTIONS_FILE)) {
+        try {
+            const data = JSON.parse(fs.readFileSync(COLLECTIONS_FILE, 'utf8'));
+            data.forEach(c => collections.set(c.id, c));
+        } catch (err) {
+            console.error('Error loading collections:', err);
+        }
+    }
+}
+
+// Save collections to file
+function saveCollections() {
+    const data = Array.from(collections.values());
+    fs.writeFileSync(COLLECTIONS_FILE, JSON.stringify(data, null, 2));
 }
 
 // Reconcile galleries.json with the uploads directory on disk.
@@ -113,6 +135,7 @@ function reconcileGalleries() {
 
 loadGalleries();
 reconcileGalleries();
+loadCollections();
 
 // Ensure directories exist
 ['uploads', 'backgrounds', 'thumbnails', 'og-cache'].forEach(dir => {
@@ -528,9 +551,7 @@ app.get('/api/gallery/:galleryId/photos', validateGalleryId, (req, res) => {
         return res.status(404).json({ error: 'Gallery not found' });
     }
 
-    const files = fs.readdirSync(galleryPath)
-        .filter(f => !f.startsWith('.'))
-        .sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }));
+    const files = fs.readdirSync(galleryPath).filter(f => !f.startsWith('.'));
 
     const gallery = galleries.get(galleryId);
 
@@ -822,6 +843,197 @@ app.delete('/api/gallery/:galleryId/favorites', requireAuth, validateGalleryId, 
     res.json({ success: true });
 });
 
+// --- Collection routes ---
+
+function validateCollectionId(req, res, next) {
+    if (!UUID_V4_REGEX.test(req.params.collectionId)) {
+        return res.status(400).json({ error: 'Invalid collection ID' });
+    }
+    next();
+}
+
+// Create a new collection (admin only)
+app.post('/api/collection/create', requireAuth, (req, res) => {
+    const name = (String(req.body.name || 'Untitled Collection')).trim().substring(0, 200);
+    const id = uuidv4();
+    collections.set(id, {
+        id,
+        name,
+        created: new Date().toISOString(),
+        galleryIds: []
+    });
+    saveCollections();
+    const baseUrl = `${req.protocol}://${req.get('host')}`;
+    res.json({ success: true, id, collectionUrl: `${baseUrl}/collection/${id}` });
+});
+
+// List all collections (admin only)
+app.get('/api/collections', requireAuth, (req, res) => {
+    const baseUrl = `${req.protocol}://${req.get('host')}`;
+    const list = Array.from(collections.values())
+        .sort((a, b) => new Date(b.created) - new Date(a.created))
+        .map(c => ({
+            id: c.id,
+            name: c.name,
+            created: c.created,
+            galleryIds: c.galleryIds,
+            collectionUrl: `${baseUrl}/collection/${c.id}`
+        }));
+    res.json(list);
+});
+
+// Get collection info (public — used by collection page)
+app.get('/api/collection/:collectionId', validateCollectionId, (req, res) => {
+    const { collectionId } = req.params;
+    const collection = collections.get(collectionId);
+    if (!collection) return res.status(404).json({ error: 'Collection not found' });
+
+    const backgroundsDir = path.join(DATA_DIR, 'backgrounds');
+    const bgFiles = fs.existsSync(backgroundsDir)
+        ? new Set(fs.readdirSync(backgroundsDir))
+        : new Set();
+
+    const galleriesData = collection.galleryIds
+        .map(gid => {
+            const gallery = galleries.get(gid);
+            if (!gallery) return null;
+            const galleryPath = path.join(DATA_DIR, 'uploads', gid);
+            const fileCount = fs.existsSync(galleryPath)
+                ? fs.readdirSync(galleryPath).filter(f => !f.startsWith('.')).length
+                : 0;
+            const hasBackground = [...bgFiles].some(f => f.startsWith(gid));
+            return {
+                id: gid,
+                eventName: gallery.eventName || 'Untitled Event',
+                fileCount,
+                background: hasBackground ? `/api/gallery/${gid}/background` : null,
+                downloadsEnabled: gallery.downloadsEnabled !== false
+            };
+        })
+        .filter(Boolean);
+
+    res.json({
+        id: collectionId,
+        name: collection.name,
+        galleries: galleriesData
+    });
+});
+
+// Rename a collection (admin only)
+app.post('/api/collection/:collectionId/rename', requireAuth, validateCollectionId, (req, res) => {
+    const { collectionId } = req.params;
+    const collection = collections.get(collectionId);
+    if (!collection) return res.status(404).json({ error: 'Collection not found' });
+    collection.name = (String(req.body.name || 'Untitled Collection')).trim().substring(0, 200);
+    saveCollections();
+    res.json({ success: true, name: collection.name });
+});
+
+// Add a gallery to a collection (admin only)
+app.post('/api/collection/:collectionId/galleries', requireAuth, validateCollectionId, (req, res) => {
+    const { collectionId } = req.params;
+    const { galleryId } = req.body;
+
+    if (!UUID_V4_REGEX.test(galleryId)) {
+        return res.status(400).json({ error: 'Invalid gallery ID' });
+    }
+
+    const collection = collections.get(collectionId);
+    if (!collection) return res.status(404).json({ error: 'Collection not found' });
+
+    if (!galleries.get(galleryId)) {
+        return res.status(404).json({ error: 'Gallery not found' });
+    }
+
+    // Enforce one gallery = one collection
+    for (const [cid, c] of collections.entries()) {
+        if (cid !== collectionId && c.galleryIds.includes(galleryId)) {
+            return res.status(409).json({ error: 'Gallery already belongs to another collection' });
+        }
+    }
+
+    if (!collection.galleryIds.includes(galleryId)) {
+        collection.galleryIds.push(galleryId);
+        saveCollections();
+    }
+
+    res.json({ success: true, galleryIds: collection.galleryIds });
+});
+
+// Remove a gallery from a collection (admin only)
+app.delete('/api/collection/:collectionId/galleries/:galleryId', requireAuth, validateCollectionId, validateGalleryId, (req, res) => {
+    const { collectionId, galleryId } = req.params;
+    const collection = collections.get(collectionId);
+    if (!collection) return res.status(404).json({ error: 'Collection not found' });
+    collection.galleryIds = collection.galleryIds.filter(id => id !== galleryId);
+    saveCollections();
+    res.json({ success: true, galleryIds: collection.galleryIds });
+});
+
+// Download all photos in a collection as a ZIP (one sub-folder per gallery)
+app.get('/api/collection/:collectionId/download', validateCollectionId, (req, res) => {
+    const { collectionId } = req.params;
+    const collection = collections.get(collectionId);
+    if (!collection) return res.status(404).json({ error: 'Collection not found' });
+
+    const safeCollectionName = collection.name
+        .replace(/[^a-zA-Z0-9\s-]/g, '')
+        .replace(/\s+/g, '-')
+        .substring(0, 50) || 'collection';
+
+    res.setHeader('Content-Type', 'application/zip');
+    res.setHeader('Content-Disposition', `attachment; filename="${safeCollectionName}.zip"`);
+
+    const archive = archiver('zip', { zlib: { level: 5 } });
+    archive.on('error', err => res.status(500).send({ error: err.message }));
+    archive.pipe(res);
+
+    for (const galleryId of collection.galleryIds) {
+        const gallery = galleries.get(galleryId);
+        const galleryPath = path.join(DATA_DIR, 'uploads', galleryId);
+        if (!fs.existsSync(galleryPath)) continue;
+
+        const folderName = (gallery ? gallery.eventName : galleryId)
+            .replace(/[^a-zA-Z0-9\s-]/g, '')
+            .replace(/\s+/g, '-')
+            .substring(0, 80) || galleryId;
+
+        const files = fs.readdirSync(galleryPath).filter(f => !f.startsWith('.'));
+        files.forEach(file => {
+            archive.file(path.join(galleryPath, file), { name: `${folderName}/${file}` });
+        });
+    }
+
+    archive.finalize();
+});
+
+// Delete a collection (admin only — does NOT delete the galleries)
+app.delete('/api/collection/:collectionId', requireAuth, validateCollectionId, (req, res) => {
+    const { collectionId } = req.params;
+    if (!collections.has(collectionId)) return res.status(404).json({ error: 'Collection not found' });
+    collections.delete(collectionId);
+    saveCollections();
+    res.json({ success: true });
+});
+
+// Collection page — serves HTML with OG meta tags injected
+app.get('/collection/:collectionId', validateCollectionId, (req, res) => {
+    const { collectionId } = req.params;
+    const collection = collections.get(collectionId);
+    if (!collection) return res.status(404).send('Collection not found');
+
+    const baseUrl = `${req.protocol}://${req.get('host')}`;
+    const ogTags = [
+        `<meta property="og:title" content="${escapeAttr(collection.name)}">`,
+        `<meta property="og:description" content="Your photo galleries are ready.">`,
+        `<meta property="og:type" content="website">`,
+        `<meta property="og:url" content="${baseUrl}/collection/${collectionId}">`
+    ].join('\n    ');
+
+    const html = fs.readFileSync(path.join(__dirname, 'public', 'collection.html'), 'utf8');
+    res.send(html.replace('<head>', `<head>\n    ${ogTags}`));
+});
+
 // List all galleries (admin)
 app.get('/api/galleries', requireAuth, (req, res) => {
     const galleryList = [];
@@ -858,6 +1070,12 @@ app.get('/api/galleries', requireAuth, (req, res) => {
 
                 const hasBackground = [...bgFiles].some(f => f.startsWith(galleryId));
 
+                // Find which collection this gallery belongs to (if any)
+                let collectionId = null;
+                for (const [cid, c] of collections.entries()) {
+                    if (c.galleryIds.includes(galleryId)) { collectionId = cid; break; }
+                }
+
                 galleryList.push({
                     id: galleryId,
                     eventName: gallery.eventName || 'Untitled Event',
@@ -865,7 +1083,8 @@ app.get('/api/galleries', requireAuth, (req, res) => {
                     fileCount: files.length,
                     hasBackground,
                     downloadUrl: `${baseUrl}/download/${galleryId}`,
-                    favoritesCount: Object.keys(gallery.favorites || {}).length
+                    favoritesCount: Object.keys(gallery.favorites || {}).length,
+                    collectionId
                 });
             }
         });
@@ -901,6 +1120,15 @@ app.delete('/api/gallery/:galleryId', requireAuth, validateGalleryId, (req, res)
 
     galleries.delete(galleryId);
     saveGalleries();
+
+    // Remove from any collection it belongs to
+    let collectionChanged = false;
+    for (const collection of collections.values()) {
+        const before = collection.galleryIds.length;
+        collection.galleryIds = collection.galleryIds.filter(id => id !== galleryId);
+        if (collection.galleryIds.length !== before) collectionChanged = true;
+    }
+    if (collectionChanged) saveCollections();
 
     res.json({ success: true });
 });

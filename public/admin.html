@@ -910,6 +910,194 @@
             color: var(--text-secondary);
         }
 
+        /* Collections */
+        .collections-section {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 20px;
+            padding: 32px;
+            margin-bottom: 32px;
+        }
+
+        .collection-create-row {
+            display: flex;
+            gap: 12px;
+            margin-bottom: 24px;
+        }
+
+        .collection-create-row input {
+            flex: 1;
+            padding: 12px 16px;
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            color: var(--text-primary);
+            font-size: 0.95rem;
+            transition: border-color 0.2s;
+        }
+
+        .collection-create-row input:focus {
+            outline: none;
+            border-color: var(--accent);
+        }
+
+        .btn-create-collection {
+            padding: 12px 20px;
+            background: var(--accent);
+            color: var(--bg-primary);
+            border: none;
+            border-radius: 10px;
+            font-size: 0.9rem;
+            font-weight: 600;
+            cursor: pointer;
+            white-space: nowrap;
+            transition: background 0.2s;
+        }
+
+        .btn-create-collection:hover { background: var(--accent-hover); }
+
+        .collection-item {
+            background: var(--bg-tertiary);
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 12px;
+        }
+
+        .collection-header {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 16px;
+        }
+
+        .collection-name {
+            flex: 1;
+            font-weight: 600;
+            font-size: 1rem;
+            cursor: pointer;
+            padding: 2px 6px;
+            margin: -2px -6px;
+            border-radius: 4px;
+            transition: background 0.2s;
+        }
+
+        .collection-name:hover { background: var(--bg-secondary); }
+
+        .collection-name-input {
+            flex: 1;
+            font-weight: 600;
+            font-size: 1rem;
+            font-family: inherit;
+            background: var(--bg-secondary);
+            border: 1px solid var(--accent);
+            border-radius: 4px;
+            color: var(--text-primary);
+            padding: 2px 6px;
+            outline: none;
+        }
+
+        .collection-meta {
+            font-size: 0.82rem;
+            color: var(--text-secondary);
+        }
+
+        .collection-actions {
+            display: flex;
+            gap: 8px;
+            flex-shrink: 0;
+        }
+
+        .collection-actions button {
+            padding: 6px 12px;
+            border-radius: 6px;
+            font-size: 0.78rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .btn-copy-collection {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            color: var(--text-primary);
+        }
+
+        .btn-copy-collection:hover {
+            border-color: var(--accent);
+            color: var(--accent);
+        }
+
+        .btn-delete-collection {
+            background: transparent;
+            border: 1px solid var(--error);
+            color: var(--error);
+        }
+
+        .btn-delete-collection:hover {
+            background: var(--error);
+            color: white;
+        }
+
+        /* Gallery pills inside a collection */
+        .collection-galleries {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            min-height: 36px;
+            padding: 10px;
+            background: var(--bg-secondary);
+            border: 1px dashed var(--border);
+            border-radius: 8px;
+            transition: border-color 0.2s;
+        }
+
+        .collection-galleries.drag-over {
+            border-color: var(--accent);
+            background: rgba(201, 169, 98, 0.05);
+        }
+
+        .gallery-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 10px;
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border);
+            border-radius: 20px;
+            font-size: 0.8rem;
+            color: var(--text-primary);
+        }
+
+        .gallery-pill button {
+            background: none;
+            border: none;
+            color: var(--text-secondary);
+            cursor: pointer;
+            padding: 0;
+            line-height: 1;
+            font-size: 0.9rem;
+            transition: color 0.2s;
+        }
+
+        .gallery-pill button:hover { color: var(--error); }
+
+        .collection-drop-hint {
+            font-size: 0.78rem;
+            color: var(--text-secondary);
+            align-self: center;
+            pointer-events: none;
+        }
+
+        /* Draggable gallery items */
+        .gallery-item.dragging {
+            opacity: 0.4;
+            cursor: grabbing;
+        }
+
+        .gallery-item[draggable="true"] {
+            cursor: grab;
+        }
+
         /* Upload status toast */
         .upload-toast {
             position: fixed;
@@ -1117,6 +1305,16 @@
             </div>
         </div>
 
+        <!-- Collections -->
+        <div class="collections-section">
+            <div class="section-title">Collections</div>
+            <div class="collection-create-row">
+                <input type="text" id="newCollectionName" placeholder="Collection name (e.g. Dupont Wedding)" maxlength="200">
+                <button class="btn-create-collection" onclick="createCollection()">+ New Collection</button>
+            </div>
+            <div id="collectionList"><div class="empty-state">No collections yet.</div></div>
+        </div>
+
         <!-- Existing Galleries -->
         <div class="galleries-section">
             <div class="section-title">
@@ -1139,6 +1337,7 @@
             adminPassword = savedPassword;
             document.getElementById('loginModal').classList.add('hidden');
             loadGalleries();
+            loadCollections();
             checkLogoState();
         }
 
@@ -1161,6 +1360,7 @@
                     sessionStorage.setItem('adminPassword', password);
                     document.getElementById('loginModal').classList.add('hidden');
                     loadGalleries();
+                    loadCollections();
                     checkLogoState();
                 } else {
                     document.getElementById('loginError').style.display = 'block';
@@ -1494,7 +1694,10 @@
                 }
                 
                 container.innerHTML = galleries.map(g => `
-                    <div class="gallery-item">
+                    <div class="gallery-item" draggable="true"
+                         id="gallery-item-${g.id}"
+                         ondragstart="handleGalleryDragStart(event, '${g.id}')"
+                         ondragend="handleGalleryDragEnd(event)">
                         <div class="gallery-cover ${g.hasBackground ? 'has-image' : ''}" 
                              id="cover-${g.id}"
                              onclick="document.getElementById('cover-input-${g.id}').click()"
@@ -1518,7 +1721,7 @@
                         </div>
                         <div class="gallery-info">
                             <div class="gallery-name" onclick="startEditGalleryName('${g.id}', this)" title="Click to rename">${escapeHtml(g.eventName)}</div>
-                            <div class="gallery-meta">${g.fileCount} photos • ${new Date(g.created).toLocaleDateString()}</div>
+                            <div class="gallery-meta">${g.fileCount} photos • ${new Date(g.created).toLocaleDateString()}${g.collectionId ? ` • <span style="color:var(--accent)">⊕ In collection</span>` : ''}</div>
                             <label class="downloads-toggle" title="Allow clients to download photos">
                                 <span class="toggle-switch">
                                     <input type="checkbox" ${g.downloadsEnabled !== false ? 'checked' : ''}
@@ -1786,6 +1989,225 @@
             } catch (err) {
                 alert('Could not reset favorites');
             }
+        }
+
+        // ---- Collections ----
+
+        let _collectionsData = []; // cache for drag-drop lookups
+
+        async function loadCollections() {
+            try {
+                const res = await fetch('/api/collections', {
+                    headers: { 'X-Admin-Password': adminPassword }
+                });
+                if (!res.ok) throw new Error('Failed');
+                _collectionsData = await res.json();
+                renderCollections(_collectionsData);
+            } catch (err) {
+                console.error('Error loading collections:', err);
+            }
+        }
+
+        function renderCollections(colls) {
+            const container = document.getElementById('collectionList');
+            if (colls.length === 0) {
+                container.innerHTML = '<div class="empty-state">No collections yet. Create one above.</div>';
+                return;
+            }
+
+            container.innerHTML = colls.map(c => {
+                const pillsHtml = c.galleryIds.length === 0
+                    ? `<span class="collection-drop-hint">Drag galleries here</span>`
+                    : c.galleryIds.map(gid => {
+                        const g = _galleriesData ? _galleriesData.find(x => x.id === gid) : null;
+                        const name = g ? escapeHtml(g.eventName) : gid.slice(0, 8) + '…';
+                        return `<span class="gallery-pill">
+                            ${name}
+                            <button onclick="removeFromCollection('${c.id}', '${gid}')" title="Remove">✕</button>
+                        </span>`;
+                    }).join('');
+
+                return `<div class="collection-item">
+                    <div class="collection-header">
+                        <div class="collection-name" onclick="startEditCollectionName('${c.id}', this)" title="Click to rename">${escapeHtml(c.name)}</div>
+                        <div class="collection-meta">${c.galleryIds.length} ${c.galleryIds.length === 1 ? 'gallery' : 'galleries'}</div>
+                        <div class="collection-actions">
+                            <button class="btn-copy-collection" onclick="copyCollectionLink('${c.id}', this)">Copy Link</button>
+                            <button class="btn-delete-collection" onclick="deleteCollection('${c.id}')">Delete</button>
+                        </div>
+                    </div>
+                    <div class="collection-galleries"
+                         id="col-drop-${c.id}"
+                         ondragover="handleColDragOver(event, '${c.id}')"
+                         ondragleave="handleColDragLeave(event, '${c.id}')"
+                         ondrop="handleColDrop(event, '${c.id}')">
+                        ${pillsHtml}
+                    </div>
+                </div>`;
+            }).join('');
+        }
+
+        let _galleriesData = []; // keep galleries data for pill labels
+
+        // Patch loadGalleries to also cache data and refresh collections
+        const _origLoadGalleries = loadGalleries;
+        async function loadGalleries() {
+            await _origLoadGalleries();
+            // Cache the gallery data for collection pill rendering
+            try {
+                const res = await fetch('/api/galleries', {
+                    headers: { 'X-Admin-Password': adminPassword }
+                });
+                if (res.ok) {
+                    _galleriesData = await res.json();
+                    renderCollections(_collectionsData);
+                }
+            } catch (_) {}
+        }
+
+        async function createCollection() {
+            const input = document.getElementById('newCollectionName');
+            const name = input.value.trim();
+            if (!name) { input.focus(); return; }
+            try {
+                const res = await fetch('/api/collection/create', {
+                    method: 'POST',
+                    headers: { 'X-Admin-Password': adminPassword, 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name })
+                });
+                if (!res.ok) throw new Error('Failed');
+                input.value = '';
+                await loadCollections();
+            } catch (err) {
+                alert('Could not create collection: ' + err.message);
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            document.getElementById('newCollectionName').addEventListener('keypress', e => {
+                if (e.key === 'Enter') createCollection();
+            });
+        });
+
+        async function deleteCollection(collectionId) {
+            if (!confirm('Delete this collection? The galleries inside will not be deleted.')) return;
+            try {
+                const res = await fetch(`/api/collection/${collectionId}`, {
+                    method: 'DELETE',
+                    headers: { 'X-Admin-Password': adminPassword }
+                });
+                if (!res.ok) throw new Error('Failed');
+                await loadCollections();
+                await loadGalleries(); // refresh collection badges
+            } catch (err) {
+                alert('Could not delete collection: ' + err.message);
+            }
+        }
+
+        function copyCollectionLink(collectionId, btn) {
+            const url = `${window.location.origin}/collection/${collectionId}`;
+            copyToClipboard(url);
+            btn.textContent = 'Copied!';
+            setTimeout(() => btn.textContent = 'Copy Link', 2000);
+        }
+
+        async function removeFromCollection(collectionId, galleryId) {
+            try {
+                const res = await fetch(`/api/collection/${collectionId}/galleries/${galleryId}`, {
+                    method: 'DELETE',
+                    headers: { 'X-Admin-Password': adminPassword }
+                });
+                if (!res.ok) throw new Error('Failed');
+                await loadCollections();
+                await loadGalleries();
+            } catch (err) {
+                alert('Could not remove gallery from collection: ' + err.message);
+            }
+        }
+
+        async function addToCollection(collectionId, galleryId) {
+            try {
+                const res = await fetch(`/api/collection/${collectionId}/galleries`, {
+                    method: 'POST',
+                    headers: { 'X-Admin-Password': adminPassword, 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ galleryId })
+                });
+                if (!res.ok) {
+                    const data = await res.json();
+                    throw new Error(data.error || 'Failed');
+                }
+                await loadCollections();
+                await loadGalleries();
+            } catch (err) {
+                alert('Could not add gallery to collection: ' + err.message);
+            }
+        }
+
+        function startEditCollectionName(collectionId, element) {
+            const currentName = element.textContent;
+            const input = document.createElement('input');
+            input.type = 'text';
+            input.className = 'collection-name-input';
+            input.value = currentName;
+            element.replaceWith(input);
+            input.focus();
+            input.select();
+
+            async function saveEdit() {
+                const newName = input.value.trim() || 'Untitled Collection';
+                if (newName !== currentName) {
+                    try {
+                        await fetch(`/api/collection/${collectionId}/rename`, {
+                            method: 'POST',
+                            headers: { 'X-Admin-Password': adminPassword, 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ name: newName })
+                        });
+                    } catch (_) {}
+                }
+                await loadCollections();
+            }
+
+            input.addEventListener('blur', saveEdit);
+            input.addEventListener('keydown', e => {
+                if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
+                else if (e.key === 'Escape') { input.value = currentName; input.blur(); }
+            });
+        }
+
+        // Drag-and-drop: gallery → collection drop zone
+        let _draggedGalleryId = null;
+
+        function handleGalleryDragStart(event, galleryId) {
+            _draggedGalleryId = galleryId;
+            event.dataTransfer.effectAllowed = 'move';
+            event.dataTransfer.setData('text/plain', galleryId);
+            document.getElementById(`gallery-item-${galleryId}`).classList.add('dragging');
+        }
+
+        function handleGalleryDragEnd(event) {
+            if (_draggedGalleryId) {
+                const el = document.getElementById(`gallery-item-${_draggedGalleryId}`);
+                if (el) el.classList.remove('dragging');
+            }
+            _draggedGalleryId = null;
+        }
+
+        function handleColDragOver(event, collectionId) {
+            event.preventDefault();
+            event.dataTransfer.dropEffect = 'move';
+            document.getElementById(`col-drop-${collectionId}`).classList.add('drag-over');
+        }
+
+        function handleColDragLeave(event, collectionId) {
+            document.getElementById(`col-drop-${collectionId}`).classList.remove('drag-over');
+        }
+
+        async function handleColDrop(event, collectionId) {
+            event.preventDefault();
+            document.getElementById(`col-drop-${collectionId}`).classList.remove('drag-over');
+            const galleryId = event.dataTransfer.getData('text/plain');
+            if (!galleryId) return;
+            await addToCollection(collectionId, galleryId);
         }
 
         async function deleteGallery(id) {
