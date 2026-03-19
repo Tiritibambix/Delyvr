@@ -724,7 +724,6 @@ app.get('/api/gallery/:galleryId/download', validateGalleryId, (req, res) => {
         return res.status(404).json({ error: 'No files in gallery' });
     }
 
-    const gallery = galleries.get(galleryId);
     const eventName = gallery && gallery.eventName ? gallery.eventName : 'photos';
 
     const safeFileName = eventName
