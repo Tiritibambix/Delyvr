@@ -794,6 +794,15 @@
                     heroBg.src = `/api/gallery/${galleryId}/background`;
                 }
 
+                // Load favorites from server
+                try {
+                    const favRes = await fetch(`/api/gallery/${galleryId}/favorites-public`);
+                    if (favRes.ok) {
+                        const favData = await favRes.json();
+                        localFavorites = new Set(favData.favorites || []);
+                    }
+                } catch (e) { /* non-blocking */ }
+
                 // Render gallery
                 renderGallery(downloadsEnabled);
 

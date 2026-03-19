@@ -768,6 +768,16 @@ app.post('/api/gallery/:galleryId/favorites', validateGalleryId, (req, res) => {
     res.json({ success: true, favorited: idx === -1, favorites: gallery.favorites });
 });
 
+// Get favorites for a gallery (public — read only, used by preview page on load)
+app.get('/api/gallery/:galleryId/favorites-public', validateGalleryId, (req, res) => {
+    const { galleryId } = req.params;
+    const gallery = galleries.get(galleryId);
+    if (!gallery) {
+        return res.status(404).json({ error: 'Gallery not found' });
+    }
+    res.json({ favorites: gallery.favorites || [] });
+});
+
 // Get favorites for a gallery (admin only)
 app.get('/api/gallery/:galleryId/favorites', requireAuth, validateGalleryId, (req, res) => {
     const { galleryId } = req.params;
