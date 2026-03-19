@@ -1,6 +1,7 @@
 <div align="center">
   <img src="public/logo.svg" alt="Delyvr" width="400">
 </div>
+
 # Delyvr
 
 A self-hosted photo delivery platform for photographers. Upload photos, share a branded download link with your client - they get a beautiful gallery preview and a one-click ZIP download.
