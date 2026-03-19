@@ -528,7 +528,9 @@ app.get('/api/gallery/:galleryId/photos', validateGalleryId, (req, res) => {
         return res.status(404).json({ error: 'Gallery not found' });
     }
 
-    const files = fs.readdirSync(galleryPath).filter(f => !f.startsWith('.'));
+    const files = fs.readdirSync(galleryPath)
+        .filter(f => !f.startsWith('.'))
+        .sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }));
 
     const gallery = galleries.get(galleryId);
 
