@@ -29,7 +29,6 @@
             line-height: 1.6;
         }
 
-        /* Header */
         .header {
             text-align: center;
             padding: 64px 24px 48px;
@@ -63,7 +62,6 @@
             animation: fadeUp 0.7s ease 0.2s forwards;
         }
 
-        /* Download all button */
         .download-all-wrap {
             display: flex;
             justify-content: center;
@@ -79,7 +77,6 @@
             padding: 14px 32px;
             background: var(--accent);
             color: var(--bg-primary);
-            text-decoration: none;
             border-radius: 50px;
             font-size: 1rem;
             font-weight: 600;
@@ -93,12 +90,8 @@
             transform: translateY(-1px);
         }
 
-        .download-all-btn svg {
-            width: 18px;
-            height: 18px;
-        }
+        .download-all-btn svg { width: 18px; height: 18px; }
 
-        /* Gallery cards grid */
         .galleries-container {
             max-width: 1200px;
             margin: 0 auto;
@@ -116,54 +109,39 @@
             border: 1px solid var(--border);
             border-radius: 16px;
             overflow: hidden;
-            text-decoration: none;
             color: inherit;
             display: flex;
             flex-direction: column;
-            transition: transform 0.2s ease, border-color 0.2s ease;
             opacity: 0;
             transform: translateY(16px);
             animation: fadeUp 0.6s ease forwards;
         }
 
-        .gallery-card:hover {
-            transform: translateY(-4px);
-            border-color: var(--accent);
-        }
-
+        /* Cover — clickable, no icon placeholder */
         .gallery-card-cover {
             width: 100%;
             aspect-ratio: 16/9;
             overflow: hidden;
             background: var(--bg-tertiary);
             position: relative;
+            cursor: pointer;
+            display: block;
+            text-decoration: none;
         }
+
+        .gallery-card-cover:hover img { transform: scale(1.03); }
 
         .gallery-card-cover img {
             width: 100%;
             height: 100%;
             object-fit: cover;
             opacity: 0;
-            transition: opacity 0.4s ease;
+            transition: opacity 0.4s ease, transform 0.3s ease;
         }
 
-        .gallery-card-cover img.loaded {
-            opacity: 1;
-        }
+        .gallery-card-cover img.loaded { opacity: 1; }
 
-        .gallery-card-cover-placeholder {
-            position: absolute;
-            inset: 0;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            color: var(--border);
-        }
-
-        .gallery-card-cover-placeholder svg {
-            width: 48px;
-            height: 48px;
-        }
+        /* No placeholder icon — just a clean dark surface */
 
         .gallery-card-body {
             padding: 20px 24px 24px;
@@ -192,7 +170,7 @@
             padding-top: 4px;
         }
 
-        .btn-browse {
+        .btn-copy-link {
             flex: 1;
             display: inline-flex;
             align-items: center;
@@ -201,14 +179,18 @@
             padding: 10px 16px;
             background: var(--accent);
             color: var(--bg-primary);
-            text-decoration: none;
+            border: none;
             border-radius: 8px;
             font-size: 0.875rem;
             font-weight: 600;
+            cursor: pointer;
             transition: background 0.2s;
+            font-family: inherit;
         }
 
-        .btn-browse:hover { background: var(--accent-hover); }
+        .btn-copy-link:hover { background: var(--accent-hover); }
+
+        .btn-copy-link svg { width: 15px; height: 15px; }
 
         .btn-download-gallery {
             display: inline-flex;
@@ -231,12 +213,8 @@
             color: var(--accent);
         }
 
-        .btn-browse svg, .btn-download-gallery svg {
-            width: 15px;
-            height: 15px;
-        }
+        .btn-download-gallery svg { width: 15px; height: 15px; }
 
-        /* Not found */
         .not-found {
             display: none;
             text-align: center;
@@ -253,7 +231,6 @@
 
         .not-found p { color: var(--text-secondary); }
 
-        /* Loading */
         .loading-state {
             text-align: center;
             padding: 100px 24px;
@@ -284,11 +261,11 @@
         </div>
 
         <div class="download-all-wrap" id="downloadAllWrap" style="display:none;">
-            <button class="download-all-btn" id="downloadAllBtn" onclick="downloadAll()">
+            <button class="download-all-btn" onclick="downloadAll()">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <path d="M12 4v12m0 0l-4-4m4 4l4-4M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2" stroke-linecap="round" stroke-linejoin="round"/>
                 </svg>
-                Download All Galleries
+                <span id="downloadAllText"></span>
             </button>
         </div>
 
@@ -298,15 +275,116 @@
     </div>
 
     <div class="not-found" id="notFound">
-        <h1>Collection Not Found</h1>
-        <p>This collection may have been removed or the link is incorrect.</p>
+        <h1 id="notFoundTitle"></h1>
+        <p id="notFoundText"></p>
     </div>
 
     <script>
+        // Internationalisation — same languages as preview.html / customer.html
+        const translations = {
+            en: {
+                loading: 'Loading...',
+                gallery: 'gallery',
+                galleries: 'galleries',
+                downloadAll: 'Download All Galleries',
+                photo: 'photo',
+                photos: 'photos',
+                copyLink: 'Copy Link',
+                linkCopied: 'Copied!',
+                download: 'Download',
+                notFoundTitle: 'Collection Not Found',
+                notFoundText: 'This collection may have been removed or the link is incorrect.'
+            },
+            fr: {
+                loading: 'Chargement...',
+                gallery: 'galerie',
+                galleries: 'galeries',
+                downloadAll: 'Tout télécharger',
+                photo: 'photo',
+                photos: 'photos',
+                copyLink: 'Copier le lien',
+                linkCopied: 'Copié\u00a0!',
+                download: 'Télécharger',
+                notFoundTitle: 'Collection introuvable',
+                notFoundText: 'Cette collection a peut-être été supprimée ou le lien est incorrect.'
+            },
+            es: {
+                loading: 'Cargando...',
+                gallery: 'galería',
+                galleries: 'galerías',
+                downloadAll: 'Descargar todo',
+                photo: 'foto',
+                photos: 'fotos',
+                copyLink: 'Copiar enlace',
+                linkCopied: '¡Copiado!',
+                download: 'Descargar',
+                notFoundTitle: 'Colección no encontrada',
+                notFoundText: 'Esta colección puede haber sido eliminada o el enlace es incorrecto.'
+            },
+            pt: {
+                loading: 'Carregando...',
+                gallery: 'galeria',
+                galleries: 'galerias',
+                downloadAll: 'Baixar tudo',
+                photo: 'foto',
+                photos: 'fotos',
+                copyLink: 'Copiar link',
+                linkCopied: 'Copiado!',
+                download: 'Baixar',
+                notFoundTitle: 'Coleção não encontrada',
+                notFoundText: 'Esta coleção pode ter sido removida ou o link está incorreto.'
+            },
+            it: {
+                loading: 'Caricamento...',
+                gallery: 'galleria',
+                galleries: 'gallerie',
+                downloadAll: 'Scarica tutto',
+                photo: 'foto',
+                photos: 'foto',
+                copyLink: 'Copia link',
+                linkCopied: 'Copiato!',
+                download: 'Scarica',
+                notFoundTitle: 'Collezione non trovata',
+                notFoundText: 'Questa collezione potrebbe essere stata rimossa o il link non è corretto.'
+            }
+        };
+
+        function getLocale() {
+            const lang = (navigator.language || navigator.userLanguage || 'en').split('-')[0].toLowerCase();
+            return translations[lang] ? lang : 'en';
+        }
+
+        const locale = getLocale();
+        const t = translations[locale];
+        document.documentElement.lang = locale;
+
+        document.getElementById('loadingState').textContent = t.loading;
+        document.getElementById('notFoundTitle').textContent = t.notFoundTitle;
+        document.getElementById('notFoundText').textContent = t.notFoundText;
+        document.getElementById('downloadAllText').textContent = t.downloadAll;
+
         const collectionId = window.location.pathname.split('/').pop();
 
-        async function downloadAll() {
+        function downloadAll() {
             window.location.href = `/api/collection/${collectionId}/download`;
+        }
+
+        function copyGalleryLink(galleryId, btn) {
+            const url = `${window.location.origin}/preview/${galleryId}`;
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(url);
+            } else {
+                const ta = document.createElement('textarea');
+                ta.value = url;
+                ta.style.cssText = 'position:fixed;opacity:0';
+                document.body.appendChild(ta);
+                ta.select();
+                document.execCommand('copy');
+                document.body.removeChild(ta);
+            }
+            const orig = btn.textContent;
+            btn.textContent = t.linkCopied;
+            setTimeout(() => btn.textContent = orig, 2000);
         }
 
         async function loadCollection() {
@@ -322,10 +400,9 @@
                 document.getElementById('collectionTitle').textContent = data.name;
 
                 const count = data.galleries.length;
-                document.getElementById('headerMeta').textContent =
-                    `${count} ${count === 1 ? 'gallery' : 'galleries'}`;
+                const galleryWord = count === 1 ? t.gallery : t.galleries;
+                document.getElementById('headerMeta').textContent = `${count} ${galleryWord}`;
 
-                // Show download all only if at least one gallery has downloads enabled
                 const anyDownloadable = data.galleries.some(g => g.downloadsEnabled !== false);
                 if (anyDownloadable) {
                     document.getElementById('downloadAllWrap').style.display = 'flex';
@@ -335,46 +412,35 @@
                 grid.innerHTML = '';
 
                 data.galleries.forEach((gallery, i) => {
-                    const card = document.createElement('a');
-                    card.href = `/preview/${gallery.id}`;
+                    const card = document.createElement('div');
                     card.className = 'gallery-card';
                     card.style.animationDelay = `${0.05 * i + 0.3}s`;
 
-                    const photoWord = gallery.fileCount === 1 ? 'photo' : 'photos';
+                    const photoWord = gallery.fileCount === 1 ? t.photo : t.photos;
                     const downloadBtn = gallery.downloadsEnabled !== false
-                        ? `<a class="btn-download-gallery" href="/api/gallery/${gallery.id}/download" download onclick="event.stopPropagation();">
+                        ? `<a class="btn-download-gallery" href="/api/gallery/${gallery.id}/download" download>
                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                     <path d="M12 4v12m0 0l-4-4m4 4l4-4M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2" stroke-linecap="round" stroke-linejoin="round"/>
                                 </svg>
-                                Download
+                                ${t.download}
                             </a>`
                         : '';
 
                     card.innerHTML = `
-                        <div class="gallery-card-cover">
-                            ${gallery.background
-                                ? `<img data-src="${gallery.background}" alt="${gallery.eventName}">`
-                                : ''}
-                            <div class="gallery-card-cover-placeholder">
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
-                                    <rect x="3" y="3" width="18" height="18" rx="2"/>
-                                    <circle cx="8.5" cy="8.5" r="1.5"/>
-                                    <path d="M21 15l-5-5L5 21"/>
-                                </svg>
-                            </div>
-                        </div>
+                        <a class="gallery-card-cover" href="/preview/${gallery.id}">
+                            ${gallery.background ? `<img data-src="${gallery.background}" alt="${gallery.eventName}">` : ''}
+                        </a>
                         <div class="gallery-card-body">
                             <div class="gallery-card-name">${gallery.eventName}</div>
                             <div class="gallery-card-meta">${gallery.fileCount} ${photoWord}</div>
                             <div class="gallery-card-actions">
-                                <a class="btn-browse" href="/preview/${gallery.id}" onclick="event.stopPropagation();">
+                                <button class="btn-copy-link" onclick="copyGalleryLink('${gallery.id}', this)">
                                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                        <rect x="3" y="3" width="18" height="18" rx="2"/>
-                                        <circle cx="8.5" cy="8.5" r="1.5"/>
-                                        <path d="M21 15l-5-5L5 21"/>
+                                        <rect x="9" y="9" width="13" height="13" rx="2"/>
+                                        <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/>
                                     </svg>
-                                    Browse
-                                </a>
+                                    ${t.copyLink}
+                                </button>
                                 ${downloadBtn}
                             </div>
                         </div>`;

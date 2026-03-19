@@ -2026,7 +2026,12 @@
                     : c.galleryIds.map(gid => {
                         const g = _galleriesData ? _galleriesData.find(x => x.id === gid) : null;
                         const name = g ? escapeHtml(g.eventName) : gid.slice(0, 8) + '…';
-                        return `<span class="gallery-pill">
+                        return `<span class="gallery-pill" draggable="true"
+                                    data-gid="${gid}" data-cid="${c.id}"
+                                    ondragstart="handlePillDragStart(event)"
+                                    ondragover="handlePillDragOver(event)"
+                                    ondrop="handlePillDrop(event, '${c.id}')"
+                                    ondragend="handlePillDragEnd(event)">
                             ${name}
                             <button onclick="removeFromCollection('${c.id}', '${gid}')" title="Remove">✕</button>
                         </span>`;
@@ -2050,6 +2055,60 @@
                     </div>
                 </div>`;
             }).join('');
+        }
+
+        // Pill reordering drag state
+        let _draggedPill = null;
+
+        function handlePillDragStart(event) {
+            _draggedPill = event.currentTarget;
+            event.dataTransfer.effectAllowed = 'move';
+            event.dataTransfer.setData('text/plain', _draggedPill.dataset.gid);
+            setTimeout(() => { if (_draggedPill) _draggedPill.style.opacity = '0.4'; }, 0);
+            // Stop propagation so the gallery-item dragstart doesn't fire
+            event.stopPropagation();
+        }
+
+        function handlePillDragOver(event) {
+            if (!_draggedPill) return;
+            event.preventDefault();
+            event.stopPropagation();
+            event.dataTransfer.dropEffect = 'move';
+            const target = event.currentTarget;
+            if (target !== _draggedPill && target.classList.contains('gallery-pill')) {
+                const rect = target.getBoundingClientRect();
+                const after = event.clientX > rect.left + rect.width / 2;
+                const parent = target.parentNode;
+                if (after) {
+                    parent.insertBefore(_draggedPill, target.nextSibling);
+                } else {
+                    parent.insertBefore(_draggedPill, target);
+                }
+            }
+        }
+
+        async function handlePillDrop(event, collectionId) {
+            event.preventDefault();
+            event.stopPropagation();
+            if (!_draggedPill) return;
+            // Collect new order from DOM
+            const pills = document.querySelectorAll(`#col-drop-${collectionId} .gallery-pill`);
+            const newOrder = Array.from(pills).map(p => p.dataset.gid);
+            try {
+                await fetch(`/api/collection/${collectionId}/galleries/reorder`, {
+                    method: 'PATCH',
+                    headers: { 'X-Admin-Password': adminPassword, 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ galleryIds: newOrder })
+                });
+                await loadCollections();
+            } catch (err) {
+                alert('Could not reorder galleries: ' + err.message);
+            }
+        }
+
+        function handlePillDragEnd(event) {
+            if (_draggedPill) _draggedPill.style.opacity = '';
+            _draggedPill = null;
         }
 
         let _galleriesData = []; // cache for collection pill labels

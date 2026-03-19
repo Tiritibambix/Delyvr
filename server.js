@@ -960,6 +960,23 @@ app.post('/api/collection/:collectionId/galleries', requireAuth, validateCollect
     res.json({ success: true, galleryIds: collection.galleryIds });
 });
 
+// Reorder galleries within a collection (admin only)
+app.patch('/api/collection/:collectionId/galleries/reorder', requireAuth, validateCollectionId, (req, res) => {
+    const { collectionId } = req.params;
+    const { galleryIds } = req.body;
+    const collection = collections.get(collectionId);
+    if (!collection) return res.status(404).json({ error: 'Collection not found' });
+    if (!Array.isArray(galleryIds)) return res.status(400).json({ error: 'galleryIds must be an array' });
+    // Only accept IDs already in the collection — prevents injection
+    const valid = new Set(collection.galleryIds);
+    if (!galleryIds.every(id => valid.has(id)) || galleryIds.length !== collection.galleryIds.length) {
+        return res.status(400).json({ error: 'Invalid galleryIds' });
+    }
+    collection.galleryIds = galleryIds;
+    saveCollections();
+    res.json({ success: true, galleryIds: collection.galleryIds });
+});
+
 // Remove a gallery from a collection (admin only)
 app.delete('/api/collection/:collectionId/galleries/:galleryId', requireAuth, validateCollectionId, validateGalleryId, (req, res) => {
     const { collectionId, galleryId } = req.params;
