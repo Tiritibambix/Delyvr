@@ -1,0 +1,1520 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MeTransfer — Dashboard</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=Fraunces:wght@400;600&display=swap" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --bg-primary: #0a0a0b;
+            --bg-secondary: #141416;
+            --bg-tertiary: #1c1c1f;
+            --text-primary: #f5f5f7;
+            --text-secondary: #a1a1a6;
+            --accent: #c9a962;
+            --accent-hover: #dfc07a;
+            --border: #2d2d30;
+            --success: #34c759;
+            --error: #ff453a;
+        }
+
+        body {
+            font-family: 'Instrument Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            min-height: 100vh;
+            line-height: 1.6;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 40px 24px;
+        }
+
+        header {
+            text-align: center;
+            margin-bottom: 48px;
+            padding-bottom: 32px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        h1 {
+            font-family: 'Fraunces', serif;
+            font-size: 2.5rem;
+            font-weight: 600;
+            letter-spacing: -0.02em;
+            margin-bottom: 8px;
+        }
+
+        .logo-wrap {
+            display: inline-block;
+            position: relative;
+            cursor: pointer;
+            margin-bottom: 16px;
+        }
+
+        .logo-wrap img {
+            display: block;
+            height: 128px;
+            width: auto;
+        }
+
+        .logo-wrap .logo-hint {
+            position: absolute;
+            inset: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: rgba(0,0,0,0.55);
+            color: var(--text-primary);
+            font-size: 0.72rem;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            opacity: 0;
+            transition: opacity 0.18s;
+            border-radius: 4px;
+        }
+
+        .logo-wrap:hover .logo-hint {
+            opacity: 1;
+        }
+
+        .logo-reset {
+            display: none;
+            margin-top: 6px;
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+            background: none;
+            border: none;
+            cursor: pointer;
+            padding: 0;
+            text-decoration: underline;
+            text-underline-offset: 2px;
+        }
+
+        .logo-reset:hover {
+            color: var(--error);
+        }
+
+        .subtitle {
+            color: var(--text-secondary);
+            font-size: 1rem;
+        }
+
+        /* Login Modal */
+        .login-modal {
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.85);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+            backdrop-filter: blur(8px);
+        }
+
+        .login-modal.hidden {
+            display: none;
+        }
+
+        .login-card {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 40px;
+            width: 100%;
+            max-width: 400px;
+            text-align: center;
+        }
+
+        .login-card h2 {
+            font-family: 'Fraunces', serif;
+            margin-bottom: 8px;
+        }
+
+        .login-card p {
+            color: var(--text-secondary);
+            margin-bottom: 24px;
+            font-size: 0.9rem;
+        }
+
+        .login-card input {
+            width: 100%;
+            padding: 14px 18px;
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            color: var(--text-primary);
+            font-size: 1rem;
+            margin-bottom: 16px;
+            transition: border-color 0.2s;
+        }
+
+        .login-card input:focus {
+            outline: none;
+            border-color: var(--accent);
+        }
+
+        .login-card button {
+            width: 100%;
+            padding: 14px 24px;
+            background: var(--accent);
+            color: var(--bg-primary);
+            border: none;
+            border-radius: 10px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        .login-card button:hover {
+            background: var(--accent-hover);
+        }
+
+        .login-error {
+            color: var(--error);
+            font-size: 0.85rem;
+            margin-top: 12px;
+            display: none;
+        }
+
+        /* Upload Section */
+        .upload-section {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 20px;
+            padding: 32px;
+            margin-bottom: 32px;
+        }
+
+        .section-title {
+            font-size: 1.25rem;
+            font-weight: 600;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .section-title span {
+            width: 28px;
+            height: 28px;
+            background: var(--accent);
+            color: var(--bg-primary);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.85rem;
+            font-weight: 700;
+        }
+
+        .event-name-input {
+            width: 100%;
+            padding: 14px 18px;
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            color: var(--text-primary);
+            font-size: 1rem;
+            margin-bottom: 20px;
+            transition: border-color 0.2s;
+        }
+
+        .event-name-input:focus {
+            outline: none;
+            border-color: var(--accent);
+        }
+
+        .drop-zone {
+            border: 2px dashed var(--border);
+            border-radius: 16px;
+            padding: 48px;
+            text-align: center;
+            transition: all 0.3s;
+            cursor: pointer;
+            background: var(--bg-tertiary);
+        }
+
+        .drop-zone:hover,
+        .drop-zone.drag-over {
+            border-color: var(--accent);
+            background: rgba(201, 169, 98, 0.05);
+        }
+
+        .drop-zone-icon {
+            width: 64px;
+            height: 64px;
+            margin: 0 auto 16px;
+            opacity: 0.6;
+        }
+
+        .drop-zone h3 {
+            font-size: 1.1rem;
+            margin-bottom: 8px;
+        }
+
+        .drop-zone p {
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+        }
+
+        .file-input {
+            display: none;
+        }
+
+        .file-list {
+            margin-top: 20px;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+
+        .file-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 10px 14px;
+            background: var(--bg-tertiary);
+            border-radius: 8px;
+            margin-bottom: 8px;
+            font-size: 0.9rem;
+        }
+
+        .file-item svg {
+            width: 20px;
+            height: 20px;
+            color: var(--accent);
+        }
+
+        .file-item .file-name {
+            flex: 1;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .file-item .file-size {
+            color: var(--text-secondary);
+            font-size: 0.8rem;
+        }
+
+        .file-item .remove-file {
+            background: none;
+            border: none;
+            color: var(--text-secondary);
+            cursor: pointer;
+            padding: 4px;
+            transition: color 0.2s;
+        }
+
+        .file-item .remove-file:hover {
+            color: var(--error);
+        }
+
+        /* Background Upload */
+        .bg-upload-section {
+            margin-top: 24px;
+            padding-top: 24px;
+            border-top: 1px solid var(--border);
+        }
+
+        .bg-drop-zone {
+            border: 2px dashed var(--border);
+            border-radius: 12px;
+            padding: 24px;
+            text-align: center;
+            transition: all 0.3s;
+            cursor: pointer;
+            background: var(--bg-tertiary);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .bg-drop-zone:hover,
+        .bg-drop-zone.drag-over {
+            border-color: var(--accent);
+            background: rgba(201, 169, 98, 0.05);
+        }
+
+        .bg-drop-zone.has-image {
+            padding: 0;
+            border-style: solid;
+        }
+
+        .bg-drop-zone-content {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .bg-drop-zone.has-image .bg-drop-zone-content {
+            position: absolute;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.6);
+            justify-content: center;
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+
+        .bg-drop-zone.has-image:hover .bg-drop-zone-content {
+            opacity: 1;
+        }
+
+        .bg-drop-zone svg {
+            width: 32px;
+            height: 32px;
+            opacity: 0.6;
+        }
+
+        .bg-drop-zone p {
+            color: var(--text-secondary);
+            font-size: 0.85rem;
+        }
+
+        .bg-drop-zone.has-image p {
+            color: var(--text-primary);
+        }
+
+        .bg-preview {
+            width: 100%;
+            aspect-ratio: 16/9;
+            object-fit: cover;
+            display: block;
+        }
+
+        /* Create Button */
+        .create-btn {
+            width: 100%;
+            padding: 18px 32px;
+            background: var(--accent);
+            color: var(--bg-primary);
+            border: none;
+            border-radius: 12px;
+            font-size: 1.1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            margin-top: 24px;
+        }
+
+        .create-btn:hover:not(:disabled) {
+            background: var(--accent-hover);
+            transform: translateY(-2px);
+        }
+
+        .create-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        /* Progress */
+        .progress-container {
+            display: none;
+            margin-top: 20px;
+        }
+
+        .progress-container.visible {
+            display: block;
+        }
+
+        .progress-bar {
+            height: 6px;
+            background: var(--bg-tertiary);
+            border-radius: 3px;
+            overflow: hidden;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: var(--accent);
+            width: 0%;
+            transition: width 0.3s;
+        }
+
+        .progress-text {
+            text-align: center;
+            color: var(--text-secondary);
+            font-size: 0.85rem;
+            margin-top: 8px;
+        }
+
+        /* Result */
+        .result-section {
+            display: none;
+            background: var(--bg-secondary);
+            border: 1px solid var(--success);
+            border-radius: 20px;
+            padding: 32px;
+            margin-bottom: 32px;
+            text-align: center;
+        }
+
+        .result-section.visible {
+            display: block;
+        }
+
+        .result-section h3 {
+            color: var(--success);
+            margin-bottom: 16px;
+            font-size: 1.25rem;
+        }
+
+        .result-links {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            margin: 20px 0;
+        }
+
+        .link-row {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            background: var(--bg-tertiary);
+            padding: 12px 16px;
+            border-radius: 10px;
+        }
+
+        .link-row label {
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+            min-width: 80px;
+        }
+
+        .link-row input {
+            flex: 1;
+            background: none;
+            border: none;
+            color: var(--text-primary);
+            font-size: 0.9rem;
+        }
+
+        .copy-btn {
+            padding: 8px 16px;
+            background: var(--accent);
+            color: var(--bg-primary);
+            border: none;
+            border-radius: 6px;
+            font-size: 0.85rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        .copy-btn:hover {
+            background: var(--accent-hover);
+        }
+
+        .new-upload-btn {
+            padding: 12px 24px;
+            background: transparent;
+            color: var(--accent);
+            border: 1px solid var(--accent);
+            border-radius: 8px;
+            font-size: 0.95rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+            margin-top: 16px;
+        }
+
+        .new-upload-btn:hover {
+            background: var(--accent);
+            color: var(--bg-primary);
+        }
+
+        /* Galleries List */
+        .galleries-section {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 20px;
+            padding: 32px;
+        }
+
+        .gallery-list {
+            display: grid;
+            gap: 16px;
+        }
+
+        .gallery-item {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            padding: 16px 20px;
+            background: var(--bg-tertiary);
+            border-radius: 12px;
+            transition: transform 0.2s;
+        }
+
+        .gallery-item:hover {
+            transform: translateX(4px);
+        }
+
+        .gallery-cover {
+            width: 120px;
+            height: 80px;
+            border-radius: 8px;
+            overflow: hidden;
+            background: var(--bg-secondary);
+            flex-shrink: 0;
+            position: relative;
+            cursor: pointer;
+            border: 2px dashed var(--border);
+            transition: all 0.3s;
+        }
+
+        .gallery-cover:hover,
+        .gallery-cover.drag-over {
+            border-color: var(--accent);
+        }
+
+        .gallery-cover.has-image {
+            border-style: solid;
+            border-color: transparent;
+        }
+
+        .gallery-cover img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            display: block;
+        }
+
+        .gallery-cover-placeholder {
+            position: absolute;
+            inset: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            color: var(--text-secondary);
+            font-size: 0.7rem;
+            text-align: center;
+            padding: 8px;
+        }
+
+        .gallery-cover-placeholder svg {
+            width: 24px;
+            height: 24px;
+            margin-bottom: 4px;
+            opacity: 0.5;
+        }
+
+        .gallery-cover.has-image .gallery-cover-placeholder {
+            background: rgba(0, 0, 0, 0.6);
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+
+        .gallery-cover.has-image:hover .gallery-cover-placeholder {
+            opacity: 1;
+        }
+
+        .gallery-cover-placeholder span {
+            line-height: 1.2;
+        }
+
+        .gallery-cover input[type="file"] {
+            display: none;
+        }
+
+        .gallery-info {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .gallery-name {
+            font-weight: 600;
+            margin-bottom: 4px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            cursor: pointer;
+            padding: 2px 6px;
+            margin: -2px -6px;
+            border-radius: 4px;
+            transition: background 0.2s;
+        }
+
+        .gallery-name:hover {
+            background: var(--bg-secondary);
+        }
+
+        .gallery-name-input {
+            font-weight: 600;
+            font-size: inherit;
+            font-family: inherit;
+            background: var(--bg-secondary);
+            border: 1px solid var(--accent);
+            border-radius: 4px;
+            color: var(--text-primary);
+            padding: 2px 6px;
+            margin: -3px -7px;
+            width: calc(100% + 14px);
+            outline: none;
+        }
+
+        .gallery-meta {
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+        }
+
+        .gallery-actions {
+            display: flex;
+            gap: 8px;
+            flex-shrink: 0;
+        }
+
+        .gallery-actions button {
+            padding: 8px 14px;
+            border-radius: 6px;
+            font-size: 0.8rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .btn-copy {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            color: var(--text-primary);
+        }
+
+        .btn-copy:hover {
+            border-color: var(--accent);
+            color: var(--accent);
+        }
+
+        .btn-delete {
+            background: transparent;
+            border: 1px solid var(--error);
+            color: var(--error);
+        }
+
+        .btn-delete:hover {
+            background: var(--error);
+            color: white;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 48px;
+            color: var(--text-secondary);
+        }
+
+        /* Upload status toast */
+        .upload-toast {
+            position: fixed;
+            bottom: 24px;
+            right: 24px;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 16px 20px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            z-index: 1000;
+            opacity: 0;
+            transform: translateY(20px);
+            transition: all 0.3s;
+            pointer-events: none;
+        }
+
+        .upload-toast.visible {
+            opacity: 1;
+            transform: translateY(0);
+            pointer-events: auto;
+        }
+
+        .upload-toast.success {
+            border-color: var(--success);
+        }
+
+        .upload-toast.error {
+            border-color: var(--error);
+        }
+
+        .upload-toast-spinner {
+            width: 20px;
+            height: 20px;
+            border: 2px solid var(--border);
+            border-top-color: var(--accent);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .upload-toast-icon {
+            width: 20px;
+            height: 20px;
+        }
+
+        .upload-toast-icon.success {
+            color: var(--success);
+        }
+
+        .upload-toast-icon.error {
+            color: var(--error);
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .container {
+                padding: 24px 16px;
+            }
+
+            h1 {
+                font-size: 2rem;
+            }
+
+            .upload-section,
+            .galleries-section {
+                padding: 24px 20px;
+            }
+
+            .gallery-item {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+
+            .gallery-cover {
+                width: 100%;
+                height: 120px;
+            }
+
+            .gallery-actions {
+                width: 100%;
+            }
+
+            .gallery-actions button {
+                flex: 1;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- Login Modal -->
+    <div class="login-modal" id="loginModal">
+        <div class="login-card">
+            <h2>Welcome Back</h2>
+            <p>Enter your password to access the dashboard</p>
+            <input type="password" id="passwordInput" placeholder="Password" autofocus>
+            <button onclick="login()">Sign In</button>
+            <p class="login-error" id="loginError">Invalid password</p>
+        </div>
+    </div>
+
+    <!-- Upload Toast -->
+    <div class="upload-toast" id="uploadToast">
+        <div class="upload-toast-spinner" id="toastSpinner"></div>
+        <svg class="upload-toast-icon success" id="toastSuccess" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display:none;">
+            <path d="M20 6L9 17l-5-5" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <svg class="upload-toast-icon error" id="toastError" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display:none;">
+            <path d="M18 6L6 18M6 6l12 12" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <span id="toastMessage">Uploading cover...</span>
+    </div>
+
+    <div class="container">
+        <header>
+            <div class="logo-wrap" onclick="document.getElementById('logoInput').click()" title="Click to change logo">
+                <img src="/api/logo" alt="Logo" id="adminLogo">
+                <span class="logo-hint">Change logo</span>
+            </div>
+            <input type="file" id="logoInput" accept="image/*,.svg" style="display:none">
+            <button class="logo-reset" id="logoResetBtn" onclick="resetLogo()">Reset to default</button>
+            <p class="subtitle">Create beautiful download links for your clients</p>
+        </header>
+
+        <!-- Result Section (shown after upload) -->
+        <div class="result-section" id="resultSection">
+            <h3>✓ Gallery Created Successfully!</h3>
+            <p id="resultEventName"></p>
+            <div class="result-links">
+                <div class="link-row">
+                    <label>Link:</label>
+                    <input type="text" id="downloadLinkInput" readonly>
+                    <button class="copy-btn" onclick="copyLink('downloadLinkInput')">Copy</button>
+                </div>
+            </div>
+            <button class="new-upload-btn" onclick="resetForm()">Create Another Gallery</button>
+        </div>
+
+        <!-- Upload Section -->
+        <div class="upload-section" id="uploadSection">
+            <div class="section-title">
+                <span>1</span> Event Details & Photos
+            </div>
+            
+            <input type="text" class="event-name-input" id="eventName" placeholder="Event Name (e.g., Johnson Wedding)">
+            
+            <div class="drop-zone" id="dropZone">
+                <svg class="drop-zone-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                    <path d="M12 16V4m0 0L8 8m4-4l4 4M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+                <h3>Drop photos here</h3>
+                <p>or click to browse • Supports folders</p>
+            </div>
+            
+            <input type="file" class="file-input" id="fileInput" multiple accept="image/*">
+            
+            <div class="file-list" id="fileList"></div>
+            
+            <div class="bg-upload-section">
+                <div class="section-title">
+                    <span>2</span> Event Cover Image (Optional)
+                </div>
+                <p style="color: var(--text-secondary); font-size: 0.9rem; margin-bottom: 12px;">
+                    Add a hero image for the customer's download page
+                </p>
+                <div class="bg-drop-zone" id="bgDropZone">
+                    <img class="bg-preview" id="bgPreview" style="display: none;">
+                    <div class="bg-drop-zone-content">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                            <rect x="3" y="3" width="18" height="18" rx="2"/>
+                            <circle cx="8.5" cy="8.5" r="1.5"/>
+                            <path d="M21 15l-5-5L5 21"/>
+                        </svg>
+                        <p>Drop cover image here or click to browse</p>
+                    </div>
+                </div>
+                <input type="file" class="file-input" id="bgInput" accept="image/*">
+            </div>
+            
+            <button class="create-btn" id="createBtn" onclick="createGallery()" disabled>
+                Create Gallery & Get Link
+            </button>
+            
+            <div class="progress-container" id="progressContainer">
+                <div class="progress-bar">
+                    <div class="progress-fill" id="progressFill"></div>
+                </div>
+                <p class="progress-text" id="progressText">Uploading...</p>
+            </div>
+        </div>
+
+        <!-- Existing Galleries -->
+        <div class="galleries-section">
+            <div class="section-title">
+                Your Galleries
+            </div>
+            <div class="gallery-list" id="galleryList">
+                <div class="empty-state">Loading galleries...</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let selectedFiles = [];
+        let selectedBgFile = null;
+        let adminPassword = '';
+
+        // Check for saved password
+        const savedPassword = sessionStorage.getItem('adminPassword');
+        if (savedPassword) {
+            adminPassword = savedPassword;
+            document.getElementById('loginModal').classList.add('hidden');
+            loadGalleries();
+            checkLogoState();
+        }
+
+        // Handle password input enter key
+        document.getElementById('passwordInput').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') login();
+        });
+
+        async function login() {
+            const password = document.getElementById('passwordInput').value;
+            try {
+                const res = await fetch('/api/auth/verify', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ password })
+                });
+                
+                if (res.ok) {
+                    adminPassword = password;
+                    sessionStorage.setItem('adminPassword', password);
+                    document.getElementById('loginModal').classList.add('hidden');
+                    loadGalleries();
+                    checkLogoState();
+                } else {
+                    document.getElementById('loginError').style.display = 'block';
+                }
+            } catch (err) {
+                document.getElementById('loginError').style.display = 'block';
+            }
+        }
+
+        // Prevent default drag behaviors on document
+        ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+            document.body.addEventListener(eventName, preventDefaults, false);
+        });
+
+        function preventDefaults(e) {
+            e.preventDefault();
+            e.stopPropagation();
+        }
+
+        // Photos drop zone
+        const dropZone = document.getElementById('dropZone');
+        
+        dropZone.addEventListener('click', () => document.getElementById('fileInput').click());
+        
+        ['dragenter', 'dragover'].forEach(eventName => {
+            dropZone.addEventListener(eventName, () => dropZone.classList.add('drag-over'), false);
+        });
+
+        ['dragleave', 'drop'].forEach(eventName => {
+            dropZone.addEventListener(eventName, () => dropZone.classList.remove('drag-over'), false);
+        });
+
+        dropZone.addEventListener('drop', handlePhotoDrop, false);
+
+        async function handlePhotoDrop(e) {
+            const items = e.dataTransfer.items;
+
+            // Collect all FileSystemEntry objects synchronously while the drop event is still active.
+            // DataTransferItemList is cleared by the browser after any await, so entries must be
+            // captured before any async work begins.
+            const entries = [];
+            for (let i = 0; i < items.length; i++) {
+                const entry = items[i].webkitGetAsEntry();
+                if (entry) entries.push(entry);
+            }
+
+            const files = [];
+            for (const entry of entries) {
+                await traverseFileTree(entry, files);
+            }
+
+            addFiles(files);
+        }
+
+        async function traverseFileTree(item, files) {
+            return new Promise((resolve) => {
+                if (item.isFile) {
+                    item.file((file) => {
+                        if (file.type.startsWith('image/')) {
+                            files.push(file);
+                        }
+                        resolve();
+                    });
+                } else if (item.isDirectory) {
+                    const reader = item.createReader();
+                    reader.readEntries(async (entries) => {
+                        for (const entry of entries) {
+                            await traverseFileTree(entry, files);
+                        }
+                        resolve();
+                    });
+                } else {
+                    resolve();
+                }
+            });
+        }
+
+        // File input handling
+        document.getElementById('fileInput').addEventListener('change', (e) => {
+            const files = Array.from(e.target.files).filter(f => f.type.startsWith('image/'));
+            addFiles(files);
+        });
+
+        function addFiles(files) {
+            selectedFiles = [...selectedFiles, ...files];
+            updateFileList();
+            document.getElementById('createBtn').disabled = selectedFiles.length === 0;
+        }
+
+        function removeFile(index) {
+            selectedFiles.splice(index, 1);
+            updateFileList();
+            document.getElementById('createBtn').disabled = selectedFiles.length === 0;
+        }
+
+        function formatFileSize(bytes) {
+            if (bytes < 1024) return bytes + ' B';
+            if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+            return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+        }
+
+        function updateFileList() {
+            const container = document.getElementById('fileList');
+            if (selectedFiles.length === 0) {
+                container.innerHTML = '';
+                return;
+            }
+            
+            container.innerHTML = selectedFiles.map((file, i) => `
+                <div class="file-item">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <rect x="3" y="3" width="18" height="18" rx="2"/>
+                        <circle cx="8.5" cy="8.5" r="1.5"/>
+                        <path d="M21 15l-5-5L5 21"/>
+                    </svg>
+                    <span class="file-name">${file.name}</span>
+                    <span class="file-size">${formatFileSize(file.size)}</span>
+                    <button class="remove-file" onclick="removeFile(${i})">✕</button>
+                </div>
+            `).join('');
+        }
+
+        // Background/Cover image drop zone
+        const bgDropZone = document.getElementById('bgDropZone');
+        const bgInput = document.getElementById('bgInput');
+        const bgPreview = document.getElementById('bgPreview');
+
+        bgDropZone.addEventListener('click', () => bgInput.click());
+
+        ['dragenter', 'dragover'].forEach(eventName => {
+            bgDropZone.addEventListener(eventName, () => bgDropZone.classList.add('drag-over'), false);
+        });
+
+        ['dragleave', 'drop'].forEach(eventName => {
+            bgDropZone.addEventListener(eventName, () => bgDropZone.classList.remove('drag-over'), false);
+        });
+
+        bgDropZone.addEventListener('drop', (e) => {
+            const files = e.dataTransfer.files;
+            if (files.length > 0 && files[0].type.startsWith('image/')) {
+                handleBgFile(files[0]);
+            }
+        });
+
+        bgInput.addEventListener('change', (e) => {
+            if (e.target.files.length > 0) {
+                handleBgFile(e.target.files[0]);
+            }
+        });
+
+        function handleBgFile(file) {
+            selectedBgFile = file;
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                bgPreview.src = e.target.result;
+                bgPreview.style.display = 'block';
+                bgDropZone.classList.add('has-image');
+            };
+            reader.readAsDataURL(file);
+        }
+
+        async function createGallery() {
+            const eventName = document.getElementById('eventName').value.trim() || 'Untitled Event';
+            
+            const formData = new FormData();
+            formData.append('eventName', eventName);
+            selectedFiles.forEach(file => formData.append('photos', file));
+            
+            document.getElementById('createBtn').disabled = true;
+            document.getElementById('progressContainer').classList.add('visible');
+            
+            try {
+                // Upload photos
+                const xhr = new XMLHttpRequest();
+                xhr.open('POST', '/api/gallery/create');
+                xhr.setRequestHeader('X-Admin-Password', adminPassword);
+                
+                xhr.upload.onprogress = (e) => {
+                    if (e.lengthComputable) {
+                        const pct = Math.round((e.loaded / e.total) * 100);
+                        document.getElementById('progressFill').style.width = pct + '%';
+                        document.getElementById('progressText').textContent = `Uploading... ${pct}%`;
+                    }
+                };
+                
+                const result = await new Promise((resolve, reject) => {
+                    xhr.onload = () => {
+                        if (xhr.status === 200) {
+                            resolve(JSON.parse(xhr.responseText));
+                        } else {
+                            const body = JSON.parse(xhr.responseText || '{}');
+                            reject(new Error(body.error || 'Upload failed'));
+                        }
+                    };
+                    xhr.onerror = () => reject(new Error('Upload failed'));
+                    xhr.send(formData);
+                });
+                
+                // Upload background if selected
+                if (selectedBgFile) {
+                    document.getElementById('progressText').textContent = 'Uploading cover image...';
+                    const bgFormData = new FormData();
+                    bgFormData.append('background', selectedBgFile);
+                    
+                    await fetch(`/api/gallery/${result.galleryId}/background`, {
+                        method: 'POST',
+                        headers: { 'X-Admin-Password': adminPassword },
+                        body: bgFormData
+                    });
+                }
+                
+                // Show result
+                const baseUrl = window.location.origin;
+                document.getElementById('downloadLinkInput').value = `${baseUrl}/download/${result.galleryId}`;
+                document.getElementById('resultEventName').textContent = `${eventName} • ${result.fileCount} photos`;
+                
+                document.getElementById('uploadSection').style.display = 'none';
+                document.getElementById('resultSection').classList.add('visible');
+                
+                loadGalleries();
+                
+            } catch (err) {
+                alert('Error creating gallery: ' + err.message);
+            } finally {
+                document.getElementById('progressContainer').classList.remove('visible');
+            }
+        }
+
+        function resetForm() {
+            selectedFiles = [];
+            selectedBgFile = null;
+            document.getElementById('fileList').innerHTML = '';
+            document.getElementById('eventName').value = '';
+            document.getElementById('bgInput').value = '';
+            document.getElementById('bgPreview').style.display = 'none';
+            document.getElementById('bgDropZone').classList.remove('has-image');
+            document.getElementById('createBtn').disabled = true;
+            document.getElementById('progressFill').style.width = '0%';
+            document.getElementById('resultSection').classList.remove('visible');
+            document.getElementById('uploadSection').style.display = 'block';
+        }
+
+        async function checkLogoState() {
+            try {
+                const res = await fetch('/api/logo', { method: 'HEAD' });
+                const isCustom = res.headers.get('X-Custom-Logo') === '1';
+                document.getElementById('logoResetBtn').style.display = isCustom ? 'block' : 'none';
+            } catch (_) {}
+        }
+
+        async function resetLogo() {
+            if (!confirm('Reset logo to the built-in default?')) return;
+            try {
+                const res = await fetch('/api/logo', {
+                    method: 'DELETE',
+                    headers: { 'X-Admin-Password': adminPassword }
+                });
+                if (!res.ok) throw new Error('Reset failed');
+                document.getElementById('adminLogo').src = '/api/logo?t=' + Date.now();
+                document.getElementById('logoResetBtn').style.display = 'none';
+            } catch (err) {
+                alert('Logo reset failed: ' + err.message);
+            }
+        }
+
+        document.getElementById('logoInput').addEventListener('change', async function () {
+            const file = this.files[0];
+            if (!file) return;
+            const formData = new FormData();
+            formData.append('logo', file);
+            try {
+                const res = await fetch('/api/logo', {
+                    method: 'POST',
+                    headers: { 'X-Admin-Password': adminPassword },
+                    body: formData
+                });
+                if (!res.ok) throw new Error('Upload failed');
+                document.getElementById('adminLogo').src = '/api/logo?t=' + Date.now();
+                document.getElementById('logoResetBtn').style.display = 'block';
+            } catch (err) {
+                alert('Logo upload failed: ' + err.message);
+            }
+            this.value = '';
+        });
+
+        function escapeHtml(str) {
+            const d = document.createElement('div');
+            d.textContent = String(str);
+            return d.innerHTML;
+        }
+
+        // Works on both HTTP and HTTPS by falling back to execCommand when
+        // the Clipboard API is unavailable (requires a secure context).
+        function copyToClipboard(text) {
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                return navigator.clipboard.writeText(text);
+            }
+            // Fallback for plain HTTP
+            const ta = document.createElement('textarea');
+            ta.value = text;
+            ta.style.cssText = 'position:fixed;opacity:0;pointer-events:none';
+            document.body.appendChild(ta);
+            ta.select();
+            document.execCommand('copy');
+            document.body.removeChild(ta);
+            return Promise.resolve();
+        }
+
+        function copyLink(inputId) {
+            const input = document.getElementById(inputId);
+            copyToClipboard(input.value);
+            const btn = input.nextElementSibling;
+            btn.textContent = 'Copied!';
+            setTimeout(() => btn.textContent = 'Copy', 2000);
+        }
+
+        async function loadGalleries() {
+            try {
+                const res = await fetch('/api/galleries', {
+                    headers: { 'X-Admin-Password': adminPassword }
+                });
+                
+                if (!res.ok) throw new Error('Failed to load galleries');
+                
+                const galleries = await res.json();
+                const container = document.getElementById('galleryList');
+                
+                if (galleries.length === 0) {
+                    container.innerHTML = '<div class="empty-state">No galleries yet. Create your first one above!</div>';
+                    return;
+                }
+                
+                container.innerHTML = galleries.map(g => `
+                    <div class="gallery-item">
+                        <div class="gallery-cover ${g.hasBackground ? 'has-image' : ''}" 
+                             id="cover-${g.id}"
+                             onclick="document.getElementById('cover-input-${g.id}').click()"
+                             ondragover="handleCoverDragOver(event, '${g.id}')"
+                             ondragleave="handleCoverDragLeave(event, '${g.id}')"
+                             ondrop="handleCoverDrop(event, '${g.id}')">
+                            ${g.hasBackground 
+                                ? `<img src="/api/gallery/${g.id}/background?t=${Date.now()}" alt="Cover">`
+                                : ''
+                            }
+                            <div class="gallery-cover-placeholder">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                                    <rect x="3" y="3" width="18" height="18" rx="2"/>
+                                    <circle cx="8.5" cy="8.5" r="1.5"/>
+                                    <path d="M21 15l-5-5L5 21"/>
+                                </svg>
+                                <span>${g.hasBackground ? 'Change cover' : 'Drop cover'}</span>
+                            </div>
+                            <input type="file" id="cover-input-${g.id}" accept="image/*" 
+                                   onchange="handleCoverSelect(event, '${g.id}')" style="display:none;">
+                        </div>
+                        <div class="gallery-info">
+                            <div class="gallery-name" onclick="startEditGalleryName('${g.id}', this)" title="Click to rename">${escapeHtml(g.eventName)}</div>
+                            <div class="gallery-meta">${g.fileCount} photos • ${new Date(g.created).toLocaleDateString()}</div>
+                        </div>
+                        <div class="gallery-actions">
+                            <button class="btn-copy" onclick="copyGalleryLink('${g.id}', 'download', this)">Copy Link</button>
+                            <button class="btn-delete" onclick="deleteGallery('${g.id}')">Delete</button>
+                        </div>
+                    </div>
+                `).join('');
+            } catch (err) {
+                console.error('Error loading galleries:', err);
+            }
+        }
+
+        function handleCoverDragOver(e, galleryId) {
+            e.preventDefault();
+            e.stopPropagation();
+            document.getElementById(`cover-${galleryId}`).classList.add('drag-over');
+        }
+
+        function handleCoverDragLeave(e, galleryId) {
+            e.preventDefault();
+            e.stopPropagation();
+            document.getElementById(`cover-${galleryId}`).classList.remove('drag-over');
+        }
+
+        function handleCoverDrop(e, galleryId) {
+            e.preventDefault();
+            e.stopPropagation();
+            document.getElementById(`cover-${galleryId}`).classList.remove('drag-over');
+            
+            const files = e.dataTransfer.files;
+            if (files.length > 0 && files[0].type.startsWith('image/')) {
+                uploadCoverImage(galleryId, files[0]);
+            }
+        }
+
+        function handleCoverSelect(e, galleryId) {
+            const files = e.target.files;
+            if (files.length > 0) {
+                uploadCoverImage(galleryId, files[0]);
+            }
+        }
+
+        async function uploadCoverImage(galleryId, file) {
+            const toast = document.getElementById('uploadToast');
+            const spinner = document.getElementById('toastSpinner');
+            const successIcon = document.getElementById('toastSuccess');
+            const errorIcon = document.getElementById('toastError');
+            const message = document.getElementById('toastMessage');
+
+            // Show uploading state
+            spinner.style.display = 'block';
+            successIcon.style.display = 'none';
+            errorIcon.style.display = 'none';
+            message.textContent = 'Uploading cover...';
+            toast.className = 'upload-toast visible';
+
+            try {
+                const formData = new FormData();
+                formData.append('background', file);
+
+                const res = await fetch(`/api/gallery/${galleryId}/background`, {
+                    method: 'POST',
+                    headers: { 'X-Admin-Password': adminPassword },
+                    body: formData
+                });
+
+                if (!res.ok) throw new Error('Upload failed');
+
+                // Show success
+                spinner.style.display = 'none';
+                successIcon.style.display = 'block';
+                message.textContent = 'Cover updated!';
+                toast.classList.add('success');
+
+                // Reload galleries to show new cover
+                loadGalleries();
+
+                // Hide toast after delay
+                setTimeout(() => {
+                    toast.classList.remove('visible', 'success');
+                }, 2000);
+
+            } catch (err) {
+                // Show error
+                spinner.style.display = 'none';
+                errorIcon.style.display = 'block';
+                message.textContent = 'Upload failed';
+                toast.classList.add('error');
+
+                setTimeout(() => {
+                    toast.classList.remove('visible', 'error');
+                }, 3000);
+            }
+        }
+
+        function copyGalleryLink(id, type, btn) {
+            const url = `${window.location.origin}/${type}/${id}`;
+            copyToClipboard(url);
+            btn.textContent = 'Copied!';
+            setTimeout(() => btn.textContent = 'Copy Link', 2000);
+        }
+
+        function startEditGalleryName(galleryId, element) {
+            const currentName = element.textContent;
+            const input = document.createElement('input');
+            input.type = 'text';
+            input.className = 'gallery-name-input';
+            input.value = currentName;
+            
+            element.replaceWith(input);
+            input.focus();
+            input.select();
+
+            async function saveEdit() {
+                const newName = input.value.trim() || 'Untitled Event';
+                if (newName !== currentName) {
+                    await renameGallery(galleryId, newName);
+                } else {
+                    // Restore original without API call
+                    const span = document.createElement('div');
+                    span.className = 'gallery-name';
+                    span.textContent = currentName;
+                    span.setAttribute('onclick', `startEditGalleryName('${galleryId}', this)`);
+                    span.setAttribute('title', 'Click to rename');
+                    input.replaceWith(span);
+                }
+            }
+
+            input.addEventListener('blur', saveEdit);
+            input.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    input.blur();
+                } else if (e.key === 'Escape') {
+                    input.value = currentName;
+                    input.blur();
+                }
+            });
+        }
+
+        async function renameGallery(galleryId, newName) {
+            const toast = document.getElementById('uploadToast');
+            const spinner = document.getElementById('toastSpinner');
+            const successIcon = document.getElementById('toastSuccess');
+            const errorIcon = document.getElementById('toastError');
+            const message = document.getElementById('toastMessage');
+
+            spinner.style.display = 'block';
+            successIcon.style.display = 'none';
+            errorIcon.style.display = 'none';
+            message.textContent = 'Renaming...';
+            toast.className = 'upload-toast visible';
+
+            try {
+                const res = await fetch(`/api/gallery/${galleryId}/rename`, {
+                    method: 'POST',
+                    headers: { 
+                        'X-Admin-Password': adminPassword,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ eventName: newName })
+                });
+
+                if (!res.ok) throw new Error('Rename failed');
+
+                spinner.style.display = 'none';
+                successIcon.style.display = 'block';
+                message.textContent = 'Renamed!';
+                toast.classList.add('success');
+
+                loadGalleries();
+
+                setTimeout(() => {
+                    toast.classList.remove('visible', 'success');
+                }, 2000);
+
+            } catch (err) {
+                spinner.style.display = 'none';
+                errorIcon.style.display = 'block';
+                message.textContent = 'Rename failed';
+                toast.classList.add('error');
+
+                loadGalleries();
+
+                setTimeout(() => {
+                    toast.classList.remove('visible', 'error');
+                }, 3000);
+            }
+        }
+
+        async function deleteGallery(id) {
+            if (!confirm('Delete this gallery? This cannot be undone.')) return;
+            
+            try {
+                await fetch(`/api/gallery/${id}`, {
+                    method: 'DELETE',
+                    headers: { 'X-Admin-Password': adminPassword }
+                });
+                loadGalleries();
+            } catch (err) {
+                alert('Error deleting gallery');
+            }
+        }
+    </script>
+</body>
+</html>

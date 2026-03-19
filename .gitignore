@@ -1,0 +1,20 @@
+# Environment variables - never commit this
+.env
+
+# Dependencies
+node_modules/
+
+# Runtime data directory (Docker volume mount)
+data/
+
+# Bare-metal runtime data (no DATA_DIR set)
+uploads/
+backgrounds/
+thumbnails/
+galleries.json
+
+# Old branch reference code (local only)
+oldbranch/
+
+# macOS
+.DS_Store
