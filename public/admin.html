@@ -874,6 +874,30 @@
             border-radius: 8px;
         }
 
+        .favorites-item {
+            position: relative;
+        }
+
+        .favorites-item img {
+            width: 100%;
+            aspect-ratio: 1;
+            object-fit: cover;
+            border-radius: 8px;
+            display: block;
+        }
+
+        .favorites-votes {
+            position: absolute;
+            bottom: 6px;
+            right: 6px;
+            background: rgba(220, 50, 80, 0.9);
+            color: white;
+            font-size: 0.72rem;
+            font-weight: 600;
+            padding: 2px 6px;
+            border-radius: 10px;
+        }
+
         .favorites-empty {
             color: var(--text-secondary);
             text-align: center;
@@ -1731,8 +1755,12 @@
                 if (data.favorites.length === 0) {
                     grid.innerHTML = '<p class="favorites-empty">No favorites yet.</p>';
                 } else {
+                    // Already sorted by server (votes desc)
                     grid.innerHTML = data.favorites.map(f => `
-                        <img src="/api/gallery/${galleryId}/photo/${encodeURIComponent(f)}?thumb=1" alt="${f}" title="${f}">
+                        <div class="favorites-item">
+                            <img src="/api/gallery/${galleryId}/photo/${encodeURIComponent(f.filename)}?thumb=1" alt="${escapeHtml(f.filename)}" title="${escapeHtml(f.filename)}">
+                            <span class="favorites-votes">♥ ${f.votes}</span>
+                        </div>
                     `).join('');
                 }
 

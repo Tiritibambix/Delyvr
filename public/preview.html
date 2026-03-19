@@ -700,7 +700,18 @@
         let photos = [];
         let currentPhotoIndex = 0;
 
-        // Favorites state — persisted locally, synced to server
+        // Visitor identity — persisted in localStorage, shared across all galleries
+        function getVisitorId() {
+            let id = localStorage.getItem('delyvr_visitor_id');
+            if (!id) {
+                id = 'v-' + Math.random().toString(36).slice(2, 10) + '-' + Date.now().toString(36);
+                localStorage.setItem('delyvr_visitor_id', id);
+            }
+            return id;
+        }
+        const visitorId = getVisitorId();
+
+        // Favorites state — only this visitor's favorites
         let localFavorites = new Set();
 
         async function toggleFavorite(filename) {
@@ -727,7 +738,7 @@
                 await fetch(`/api/gallery/${galleryId}/favorites`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ filename })
+                    body: JSON.stringify({ filename, visitorId })
                 });
             } catch (e) {
                 // Revert on network error
@@ -794,12 +805,15 @@
                     heroBg.src = `/api/gallery/${galleryId}/background`;
                 }
 
-                // Load favorites from server
+                // Load this visitor's favorites from server
                 try {
-                    const favRes = await fetch(`/api/gallery/${galleryId}/favorites-public`);
+                    const favRes = await fetch(`/api/gallery/${galleryId}/favorites-public?visitorId=${encodeURIComponent(visitorId)}`);
                     if (favRes.ok) {
                         const favData = await favRes.json();
                         localFavorites = new Set(favData.favorites || []);
+                    } else if (favRes.status === 404) {
+                        // Gallery deleted — clean up localStorage
+                        localStorage.removeItem('delyvr_visitor_id');
                     }
                 } catch (e) { /* non-blocking */ }
 

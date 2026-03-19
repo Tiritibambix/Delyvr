@@ -741,51 +741,71 @@ app.get('/api/gallery/:galleryId/download', validateGalleryId, (req, res) => {
     archive.finalize();
 });
 
-// Toggle favorite for a photo (public, no auth)
+// Toggle favorite for a photo (public, no auth) — per visitor
 app.post('/api/gallery/:galleryId/favorites', validateGalleryId, (req, res) => {
     const { galleryId } = req.params;
-    const { filename } = req.body;
+    const { filename, visitorId } = req.body;
 
     if (!filename || !SAFE_FILENAME_RE.test(filename)) {
         return res.status(400).json({ error: 'Invalid filename' });
     }
+    if (!visitorId || typeof visitorId !== 'string' || visitorId.length > 64) {
+        return res.status(400).json({ error: 'Invalid visitorId' });
+    }
 
     const gallery = galleries.get(galleryId);
     if (!gallery) {
         return res.status(404).json({ error: 'Gallery not found' });
     }
 
-    if (!gallery.favorites) gallery.favorites = [];
+    if (!gallery.favorites || Array.isArray(gallery.favorites)) gallery.favorites = {};
 
-    const idx = gallery.favorites.indexOf(filename);
+    if (!gallery.favorites[filename]) gallery.favorites[filename] = [];
+
+    const idx = gallery.favorites[filename].indexOf(visitorId);
     if (idx === -1) {
-        gallery.favorites.push(filename);
+        gallery.favorites[filename].push(visitorId);
     } else {
-        gallery.favorites.splice(idx, 1);
+        gallery.favorites[filename].splice(idx, 1);
+        if (gallery.favorites[filename].length === 0) {
+            delete gallery.favorites[filename];
+        }
     }
 
     saveGalleries();
-    res.json({ success: true, favorited: idx === -1, favorites: gallery.favorites });
+    res.json({
+        success: true,
+        favorited: idx === -1,
+        votes: (gallery.favorites[filename] || []).length
+    });
 });
 
-// Get favorites for a gallery (public — read only, used by preview page on load)
+// Get favorites for this visitor (public — used by preview page on load)
 app.get('/api/gallery/:galleryId/favorites-public', validateGalleryId, (req, res) => {
     const { galleryId } = req.params;
+    const { visitorId } = req.query;
     const gallery = galleries.get(galleryId);
     if (!gallery) {
         return res.status(404).json({ error: 'Gallery not found' });
     }
-    res.json({ favorites: gallery.favorites || [] });
+    const favs = gallery.favorites || {};
+    // Return only the photos this visitor has voted for
+    const myFavorites = Object.keys(favs).filter(f => favs[f].includes(visitorId));
+    res.json({ favorites: myFavorites });
 });
 
-// Get favorites for a gallery (admin only)
+// Get favorites for a gallery (admin only) — sorted by vote count desc
 app.get('/api/gallery/:galleryId/favorites', requireAuth, validateGalleryId, (req, res) => {
     const { galleryId } = req.params;
     const gallery = galleries.get(galleryId);
     if (!gallery) {
         return res.status(404).json({ error: 'Gallery not found' });
     }
-    res.json({ favorites: gallery.favorites || [] });
+    const favs = gallery.favorites || {};
+    const sorted = Object.entries(favs)
+        .map(([filename, voters]) => ({ filename, votes: voters.length }))
+        .sort((a, b) => b.votes - a.votes);
+    res.json({ favorites: sorted });
 });
 
 // Reset favorites for a gallery (admin only)
@@ -795,7 +815,7 @@ app.delete('/api/gallery/:galleryId/favorites', requireAuth, validateGalleryId, 
     if (!gallery) {
         return res.status(404).json({ error: 'Gallery not found' });
     }
-    gallery.favorites = [];
+    gallery.favorites = {};
     saveGalleries();
     res.json({ success: true });
 });
@@ -843,7 +863,7 @@ app.get('/api/galleries', requireAuth, (req, res) => {
                     fileCount: files.length,
                     hasBackground,
                     downloadUrl: `${baseUrl}/download/${galleryId}`,
-                    favoritesCount: (gallery.favorites || []).length
+                    favoritesCount: Object.keys(gallery.favorites || {}).length
                 });
             }
         });
