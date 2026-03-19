@@ -14,6 +14,7 @@ A self-hosted photo delivery platform for photographers. Upload photos, share a 
 - **Clean Lightbox** - download button discreetly placed next to the close button, giving full space to the photo
 - **ZIP Downloads** - all photos packaged into a single named download
 - **Download Toggle** - enable or disable downloads per gallery from the dashboard; useful for draft galleries or contact sheets
+- **Client Favorites** - clients can heart photos from the grid or the lightbox; each visitor is tracked anonymously so multiple people can vote independently; the admin sees vote counts per photo sorted from most to least voted, with a reset option
 - **Right-Click Protection** - browser context menu is disabled on images to prevent casual saving
 - **Gallery Management** - rename galleries inline, set cover images, copy links, delete from the dashboard
 - **Custom Logo** - upload your own logo from the dashboard; shown on both admin and client pages; revert to default anytime
@@ -49,26 +50,26 @@ This is the recommended installation method. You only need Docker installed.
 mkdir delyvr && cd delyvr
 ```
 
-### 2. Create your `.env` file
+### 2. Create your `docker-compose.yml`
 
-```bash
-cat > .env <<'EOF'
-ADMIN_PASSWORD=your_secure_password_here
-PORT=3000
-MAX_UPLOAD_MB=200
-MAX_BACKGROUND_MB=20
-GALLERY_DIR=./data
-TRUST_PROXY=1
-EOF
+```yaml
+services:
+  metransfer:
+    image: tiritibambix/delyvr:main-latest
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - INSTALL_DIR=/data # Needed for container deployment. Do not change this value.
+      - ADMIN_PASSWORD=STRONGPASSWORD
+      - MAX_UPLOAD_MB=${MAX_UPLOAD_MB:-200}
+      - MAX_BACKGROUND_MB=${MAX_BACKGROUND_MB:-20}
+      - TRUST_PROXY=0
+    volumes:
+      - ./data:/data
 ```
 
-### 3. Download docker-compose.yml
-
-```bash
-curl -O https://raw.githubusercontent.com/tiritibambix/delyvr/main/docker-compose.yml
-```
-
-### 4. Start the container
+### 3. Start the container
 
 ```bash
 docker compose up -d
@@ -86,7 +87,7 @@ docker compose pull && docker compose up -d
 
 ## Configuration
 
-All settings live in `.env`. Copy `.env.example` to get started - never commit `.env` to version control.
+All settings live in your `docker-compose.yml` environment block (or in a `.env` file for bare-metal installs). Never commit passwords to version control.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
@@ -94,8 +95,8 @@ All settings live in `.env`. Copy `.env.example` to get started - never commit `
 | `PORT` | `3000` | TCP port the server listens on |
 | `MAX_UPLOAD_MB` | `200` | Max size per photo file, in MB |
 | `MAX_BACKGROUND_MB` | `20` | Max size for background images, in MB |
-| `GALLERY_DIR` | `./data` | Host path mounted into the container as `/data`. Set to any writable path on your host (Docker only). |
-| `TRUST_PROXY` | `0` | Set to `1` when running behind a reverse proxy (Nginx, Caddy, Traefik). Enables correct client IP detection for rate limiting and HTTPS detection. Docker Compose default: `1`. |
+| `INSTALL_DIR` | *(project dir)* | Set to `/data` in Docker. Do not change. |
+| `TRUST_PROXY` | `0` | Set to `1` when running behind a reverse proxy (Nginx, Caddy, Traefik). Enables correct client IP detection for rate limiting and HTTPS detection. |
 
 ---
 
@@ -118,6 +119,16 @@ Each gallery in the dashboard has a **Downloads** toggle. When disabled:
 
 This is useful for draft galleries where you want clients to make a selection before you deliver the final files.
 
+### Client favorites
+
+Clients can heart photos directly from the gallery grid or the lightbox. Each device gets a stable anonymous ID so multiple people (family members, a couple) can vote independently without overwriting each other.
+
+From the admin dashboard, each gallery shows a favorite count. Clicking **View** opens a modal with favorited photos sorted by vote count descending, with a ♥ N badge on each thumbnail. **Reset** clears all votes.
+
+Two concrete use cases:
+- **Portrait / couples sessions** - share a draft gallery, let the client pick the photos they want retouched. Favorites replace the back-and-forth of emails and filename lists.
+- **Weddings** - ask clients which photos they loved most after delivery. Opens the door to offering prints.
+
 ### What your client sees
 
 When your client opens the link they see:
@@ -125,6 +136,7 @@ When your client opens the link they see:
 - The event name as the page title
 - A **"Browse Photos"** button that opens a thumbnail grid with a full-screen lightbox and individual download
 - A **"Download All"** button - all photos arrive as one ZIP file (if downloads are enabled)
+- A heart button on each photo and in the lightbox to mark favorites
 
 ---
 
@@ -184,7 +196,7 @@ sudo certbot --nginx -d photos.yourdomain.com
 
 Certbot will automatically renew the certificate. Delyvr is now accessible at `https://photos.yourdomain.com`.
 
-Make sure `TRUST_PROXY=1` is set in your `.env` so that rate limiting and HTTPS detection use the real client IP and protocol rather than the proxy's.
+Make sure `TRUST_PROXY=1` is set so that rate limiting and HTTPS detection use the real client IP and protocol rather than the proxy's.
 
 ---
 
@@ -315,6 +327,10 @@ delyvr/
 | `GET` | `/api/gallery/:id/download/:filename` | - | Download a single photo (403 if downloads disabled) |
 | `GET` | `/api/gallery/:id/background` | - | Serve background image |
 | `GET` | `/api/gallery/:id/og-image` | - | Serve/generate 1200×630 OG image |
+| `POST` | `/api/gallery/:id/favorites` | - | Toggle a photo favorite for a visitor (`{ filename, visitorId }`) |
+| `GET` | `/api/gallery/:id/favorites-public` | - | Get this visitor's favorites (`?visitorId=`) |
+| `GET` | `/api/gallery/:id/favorites` | ✓ | List all favorites sorted by vote count (admin) |
+| `DELETE` | `/api/gallery/:id/favorites` | ✓ | Reset all favorites for a gallery |
 | `GET` | `/api/galleries` | ✓ | List all galleries |
 | `DELETE` | `/api/gallery/:id` | ✓ | Delete a gallery |
 
@@ -327,6 +343,7 @@ Authenticated endpoints require the `X-Admin-Password` header.
 - **Branding** - use a photo from the same session as the background for a cohesive look
 - **File names** - rename files on your camera before uploading; the original names are preserved
 - **Draft workflow** - create the gallery with downloads disabled, share the link for client selection, then enable downloads once the final files are ready
+- **Favorites workflow** - for weddings, share the gallery after the event and let clients heart their favorites before offering prints
 - **Disk space** - delete galleries once clients have downloaded; `uploads/` can grow large
 - **Link expiry** - there is no automatic expiry; delete a gallery from the dashboard when done
 
@@ -359,7 +376,7 @@ Then reload Nginx: `sudo systemctl reload nginx`
 
 ### Server won't start - "ADMIN_PASSWORD is not set"
 
-Make sure `.env` exists and contains `ADMIN_PASSWORD`. Run:
+Make sure `ADMIN_PASSWORD` is set in your environment or `.env` file:
 
 ```bash
 cp .env.example .env

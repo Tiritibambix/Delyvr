@@ -708,6 +708,15 @@
             color: white;
         }
 
+        .favorites-meta {
+            color: var(--text-secondary);
+            font-size: 0.8rem;
+            margin-top: 8px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
         /* Downloads toggle */
         .downloads-toggle {
             display: flex;
@@ -761,6 +770,138 @@
         .toggle-switch input:checked + .toggle-track::after {
             transform: translateX(14px);
             background: white;
+        }
+
+        .btn-favorites-view, .btn-favorites-reset {
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .btn-favorites-view {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            color: var(--text-primary);
+        }
+
+        .btn-favorites-view:hover {
+            border-color: var(--accent);
+            color: var(--accent);
+        }
+
+        .btn-favorites-reset {
+            background: transparent;
+            border: 1px solid var(--error);
+            color: var(--error);
+        }
+
+        .btn-favorites-reset:hover {
+            background: var(--error);
+            color: white;
+        }
+
+        /* Favorites Modal */
+        .favorites-modal {
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.85);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 2000;
+            backdrop-filter: blur(8px);
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.2s;
+        }
+
+        .favorites-modal.active {
+            opacity: 1;
+            pointer-events: auto;
+        }
+
+        .favorites-modal-card {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 32px;
+            width: 90%;
+            max-width: 700px;
+            max-height: 80vh;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .favorites-modal-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .favorites-modal-header h3 {
+            font-family: 'Fraunces', serif;
+            font-size: 1.25rem;
+        }
+
+        .favorites-modal-close {
+            background: none;
+            border: none;
+            color: var(--text-secondary);
+            font-size: 1.5rem;
+            cursor: pointer;
+            line-height: 1;
+        }
+
+        .favorites-modal-close:hover {
+            color: var(--text-primary);
+        }
+
+        .favorites-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+            gap: 8px;
+            overflow-y: auto;
+        }
+
+        .favorites-grid img {
+            width: 100%;
+            aspect-ratio: 1;
+            object-fit: cover;
+            border-radius: 8px;
+        }
+
+        .favorites-item {
+            position: relative;
+        }
+
+        .favorites-item img {
+            width: 100%;
+            aspect-ratio: 1;
+            object-fit: cover;
+            border-radius: 8px;
+            display: block;
+        }
+
+        .favorites-votes {
+            position: absolute;
+            bottom: 6px;
+            right: 6px;
+            background: rgba(220, 50, 80, 0.9);
+            color: white;
+            font-size: 0.72rem;
+            font-weight: 600;
+            padding: 2px 6px;
+            border-radius: 10px;
+        }
+
+        .favorites-empty {
+            color: var(--text-secondary);
+            text-align: center;
+            padding: 24px;
         }
 
         .empty-state {
@@ -885,6 +1026,17 @@
             <path d="M18 6L6 18M6 6l12 12" stroke-linecap="round" stroke-linejoin="round"/>
         </svg>
         <span id="toastMessage">Uploading cover...</span>
+    </div>
+
+    <!-- Favorites Modal -->
+    <div class="favorites-modal" id="favoritesModal" onclick="if(event.target===this) closeFavoritesModal()">
+        <div class="favorites-modal-card">
+            <div class="favorites-modal-header">
+                <h3 id="favoritesModalTitle">Client Favorites</h3>
+                <button class="favorites-modal-close" onclick="closeFavoritesModal()">×</button>
+            </div>
+            <div class="favorites-grid" id="favoritesGrid"></div>
+        </div>
     </div>
 
     <div class="container">
@@ -1375,6 +1527,10 @@
                                 </span>
                                 Downloads
                             </label>
+                            <div class="gallery-meta favorites-meta">
+                                ♥ ${g.favoritesCount || 0} favorite${g.favoritesCount !== 1 ? 's' : ''}
+                                ${g.favoritesCount > 0 ? `<button class="btn-favorites-view" onclick="viewFavorites('${g.id}')">View</button> <button class="btn-favorites-reset" onclick="resetFavorites('${g.id}')">Reset</button>` : ''}
+                            </div>
                         </div>
                         <div class="gallery-actions">
                             <button class="btn-copy" onclick="copyGalleryLink('${g.id}', 'download', this)">Copy Link</button>
@@ -1581,9 +1737,54 @@
                 checkbox.checked = data.downloadsEnabled;
             } catch (err) {
                 alert('Could not update download setting: ' + err.message);
-                checkbox.checked = !enabled; // revert
+                checkbox.checked = !enabled;
             } finally {
                 checkbox.disabled = false;
+            }
+        }
+
+        async function viewFavorites(galleryId) {
+            try {
+                const res = await fetch(`/api/gallery/${galleryId}/favorites`, {
+                    headers: { 'X-Admin-Password': adminPassword }
+                });
+                if (!res.ok) throw new Error('Failed');
+                const data = await res.json();
+
+                const grid = document.getElementById('favoritesGrid');
+                if (data.favorites.length === 0) {
+                    grid.innerHTML = '<p class="favorites-empty">No favorites yet.</p>';
+                } else {
+                    // Already sorted by server (votes desc)
+                    grid.innerHTML = data.favorites.map(f => `
+                        <div class="favorites-item">
+                            <img src="/api/gallery/${galleryId}/photo/${encodeURIComponent(f.filename)}?thumb=1" alt="${escapeHtml(f.filename)}" title="${escapeHtml(f.filename)}">
+                            <span class="favorites-votes">♥ ${f.votes}</span>
+                        </div>
+                    `).join('');
+                }
+
+                document.getElementById('favoritesModal').classList.add('active');
+            } catch (err) {
+                alert('Could not load favorites');
+            }
+        }
+
+        function closeFavoritesModal() {
+            document.getElementById('favoritesModal').classList.remove('active');
+        }
+
+        async function resetFavorites(galleryId) {
+            if (!confirm('Reset all favorites for this gallery?')) return;
+            try {
+                const res = await fetch(`/api/gallery/${galleryId}/favorites`, {
+                    method: 'DELETE',
+                    headers: { 'X-Admin-Password': adminPassword }
+                });
+                if (!res.ok) throw new Error('Failed');
+                loadGalleries();
+            } catch (err) {
+                alert('Could not reset favorites');
             }
         }
 
