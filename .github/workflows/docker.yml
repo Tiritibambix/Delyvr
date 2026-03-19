@@ -90,6 +90,6 @@ jobs:
             tiritibambix/delyvr:${{ needs.check.outputs.branch }}-latest
             tiritibambix/delyvr:${{ needs.check.outputs.branch }}-${{ needs.check.outputs.short_commit }}
             tiritibambix/delyvr:${{ needs.check.outputs.branch }}-${{ needs.check.outputs.date_tag }}
-          platforms: linux/amd64 #,linux/arm64
+          platforms: linux/amd64 ,linux/arm64
           cache-from: type=gha
           cache-to: type=gha,mode=max
