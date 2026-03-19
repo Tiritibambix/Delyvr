@@ -1741,6 +1741,11 @@
                         </div>
                     </div>
                 `).join('');
+
+                // Cache for collection pill labels and refresh collection rendering
+                _galleriesData = galleries;
+                renderCollections(_collectionsData);
+
             } catch (err) {
                 console.error('Error loading galleries:', err);
             }
@@ -2047,23 +2052,7 @@
             }).join('');
         }
 
-        let _galleriesData = []; // keep galleries data for pill labels
-
-        // Patch loadGalleries to also cache data and refresh collections
-        const _origLoadGalleries = loadGalleries;
-        async function loadGalleries() {
-            await _origLoadGalleries();
-            // Cache the gallery data for collection pill rendering
-            try {
-                const res = await fetch('/api/galleries', {
-                    headers: { 'X-Admin-Password': adminPassword }
-                });
-                if (res.ok) {
-                    _galleriesData = await res.json();
-                    renderCollections(_collectionsData);
-                }
-            } catch (_) {}
-        }
+        let _galleriesData = []; // cache for collection pill labels
 
         async function createCollection() {
             const input = document.getElementById('newCollectionName');
