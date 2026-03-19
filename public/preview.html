@@ -158,15 +158,20 @@
         }
 
         .gallery-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-            gap: 16px;
+            display: flex;
+            align-items: flex-start;
+            gap: 12px;
+        }
+
+        .masonry-col {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
         }
 
         .photo-card {
             position: relative;
-            aspect-ratio: 4/3;
-            border-radius: 12px;
             overflow: hidden;
             background: var(--bg-secondary);
             cursor: pointer;
@@ -174,14 +179,14 @@
         }
 
         .photo-card:hover {
-            transform: scale(1.02);
-            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
+            transform: scale(1.01);
+            box-shadow: 0 12px 32px rgba(0, 0, 0, 0.4);
         }
 
         .photo-card img {
             width: 100%;
-            height: 100%;
-            object-fit: cover;
+            height: auto;
+            display: block;
             opacity: 0;
             transition: opacity 0.5s ease;
         }
@@ -196,6 +201,7 @@
             display: flex;
             align-items: center;
             justify-content: center;
+            min-height: 120px;
         }
 
         .photo-card .loading::after {
@@ -507,16 +513,15 @@
             }
 
             .gallery-container {
-                padding: 16px;
+                padding: 8px;
             }
 
             .gallery-grid {
-                grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-                gap: 8px;
+                gap: 6px;
             }
 
-            .photo-card {
-                border-radius: 8px;
+            .masonry-col {
+                gap: 6px;
             }
 
             .lightbox-nav {
@@ -827,39 +832,87 @@
             }
         }
 
-        function renderGallery(downloadsEnabled = true) {
-            const grid = document.getElementById('galleryGrid');
+        // Track downloadsEnabled for resize re-renders
+        let _lastDownloadsEnabled = true;
 
-            grid.innerHTML = photos.map((photo, index) => {
+        function getColCount() {
+            const w = window.innerWidth;
+            if (w >= 1400) return 4;
+            if (w >= 900)  return 3;
+            if (w >= 560)  return 2;
+            return 1;
+        }
+
+        function renderGallery(downloadsEnabled = true) {
+            _lastDownloadsEnabled = downloadsEnabled;
+            const grid = document.getElementById('galleryGrid');
+            const colCount = getColCount();
+
+            // Build column containers
+            const cols = Array.from({ length: colCount }, () => {
+                const col = document.createElement('div');
+                col.className = 'masonry-col';
+                return col;
+            });
+
+            // Distribute photos left-to-right using a round-robin
+            // (preserves chronological left-to-right reading order)
+            photos.forEach((photo, index) => {
                 const isFav = localFavorites.has(photo.filename);
-                return `
-                <div class="photo-card" onclick="openLightbox(${index})">
-                    <div class="loading"></div>
-                    <img
-                        data-src="${photo.thumbnailUrl}"
-                        alt="${photo.filename}"
-                        onload="this.classList.add('loaded'); this.previousElementSibling.style.display='none';"
-                    >
-                    <div class="photo-overlay">
-                        <span class="photo-name">${photo.filename}</span>
-                        <button class="photo-favorite ${isFav ? 'favorited' : ''}" data-filename="${photo.filename}" onclick="event.stopPropagation(); toggleFavorite('${photo.filename.replace(/'/g, "\\'")}')">
-                            <svg viewBox="0 0 24 24" fill="${isFav ? 'white' : 'none'}" stroke="currentColor" stroke-width="2">
-                                <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" stroke-linecap="round" stroke-linejoin="round"/>
-                            </svg>
-                        </button>
-                        ${downloadsEnabled ? `
+                const colIndex = index % colCount;
+
+                const card = document.createElement('div');
+                card.className = 'photo-card';
+                card.onclick = () => openLightbox(index);
+
+                const favFill = isFav ? 'white' : 'none';
+                const favClass = isFav ? 'favorited' : '';
+                const safeFilename = photo.filename.replace(/'/g, "\\'");
+                const downloadBtn = downloadsEnabled ? `
                         <a class="photo-download" href="/api/gallery/${galleryId}/download/${encodeURIComponent(photo.filename)}" onclick="event.stopPropagation();" download>
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                 <path d="M12 4v12m0 0l-4-4m4 4l4-4" stroke-linecap="round" stroke-linejoin="round"/>
                             </svg>
-                        </a>` : ''}
-                    </div>
-                </div>`;
-            }).join('');
+                        </a>` : '';
 
-            // Lazy load images
+                card.innerHTML = `
+                    <div class="loading"></div>
+                    <img data-src="${photo.thumbnailUrl}" alt="${photo.filename}">
+                    <div class="photo-overlay">
+                        <span class="photo-name">${photo.filename}</span>
+                        <button class="photo-favorite ${favClass}" data-filename="${photo.filename}" onclick="event.stopPropagation(); toggleFavorite('${safeFilename}')">
+                            <svg viewBox="0 0 24 24" fill="${favFill}" stroke="currentColor" stroke-width="2">
+                                <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" stroke-linecap="round" stroke-linejoin="round"/>
+                            </svg>
+                        </button>
+                        ${downloadBtn}
+                    </div>`;
+
+                const img = card.querySelector('img');
+                img.onload = function() {
+                    this.classList.add('loaded');
+                    this.previousElementSibling.style.display = 'none';
+                };
+
+                cols[colIndex].appendChild(card);
+            });
+
+            grid.innerHTML = '';
+            cols.forEach(col => grid.appendChild(col));
+
             lazyLoadImages();
         }
+
+        // Re-render on resize (debounced) to update column count
+        let _resizeTimer;
+        window.addEventListener('resize', () => {
+            clearTimeout(_resizeTimer);
+            _resizeTimer = setTimeout(() => {
+                const newCount = getColCount();
+                const current = document.querySelectorAll('.masonry-col').length;
+                if (newCount !== current) renderGallery(_lastDownloadsEnabled);
+            }, 200);
+        });
 
         function lazyLoadImages() {
             const images = document.querySelectorAll('.photo-card img[data-src]');
@@ -871,7 +924,7 @@
                         observer.unobserve(img);
                     }
                 });
-            }, { rootMargin: '100px' });
+            }, { rootMargin: '200px' });
 
             images.forEach(img => observer.observe(img));
         }
