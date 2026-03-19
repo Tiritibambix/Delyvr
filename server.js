@@ -484,6 +484,26 @@ app.get('/api/gallery/:galleryId/background', validateGalleryId, (req, res) => {
     res.status(404).send('Background not found');
 });
 
+// Toggle downloads on/off for a gallery
+app.patch('/api/gallery/:galleryId/downloads', requireAuth, validateGalleryId, (req, res) => {
+    const { galleryId } = req.params;
+    const gallery = galleries.get(galleryId);
+
+    if (!gallery) {
+        return res.status(404).json({ error: 'Gallery not found' });
+    }
+
+    const { enabled } = req.body;
+    if (typeof enabled !== 'boolean') {
+        return res.status(400).json({ error: 'enabled must be a boolean' });
+    }
+
+    gallery.downloadsEnabled = enabled;
+    saveGalleries();
+
+    res.json({ success: true, downloadsEnabled: gallery.downloadsEnabled });
+});
+
 // Rename a gallery
 app.post('/api/gallery/:galleryId/rename', requireAuth, validateGalleryId, (req, res) => {
     const { galleryId } = req.params;
@@ -555,6 +575,12 @@ app.get('/api/gallery/:galleryId/photo/:filename', imageLimiter, validateGallery
 // Download a single photo as an attachment
 app.get('/api/gallery/:galleryId/download/:filename', validateGalleryId, validateFilename, (req, res) => {
     const { galleryId, filename } = req.params;
+
+    const gallery = galleries.get(galleryId);
+    if (gallery && gallery.downloadsEnabled === false) {
+        return res.status(403).json({ error: 'Downloads are disabled for this gallery' });
+    }
+
     const filePath = path.join(DATA_DIR, 'uploads', galleryId, filename);
 
     if (!fs.existsSync(filePath)) {
@@ -673,7 +699,8 @@ app.get('/api/gallery/:galleryId/info', validateGalleryId, (req, res) => {
         galleryId,
         eventName,
         background: backgroundFile ? `/api/gallery/${galleryId}/background` : null,
-        fileCount
+        fileCount,
+        downloadsEnabled: gallery ? gallery.downloadsEnabled !== false : true
     });
 });
 
@@ -686,13 +713,17 @@ app.get('/api/gallery/:galleryId/download', validateGalleryId, (req, res) => {
         return res.status(404).json({ error: 'Gallery not found' });
     }
 
+    const gallery = galleries.get(galleryId);
+    if (gallery && gallery.downloadsEnabled === false) {
+        return res.status(403).json({ error: 'Downloads are disabled for this gallery' });
+    }
+
     const files = fs.readdirSync(galleryPath).filter(f => !f.startsWith('.'));
 
     if (files.length === 0) {
         return res.status(404).json({ error: 'No files in gallery' });
     }
 
-    const gallery = galleries.get(galleryId);
     const eventName = gallery && gallery.eventName ? gallery.eventName : 'photos';
 
     const safeFileName = eventName

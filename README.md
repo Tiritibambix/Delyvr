@@ -1,18 +1,25 @@
-# MeTransfer
+# Delyvr
 
-A self-hosted photo delivery platform for photographers. Upload photos, share a branded download link with your client — they get a beautiful gallery preview and a one-click ZIP download.
+A self-hosted photo delivery platform for photographers. Upload photos, share a branded download link with your client - they get a beautiful gallery preview and a one-click ZIP download.
+
+> Based on the original work of [Andre Padua (apadua)](https://github.com/apadua/MeTransfer). Thank you for the foundation.
+
+---
 
 ## Features
 
-- **Drag & Drop Upload** — drop individual files or entire folders from your computer
-- **Custom Backgrounds** — upload a hero image per gallery; stored as normalised JPEG
-- **Photo Preview Page** — thumbnail grid with full-screen lightbox, keyboard/touch navigation, and individual photo download
-- **ZIP Downloads** — all photos packaged into a single named download
-- **Gallery Management** — rename galleries inline, set cover images, copy links, delete from the dashboard
-- **Custom Logo** — upload your own logo from the dashboard; shown on both admin and client pages; revert to default anytime
-- **Social Media Previews** — auto-generated OG images (1200×630) injected into share links
-- **Multi-Language Support** — client pages auto-detect browser language; supports English, Portuguese, Spanish, Italian, and French
-- **No Database Required** — file-based storage, simple to deploy and back up
+- **Drag & Drop Upload** - drop individual files or entire folders from your computer
+- **Custom Backgrounds** - upload a hero image per gallery; stored as normalised JPEG
+- **Photo Preview Page** - thumbnail grid with full-screen lightbox, keyboard/touch navigation, and individual photo download
+- **Clean Lightbox** - download button discreetly placed next to the close button, giving full space to the photo
+- **ZIP Downloads** - all photos packaged into a single named download
+- **Download Toggle** - enable or disable downloads per gallery from the dashboard; useful for draft galleries or contact sheets
+- **Right-Click Protection** - browser context menu is disabled on images to prevent casual saving
+- **Gallery Management** - rename galleries inline, set cover images, copy links, delete from the dashboard
+- **Custom Logo** - upload your own logo from the dashboard; shown on both admin and client pages; revert to default anytime
+- **Social Media Previews** - auto-generated OG images (1200×630) injected into share links
+- **Multi-Language Support** - client pages auto-detect browser language; supports English, Portuguese, Spanish, Italian, and French
+- **No Database Required** - file-based storage, simple to deploy and back up
 
 ---
 
@@ -39,7 +46,7 @@ This is the recommended installation method. You only need Docker installed.
 ### 1. Create a project directory
 
 ```bash
-mkdir metransfer && cd metransfer
+mkdir delyvr && cd delyvr
 ```
 
 ### 2. Create your `.env` file
@@ -58,7 +65,7 @@ EOF
 ### 3. Download docker-compose.yml
 
 ```bash
-curl -O https://raw.githubusercontent.com/apadua/metransfer/main/docker-compose.yml
+curl -O https://raw.githubusercontent.com/tiritibambix/delyvr/main/docker-compose.yml
 ```
 
 ### 4. Start the container
@@ -67,7 +74,7 @@ curl -O https://raw.githubusercontent.com/apadua/metransfer/main/docker-compose.
 docker compose up -d
 ```
 
-MeTransfer is now running at `http://localhost:3000`. Gallery data is stored in `./data/` and persists across container restarts and upgrades.
+Delyvr is now running at `http://localhost:3000`. Gallery data is stored in `./data/` and persists across container restarts and upgrades.
 
 ### Updating
 
@@ -79,7 +86,7 @@ docker compose pull && docker compose up -d
 
 ## Configuration
 
-All settings live in `.env`. Copy `.env.example` to get started — never commit `.env` to version control.
+All settings live in `.env`. Copy `.env.example` to get started - never commit `.env` to version control.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
@@ -94,13 +101,22 @@ All settings live in `.env`. Copy `.env.example` to get started — never commit
 
 ## Usage
 
-1. **Open the Dashboard** — go to `http://localhost:3000`
-2. **Log in** — enter your admin password
-3. **Enter an Event Name** — e.g. "Johnson Wedding" or "Senior Photos — Sarah"
-4. **Upload Photos** — drag and drop files or entire folders onto the upload zone
-5. **Add a Background** *(optional)* — upload a hero image shown on the client page
-6. **Create Gallery** — click "Create Gallery & Get Link"
-7. **Share** — copy the generated link and send it to your client
+1. **Open the Dashboard** - go to `http://localhost:3000`
+2. **Log in** - enter your admin password
+3. **Enter an Event Name** - e.g. "Johnson Wedding" or "Senior Photos - Sarah"
+4. **Upload Photos** - drag and drop files or entire folders onto the upload zone
+5. **Add a Background** *(optional)* - upload a hero image shown on the client page
+6. **Create Gallery** - click "Create Gallery & Get Link"
+7. **Share** - copy the generated link and send it to your client
+
+### Download toggle
+
+Each gallery in the dashboard has a **Downloads** toggle. When disabled:
+- The download button is hidden on the client pages
+- ZIP and individual photo download endpoints return 403
+- The gallery remains fully browsable - clients can view all photos in the lightbox
+
+This is useful for draft galleries where you want clients to make a selection before you deliver the final files.
 
 ### What your client sees
 
@@ -108,7 +124,7 @@ When your client opens the link they see:
 - Your custom background image (if uploaded)
 - The event name as the page title
 - A **"Browse Photos"** button that opens a thumbnail grid with a full-screen lightbox and individual download
-- A **"Download All"** button — all photos arrive as one ZIP file
+- A **"Download All"** button - all photos arrive as one ZIP file (if downloads are enabled)
 
 ---
 
@@ -125,7 +141,7 @@ sudo apt install -y nginx certbot python3-certbot-nginx
 Create a site config:
 
 ```bash
-sudo nano /etc/nginx/sites-available/metransfer
+sudo nano /etc/nginx/sites-available/delyvr
 ```
 
 Paste:
@@ -155,7 +171,7 @@ server {
 Enable and reload:
 
 ```bash
-sudo ln -s /etc/nginx/sites-available/metransfer /etc/nginx/sites-enabled/
+sudo ln -s /etc/nginx/sites-available/delyvr /etc/nginx/sites-enabled/
 sudo nginx -t
 sudo systemctl reload nginx
 ```
@@ -166,7 +182,7 @@ Get a free SSL certificate:
 sudo certbot --nginx -d photos.yourdomain.com
 ```
 
-Certbot will automatically renew the certificate. MeTransfer is now accessible at `https://photos.yourdomain.com`.
+Certbot will automatically renew the certificate. Delyvr is now accessible at `https://photos.yourdomain.com`.
 
 Make sure `TRUST_PROXY=1` is set in your `.env` so that rate limiting and HTTPS detection use the real client IP and protocol rather than the proxy's.
 
@@ -196,13 +212,11 @@ node -v
 
 ### 2. Clone the repository
 
-`/opt` is the conventional location for self-contained applications on a server:
-
 ```bash
 cd /opt
-sudo git clone https://github.com/apadua/metransfer.git
-sudo chown -R $USER:$USER /opt/metransfer
-cd metransfer
+sudo git clone https://github.com/tiritibambix/delyvr.git
+sudo chown -R $USER:$USER /opt/delyvr
+cd delyvr
 ```
 
 ### 3. Install dependencies
@@ -240,7 +254,7 @@ PM2 keeps the process alive across reboots:
 
 ```bash
 npm install -g pm2
-pm2 start server.js --name metransfer
+pm2 start server.js --name delyvr
 pm2 save
 pm2 startup   # follow the printed command
 ```
@@ -248,7 +262,7 @@ pm2 startup   # follow the printed command
 To check logs:
 
 ```bash
-pm2 logs metransfer
+pm2 logs delyvr
 ```
 
 ---
@@ -256,17 +270,17 @@ pm2 logs metransfer
 ## File Structure
 
 ```
-metransfer/
-├── server.js           # Express server — all routes and middleware
+delyvr/
+├── server.js           # Express server - all routes and middleware
 ├── package.json        # Dependencies
 ├── Dockerfile
 ├── docker-compose.yml
-├── .env                # Your config (gitignored — never committed)
+├── .env                # Your config (gitignored - never committed)
 ├── .env.example        # Template for new installs
 ├── public/
 │   ├── admin.html      # Photographer dashboard
 │   ├── customer.html   # Client download page
-│   ├── preview.html    # Photo browser — thumbnail grid + lightbox
+│   ├── preview.html    # Photo browser - thumbnail grid + lightbox
 │   └── logo.svg        # Default logo (replaced at runtime by a custom upload)
 └── data/               # Runtime data (Docker volume mount)
     ├── uploads/        # Gallery photos, organised by gallery ID
@@ -277,7 +291,7 @@ metransfer/
     └── galleries.json  # Gallery metadata
 ```
 
-`data/` and its contents are gitignored — they contain user data, not source code.
+`data/` and its contents are gitignored - they contain user data, not source code.
 
 ---
 
@@ -285,21 +299,22 @@ metransfer/
 
 | Method | Endpoint | Auth | Description |
 |--------|----------|------|-------------|
-| `GET` | `/` | — | Admin dashboard |
-| `GET` | `/download/:id` | — | Client download page (with OG meta tags) |
-| `GET` | `/preview/:id` | — | Photo preview page (with OG meta tags) |
-| `POST` | `/api/auth/verify` | — | Verify admin password |
+| `GET` | `/` | - | Admin dashboard |
+| `GET` | `/download/:id` | - | Client download page (with OG meta tags) |
+| `GET` | `/preview/:id` | - | Photo preview page (with OG meta tags) |
+| `POST` | `/api/auth/verify` | - | Verify admin password |
 | `POST` | `/api/gallery/create` | ✓ | Create gallery and upload photos |
 | `POST` | `/api/gallery/:id/upload` | ✓ | Add photos to existing gallery |
 | `POST` | `/api/gallery/:id/background` | ✓ | Upload/replace background image |
 | `POST` | `/api/gallery/:id/rename` | ✓ | Rename a gallery |
-| `GET` | `/api/gallery/:id/info` | — | Gallery metadata |
-| `GET` | `/api/gallery/:id/photos` | — | List photos with URLs (used by preview page) |
-| `GET` | `/api/gallery/:id/photo/:filename` | — | Serve photo; add `?thumb=1` for 400px thumbnail |
-| `GET` | `/api/gallery/:id/download` | — | Download all photos as ZIP |
-| `GET` | `/api/gallery/:id/download/:filename` | — | Download a single photo |
-| `GET` | `/api/gallery/:id/background` | — | Serve background image |
-| `GET` | `/api/gallery/:id/og-image` | — | Serve/generate 1200×630 OG image |
+| `PATCH` | `/api/gallery/:id/downloads` | ✓ | Enable or disable downloads (`{ "enabled": true\|false }`) |
+| `GET` | `/api/gallery/:id/info` | - | Gallery metadata (includes `downloadsEnabled`) |
+| `GET` | `/api/gallery/:id/photos` | - | List photos with URLs (used by preview page) |
+| `GET` | `/api/gallery/:id/photo/:filename` | - | Serve photo; add `?thumb=1` for 400px thumbnail |
+| `GET` | `/api/gallery/:id/download` | - | Download all photos as ZIP (403 if downloads disabled) |
+| `GET` | `/api/gallery/:id/download/:filename` | - | Download a single photo (403 if downloads disabled) |
+| `GET` | `/api/gallery/:id/background` | - | Serve background image |
+| `GET` | `/api/gallery/:id/og-image` | - | Serve/generate 1200×630 OG image |
 | `GET` | `/api/galleries` | ✓ | List all galleries |
 | `DELETE` | `/api/gallery/:id` | ✓ | Delete a gallery |
 
@@ -309,10 +324,11 @@ Authenticated endpoints require the `X-Admin-Password` header.
 
 ## Tips
 
-- **Branding** — use a photo from the same session as the background for a cohesive look
-- **File names** — rename files on your camera before uploading; the original names are preserved
-- **Disk space** — delete galleries once clients have downloaded; `uploads/` can grow large
-- **Link expiry** — there is no automatic expiry; delete a gallery from the dashboard when done
+- **Branding** - use a photo from the same session as the background for a cohesive look
+- **File names** - rename files on your camera before uploading; the original names are preserved
+- **Draft workflow** - create the gallery with downloads disabled, share the link for client selection, then enable downloads once the final files are ready
+- **Disk space** - delete galleries once clients have downloaded; `uploads/` can grow large
+- **Link expiry** - there is no automatic expiry; delete a gallery from the dashboard when done
 
 ---
 
@@ -341,7 +357,7 @@ Then reload Nginx: `sudo systemctl reload nginx`
 - Split the session into multiple galleries
 - Increase the proxy timeout in Nginx: `proxy_read_timeout 300;`
 
-### Server won't start — "ADMIN_PASSWORD is not set"
+### Server won't start - "ADMIN_PASSWORD is not set"
 
 Make sure `.env` exists and contains `ADMIN_PASSWORD`. Run:
 
@@ -354,4 +370,4 @@ nano .env
 
 ## License
 
-MIT — free to use and modify for your photography business.
+MIT - free to use and modify for your photography business.
