@@ -23,7 +23,7 @@ jobs:
           echo "branch=${GITHUB_REF_NAME//\//-}" >> $GITHUB_OUTPUT
 
       - name: Restore last built commit for this branch
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v5
         with:
           path: last_commit.txt
           key: last-commit-${{ github.ref_name }}-${{ github.run_id }}
@@ -55,7 +55,7 @@ jobs:
 
       - name: Update cache
         if: steps.compare.outputs.skip == 'false'
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v5
         with:
           path: last_commit.txt
           key: last-commit-${{ github.ref_name }}-${{ github.run_id }}
