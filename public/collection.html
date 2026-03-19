@@ -177,41 +177,42 @@
             justify-content: center;
             gap: 6px;
             padding: 10px 16px;
-            background: var(--accent);
-            color: var(--bg-primary);
-            border: none;
+            background: transparent;
+            color: var(--text-primary);
+            border: 1px solid var(--border);
             border-radius: 8px;
             font-size: 0.875rem;
-            font-weight: 600;
+            font-weight: 500;
             cursor: pointer;
-            transition: background 0.2s;
+            transition: all 0.2s;
             font-family: inherit;
         }
 
-        .btn-copy-link:hover { background: var(--accent-hover); }
+        .btn-copy-link:hover {
+            border-color: var(--accent);
+            color: var(--accent);
+        }
 
         .btn-copy-link svg { width: 15px; height: 15px; }
 
         .btn-download-gallery {
+            flex: 1;
             display: inline-flex;
             align-items: center;
             justify-content: center;
             gap: 6px;
             padding: 10px 16px;
-            background: transparent;
-            color: var(--text-primary);
+            background: var(--accent);
+            color: var(--bg-primary);
             text-decoration: none;
-            border: 1px solid var(--border);
+            border: none;
             border-radius: 8px;
             font-size: 0.875rem;
-            font-weight: 500;
-            transition: all 0.2s;
+            font-weight: 600;
+            transition: background 0.2s;
         }
 
-        .btn-download-gallery:hover {
-            border-color: var(--accent);
-            color: var(--accent);
-        }
+        .btn-download-gallery:hover { background: var(--accent-hover); }
 
         .btn-download-gallery svg { width: 15px; height: 15px; }
 
@@ -470,6 +471,11 @@
         }
 
         loadCollection();
+
+        // Disable right-click on images to prevent casual saving
+        document.addEventListener('contextmenu', (e) => {
+            if (e.target.tagName === 'IMG') e.preventDefault();
+        });
     </script>
 </body>
 </html>

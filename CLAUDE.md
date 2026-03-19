@@ -6,7 +6,7 @@ This file describes the architecture, conventions, and key decisions in Delyvr s
 
 ## What is Delyvr?
 
-Delyvr is a **self-hosted photo delivery platform** for photographers. A photographer logs into a private dashboard, creates a named gallery by uploading photos (and optionally a hero background image), then shares the generated link with their client. The client visits a minimal, elegant page, browses photos in a lightbox, marks favorites, and downloads all photos as a single ZIP file.
+Delyvr is a **self-hosted photo delivery platform** for photographers. A photographer logs into a private dashboard, creates named galleries by uploading photos, groups them into collections, then shares links with clients. Clients browse photos in a masonry lightbox, mark favorites, and download photos or full collections as ZIP files.
 
 There is no public registration. The entire admin side is protected by a single shared password.
 
@@ -37,31 +37,29 @@ There is no public registration. The entire admin side is protected by a single 
 delyvr/
 ├── server.js           # All server logic — Express app, routes, middleware
 ├── package.json        # Dependencies and npm scripts
-├── Dockerfile          # Docker image definition
-├── docker-compose.yml  # Docker Compose service definition (recommended deployment)
+├── Dockerfile
+├── docker-compose.yml
 ├── .env                # Secret config (gitignored) — copy from .env.example
 ├── .env.example        # Template showing required env vars
-├── .dockerignore       # Excludes node_modules, .env, data/ from Docker build context
-├── .gitignore          # Excludes .env, node_modules, data/, galleries.json
+├── .dockerignore
+├── .gitignore
 ├── public/
-│   ├── admin.html      # Photographer dashboard (login, upload, gallery management)
-│   ├── customer.html   # Client download page (background image + download button)
-│   └── preview.html    # Client photo browser (thumbnail grid + lightbox + favorites)
+│   ├── admin.html      # Photographer dashboard
+│   ├── customer.html   # Client download page (single gallery)
+│   ├── preview.html    # Client photo browser (masonry grid + lightbox + favorites)
+│   └── collection.html # Client collection page (multiple galleries)
 └── data/               # Runtime data root (Docker volume mount at /data)
     ├── uploads/        # Gallery photos, organised as uploads/{galleryId}/
     ├── backgrounds/    # Background images, named {galleryId}.jpg (normalised JPEG)
     ├── thumbnails/     # 400px JPEG thumbnails, generated on upload or first request
     ├── og-cache/       # 1200×630 OG images, generated on first share
-    └── galleries.json  # Gallery metadata persisted to disk
+    ├── galleries.json  # Gallery metadata
+    └── collections.json # Collection metadata
 ```
-
-`data/` and its contents are generated at runtime and gitignored. `server.js` creates all directories automatically on startup.
 
 ---
 
 ## Configuration
-
-All secrets and tuneable values live in `.env` (bare-metal) or in the `environment` block of `docker-compose.yml` (Docker).
 
 | Variable | Default | Notes |
 |----------|---------|-------|
@@ -69,174 +67,203 @@ All secrets and tuneable values live in `.env` (bare-metal) or in the `environme
 | `PORT` | `3000` | TCP port the server listens on |
 | `MAX_UPLOAD_MB` | `200` | Per-file size limit for photo uploads, in MB |
 | `MAX_BACKGROUND_MB` | `20` | Size limit for background image uploads, in MB |
-| `INSTALL_DIR` | *(project dir)* | Set to `/data` in Docker. Controls where galleries.json, uploads/, backgrounds/, thumbnails/ and og-cache/ are written. Do not change in Docker. |
-| `TRUST_PROXY` | `0` | Set to `1` behind a reverse proxy (Nginx, Caddy, Traefik) for correct IP detection. |
-
-`dotenv` is loaded as the very first line of `server.js` so env vars are available everywhere.
+| `INSTALL_DIR` | *(project dir)* | Set to `/data` in Docker. Controls where all data files are written. Do not change in Docker. |
+| `TRUST_PROXY` | `0` | Set to `1` behind a reverse proxy for correct IP detection. |
 
 ---
 
 ## Server Architecture (`server.js`)
 
-### Data model
+### Data models
 
-Galleries are stored in an in-memory `Map<galleryId, GalleryObject>` and flushed to `galleries.json` on every write. On startup the file is read back into memory. All gallery IDs are UUID v4 strings.
+**Gallery** — stored in `galleries.json`, keyed by UUID v4:
 
 ```js
 {
-  id: string,               // UUID v4
-  eventName: string,        // Display name set by the photographer
-  created: string,          // ISO 8601 timestamp
-  files: string[],          // Array of filenames inside uploads/{id}/
-  background: string|null,  // Filename inside backgrounds/ (or null)
-  downloadsEnabled: boolean, // Whether clients can download photos (default true)
-  favorites: {              // Per-photo vote map — filename → [visitorId, ...]
+  id: string,
+  eventName: string,
+  created: string,          // ISO 8601
+  files: string[],          // filenames inside uploads/{id}/
+  background: string|null,  // filename inside backgrounds/
+  downloadsEnabled: boolean, // default true (missing = true)
+  favorites: {              // filename → [visitorId, ...]
     [filename: string]: string[]
   }
 }
 ```
 
-### Authentication and security
+**Collection** — stored in `collections.json`, keyed by UUID v4:
 
-A single `requireAuth` middleware checks the `X-Admin-Password` request header (or `?password` query param) against `process.env.ADMIN_PASSWORD`. Unauthenticated requests receive HTTP 401.
+```js
+{
+  id: string,
+  name: string,
+  created: string,          // ISO 8601
+  galleryIds: string[]      // ordered list — order is the client display order
+}
+```
 
-The `/api/auth/verify` endpoint is the only auth-related route that is itself unprotected — the browser uses it to validate the password on login. It is protected by `authLimiter` (10 attempts per IP per 15 minutes) to prevent brute-force attacks.
+One gallery belongs to at most one collection. The server enforces this on `POST /api/collection/:id/galleries`. Deleting a gallery removes it from any collection automatically.
 
-All routes that accept a `:galleryId` URL parameter pass through `validateGalleryId` before any filesystem operation. This middleware rejects values that do not match the UUID v4 regex, closing the path traversal attack vector.
+### Authentication
 
-Routes that accept a `:filename` parameter pass through `validateFilename`, which rejects any value not matching `/^[a-zA-Z0-9._\-]+$/`.
+`requireAuth` middleware checks `X-Admin-Password` header (or `?password` query param). Login is rate-limited at 10 attempts per IP per 15 minutes via `authLimiter`.
 
-**Important:** The password travels in a plain HTTP header. In production, always serve behind HTTPS.
+`validateGalleryId` and `validateCollectionId` both enforce UUID v4 format before any filesystem operation, closing path traversal vectors. `validateFilename` enforces `/^[a-zA-Z0-9._\-]+$/`.
 
 ### File upload pipeline
 
-Three separate `multer` instances handle different upload types:
+- **`upload`** — photos into `uploads/{galleryId}/`. Accepts JPEG, PNG, GIF, WebP, TIFF, BMP, raw (CR2, NEF, ARW). Filenames sanitised. Limit: `MAX_UPLOAD_MB`.
+- **`uploadBackground`** — background normalised to JPEG via sharp (max 2400px wide, quality 85). Stored as `backgrounds/{galleryId}.jpg`.
+- **`uploadLogo`** — stored in memory, written to `DATA_DIR/logo.{ext}`. Accepts JPEG, PNG, GIF, WebP, SVG. Limit: 5 MB.
 
-- **`upload`** — photo uploads into `uploads/{galleryId}/`. Accepts JPEG, PNG, GIF, WebP, TIFF, BMP, raw formats (CR2, NEF, ARW), plus any `image/*` MIME type. Filenames are sanitised (non-alphanumeric except `.`, `-`, `_` replaced with underscores). Limit: `MAX_UPLOAD_MB`.
-- **`uploadBackground`** — background images, stored in memory then processed by sharp into a normalised JPEG at `backgrounds/{galleryId}.jpg`. Max width 2400px. Limit: `MAX_BACKGROUND_MB`.
-- **`uploadLogo`** — logo images, stored in memory then written to `DATA_DIR/logo.{ext}`. Accepts JPEG, PNG, GIF, WebP, SVG. Limit: 5 MB.
+### Photo sort order
 
-For new gallery creation, the gallery ID must be assigned **before** multer runs. A `generateGalleryId` middleware creates the UUID and inserts a skeleton gallery record into the Map before the upload middleware executes.
+`GET /api/gallery/:id/photos` sorts files using `localeCompare` with `{ numeric: true, sensitivity: 'base' }`. This gives natural sort order: `DSC_9` before `DSC_10`.
 
 ### Thumbnail generation
 
-On gallery creation and photo upload, `generateGalleryThumbnails()` generates 400px-wide JPEG thumbnails via sharp (fire-and-forget). Missing thumbnails are generated on-the-fly when first requested via `GET /api/gallery/:id/photo/:filename?thumb=1`.
+400px-wide JPEG thumbnails are generated via sharp on upload (fire-and-forget) and on-the-fly if missing when `?thumb=1` is requested.
 
 ### OG image generation
 
-`GET /api/gallery/:id/og-image` generates a 1200×630 JPEG cropped from the gallery background (or first photo if no background). Results are cached in `og-cache/`. The cache file is deleted whenever the background is replaced.
+1200×630 JPEG, cached in `og-cache/`. Source: background image if present, else first photo. Cache invalidated when background is replaced.
 
 ### ZIP streaming
 
-`GET /api/gallery/:id/download` checks `downloadsEnabled` before proceeding. If disabled, returns 403. Otherwise creates an `archiver` zip stream piped directly to the response. Compression level is 5. The ZIP filename is derived from the event name (sanitised, max 50 chars).
+Gallery ZIP: `archiver` pipes directly to response, compression level 5. Filename derived from `eventName`.
+
+Collection ZIP: iterates over `galleryIds`, creates one sub-folder per gallery named after `eventName`, pipes all photos into a single archive.
 
 ### Download toggle
 
-`PATCH /api/gallery/:id/downloads` accepts `{ enabled: boolean }` and sets `gallery.downloadsEnabled`. When false:
-- `GET /api/gallery/:id/download` returns 403
-- `GET /api/gallery/:id/download/:filename` returns 403
-- Client pages hide all download buttons (checked via `downloadsEnabled` in `/info`)
+`PATCH /api/gallery/:id/downloads` sets `gallery.downloadsEnabled`. When false, both ZIP and per-photo download routes return 403. Client pages check `downloadsEnabled` from `/info` and hide buttons accordingly.
 
-### Favorites system
+### Favorites
 
-Each photo can be favorited by multiple anonymous visitors. Votes are stored as `favorites[filename] = [visitorId, ...]` in the gallery object.
+Per-photo, per-visitor voting. Structure: `favorites[filename] = [visitorId, ...]`. Key deleted when vote count reaches 0.
 
-- `POST /api/gallery/:id/favorites` — public, toggles a visitor's vote on a photo. Receives `{ filename, visitorId }`. Removes the photo key when vote count reaches 0.
-- `GET /api/gallery/:id/favorites-public?visitorId=` — public, returns the list of photos this visitor has voted for. Used by `preview.html` on load to restore heart button state.
-- `GET /api/gallery/:id/favorites` — admin only, returns photos sorted by vote count descending with `{ filename, votes }` objects.
-- `DELETE /api/gallery/:id/favorites` — admin only, resets `favorites` to `{}`.
+- `POST /favorites` — public, toggles visitor's vote, requires `{ filename, visitorId }`
+- `GET /favorites-public?visitorId=` — public, returns photos this visitor voted for
+- `GET /favorites` — admin only, sorted by vote count desc, returns `{ filename, votes }[]`
+- `DELETE /favorites` — admin only, resets to `{}`
 
-### Filesystem-first gallery listing
+### Collections
 
-`GET /api/galleries` scans the `uploads/` directory rather than trusting only the in-memory Map. Any directory found on disk that has no corresponding metadata entry gets a synthetic record created automatically. This makes the system resilient to restarts or manual file operations.
+- `POST /api/collection/create` — creates collection, returns `collectionUrl`
+- `GET /api/collections` — admin list
+- `GET /api/collection/:id` — public, returns collection with gallery details
+- `POST /api/collection/:id/rename`
+- `POST /api/collection/:id/galleries` — add gallery (enforces one-collection-per-gallery)
+- `PATCH /api/collection/:id/galleries/reorder` — accepts full ordered `galleryIds` array, validates all IDs belong to collection
+- `DELETE /api/collection/:id/galleries/:galleryId` — remove from collection
+- `GET /api/collection/:id/download` — ZIP with sub-folders
+- `DELETE /api/collection/:id` — delete collection only, galleries untouched
+- `GET /collection/:id` — serves `collection.html` with OG meta tags
 
 ---
 
 ## API Endpoints
 
+### Gallery
+
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
-| `GET` | `/` | — | Serve admin dashboard |
-| `GET` | `/download/:id` | — | Serve client download page (with OG meta tags) |
-| `GET` | `/preview/:id` | — | Serve client photo browser (with OG meta tags) |
-| `POST` | `/api/auth/verify` | — | Verify admin password |
-| `POST` | `/api/gallery/create` | ✓ | Create gallery + upload photos |
-| `POST` | `/api/gallery/:id/upload` | ✓ | Add more photos to existing gallery |
-| `POST` | `/api/gallery/:id/background` | ✓ | Upload/replace background image |
-| `POST` | `/api/gallery/:id/rename` | ✓ | Rename a gallery |
-| `PATCH` | `/api/gallery/:id/downloads` | ✓ | Enable or disable downloads |
-| `GET` | `/api/gallery/:id/info` | — | Gallery metadata (eventName, fileCount, background, downloadsEnabled) |
-| `GET` | `/api/gallery/:id/photos` | — | List photos with URLs (used by preview page) |
-| `GET` | `/api/gallery/:id/photo/:filename` | — | Serve photo; `?thumb=1` for 400px thumbnail |
-| `GET` | `/api/gallery/:id/download` | — | Stream photos as ZIP (403 if downloads disabled) |
-| `GET` | `/api/gallery/:id/download/:filename` | — | Download single photo (403 if downloads disabled) |
-| `GET` | `/api/gallery/:id/background` | — | Serve background image |
-| `GET` | `/api/gallery/:id/og-image` | — | Serve/generate 1200×630 OG image |
-| `POST` | `/api/gallery/:id/favorites` | — | Toggle a photo favorite for a visitor |
-| `GET` | `/api/gallery/:id/favorites-public` | — | Get this visitor's favorites (`?visitorId=`) |
-| `GET` | `/api/gallery/:id/favorites` | ✓ | List all favorites sorted by vote count |
-| `DELETE` | `/api/gallery/:id/favorites` | ✓ | Reset all favorites for a gallery |
+| `GET` | `/` | — | Admin dashboard |
+| `GET` | `/download/:id` | — | Customer download page |
+| `GET` | `/preview/:id` | — | Photo browser |
+| `POST` | `/api/auth/verify` | — | Verify password |
+| `POST` | `/api/gallery/create` | ✓ | Create gallery + upload |
+| `POST` | `/api/gallery/:id/upload` | ✓ | Add photos |
+| `POST` | `/api/gallery/:id/background` | ✓ | Upload/replace background |
+| `POST` | `/api/gallery/:id/rename` | ✓ | Rename |
+| `PATCH` | `/api/gallery/:id/downloads` | ✓ | Toggle downloads |
+| `GET` | `/api/gallery/:id/info` | — | Metadata |
+| `GET` | `/api/gallery/:id/photos` | — | Photo list (sorted) |
+| `GET` | `/api/gallery/:id/photo/:filename` | — | Serve photo or thumbnail |
+| `GET` | `/api/gallery/:id/download` | — | ZIP download |
+| `GET` | `/api/gallery/:id/download/:filename` | — | Single photo download |
+| `GET` | `/api/gallery/:id/background` | — | Serve background |
+| `GET` | `/api/gallery/:id/og-image` | — | OG image |
+| `POST` | `/api/gallery/:id/favorites` | — | Toggle favorite |
+| `GET` | `/api/gallery/:id/favorites-public` | — | Visitor's favorites |
+| `GET` | `/api/gallery/:id/favorites` | ✓ | All favorites (admin) |
+| `DELETE` | `/api/gallery/:id/favorites` | ✓ | Reset favorites |
 | `GET` | `/api/galleries` | ✓ | List all galleries |
-| `DELETE` | `/api/gallery/:id` | ✓ | Delete gallery + all associated files |
-| `GET` | `/api/logo` | — | Serve logo (custom if present, default otherwise) |
-| `POST` | `/api/logo` | ✓ | Upload custom logo |
-| `DELETE` | `/api/logo` | ✓ | Reset logo to default |
+| `DELETE` | `/api/gallery/:id` | ✓ | Delete gallery |
+
+### Collection
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| `GET` | `/collection/:id` | — | Collection page |
+| `POST` | `/api/collection/create` | ✓ | Create collection |
+| `GET` | `/api/collections` | ✓ | List collections |
+| `GET` | `/api/collection/:id` | — | Collection info |
+| `POST` | `/api/collection/:id/rename` | ✓ | Rename |
+| `POST` | `/api/collection/:id/galleries` | ✓ | Add gallery |
+| `PATCH` | `/api/collection/:id/galleries/reorder` | ✓ | Reorder galleries |
+| `DELETE` | `/api/collection/:id/galleries/:galleryId` | ✓ | Remove gallery |
+| `GET` | `/api/collection/:id/download` | — | ZIP all galleries |
+| `DELETE` | `/api/collection/:id` | ✓ | Delete collection |
 
 ---
 
 ## Frontend Architecture
 
-All HTML files are standalone — no bundler, no imports, all JavaScript is inline in a `<script>` tag at the bottom of the file.
+All HTML files are standalone — no bundler, no imports, all JS inline.
 
 ### `public/admin.html`
 
-A single-page application with two states: **login screen** and **main dashboard**.
-
-- On load, checks `sessionStorage` for a saved password and skips the login screen if found.
-- Login calls `POST /api/auth/verify`; on success stores the password in `sessionStorage` and shows the dashboard.
-- All subsequent API calls attach the password via `X-Admin-Password` header.
-- Drag-and-drop zone supports individual files and recursive folder traversal via the `webkitGetAsEntry` / `FileSystemDirectoryReader` API.
-- Gallery creation is a two-step fetch: `POST /api/gallery/create` (photos), then `POST /api/gallery/:id/background` (background, if any).
-- Each gallery card shows: cover image (drag-to-replace), inline rename, download toggle, favorite count with View/Reset actions.
-- The favorites modal displays thumbnails sorted by vote count descending, with a ♥ N badge on each.
-- Event names are always HTML-escaped before DOM insertion via `escapeHtml()`.
+- Login via `sessionStorage` (cleared on tab close)
+- **Galleries section** — drag-and-drop upload, inline rename, cover upload, download toggle, favorites count/view/reset, delete
+- Gallery items are `draggable="true"` — can be dragged into collection drop zones
+- **Collections section** (above galleries) — create, rename inline, copy link, delete. Each collection shows gallery pills that are draggable for reordering within the collection.
+- `_galleriesData` cache populated inside `loadGalleries()` and used by `renderCollections()` to show gallery names in pills
 
 ### `public/customer.html`
 
-Minimal download page. No authentication required.
-
-- Extracts gallery ID from URL path.
-- Calls `GET /api/gallery/:id/info` to get event name, photo count, background URL, and `downloadsEnabled`.
-- Download button is hidden when `downloadsEnabled` is false.
-- Background image fades in with a CSS transition once loaded.
-- Right-click on images is disabled to prevent casual saving.
+Single-gallery download page. Hides download button when `downloadsEnabled` is false. Right-click on images disabled.
 
 ### `public/preview.html`
 
-Full photo browser. No authentication required.
+Full photo browser for a single gallery.
 
-- Thumbnail grid with lazy loading via `IntersectionObserver`.
-- Full-screen lightbox with keyboard navigation (←/→/Esc) and touch swipe support.
-- Lightbox top-right corner: ✕ close, download button (round), heart button (round) — all three always visible.
-- Download buttons (grid + lightbox) are hidden when `downloadsEnabled` is false.
-- Right-click on images is disabled to prevent casual saving.
-- Each visitor gets a stable anonymous ID stored in `localStorage` as `delyvr_visitor_id`.
-- On load, fetches `GET /favorites-public?visitorId=` to restore heart button state.
-- Favorites are toggled optimistically with server sync and automatic UI revert on network error.
-- If `/favorites-public` returns 404 (gallery deleted), `delyvr_visitor_id` is cleaned from localStorage.
+- **Masonry layout** — JS-based, round-robin column distribution (left-to-right chronological order). `getColCount()` returns 4/3/2/1 based on viewport width. Re-renders on resize (debounced).
+- No `aspect-ratio` constraint — photos display at natural ratio.
+- Lazy loading via `IntersectionObserver`.
+- Full-screen lightbox: ✕, download (round), heart (round) in top-right corner.
+- Download controls hidden when `downloadsEnabled` is false.
+- Right-click on images disabled.
+- **Visitor ID** — `delyvr_visitor_id` in `localStorage`, shared across all galleries on the device.
+- Favorites fetched from `/favorites-public?visitorId=` on load. Toggled optimistically with server sync and revert on error.
+
+### `public/collection.html`
+
+Client-facing collection page.
+
+- Full i18n: EN, FR, ES, PT, IT (same language detection as other client pages).
+- Gallery cards with clickable 16/9 cover (navigates to `/preview/:id`).
+- **Copy Link** button (outlined style) copies gallery preview URL with translated feedback.
+- **Download** button (accent style, if enabled) downloads gallery ZIP.
+- **Download All Galleries** button (visible if any gallery is downloadable) downloads collection ZIP.
+- No placeholder icon on covers — missing cover = clean dark surface.
+- Right-click on images disabled.
 
 ---
 
 ## Conventions and Gotchas
 
-- **No build step.** Do not introduce a bundler, TypeScript, or a frontend framework without discussing it first. The simplicity is intentional.
-- **No external database.** Gallery metadata lives in `galleries.json`. If you need a database, that is a significant architectural change.
-- **`downloadsEnabled` defaults to `true`.** The check is `gallery.downloadsEnabled !== false` — missing field means enabled. Existing galleries without this field work correctly without migration.
-- **`favorites` defaults to `{}`.** Similarly, `gallery.favorites || {}` is used everywhere. No migration needed for existing galleries.
-- **Visitor IDs are not authenticated.** They are random strings generated client-side. They identify a browser session, not a real user. Do not use them for anything security-sensitive.
-- **multer file size limits are configurable via env.** `MAX_UPLOAD_MB` applies to photos; `MAX_BACKGROUND_MB` applies to backgrounds. Nginx `client_max_body_size` must be set high enough to match.
-- **INSTALL_DIR decouples code from data.** All filesystem paths in `server.js` use `process.env.INSTALL_DIR || __dirname`. Bare-metal installs work with no value set.
-- **Backgrounds are normalised on upload.** sharp converts them to JPEG at max 2400px wide, quality 85. The original format is discarded.
-- **Backgrounds replace on upload.** Uploading a new background deletes the old file from disk and invalidates the OG cache.
-- **Galleries can be re-discovered from disk.** Do not assume the in-memory Map is the source of truth for what galleries exist; the filesystem is authoritative.
-- **Password in sessionStorage.** The admin password is stored in `sessionStorage` (cleared when the tab closes), not `localStorage`. This is intentional — it limits exposure on shared computers.
+- **No build step.** Do not introduce a bundler, TypeScript, or a frontend framework without discussing it first.
+- **No external database.** Metadata lives in `galleries.json` and `collections.json`.
+- **`downloadsEnabled` defaults to `true`.** Check is `gallery.downloadsEnabled !== false` — missing field means enabled.
+- **`favorites` defaults to `{}`.** `gallery.favorites || {}` used everywhere.
+- **`galleryIds` order is authoritative** for collection display order. The reorder endpoint validates the full array before saving.
+- **One gallery = one collection max.** Enforced server-side on add. The `collectionId` field returned by `/api/galleries` reflects this.
+- **Visitor IDs are not authenticated.** Random client-generated strings — not security-sensitive.
+- **Photo sort is natural locale sort** (`numeric: true, sensitivity: base`). Rename files on camera before uploading to control display order.
+- **Backgrounds replace on upload.** Old file deleted, OG cache invalidated.
+- **Galleries can be re-discovered from disk.** The filesystem is authoritative.
+- **Password in sessionStorage.** Cleared on tab close — intentional.
+- **INSTALL_DIR decouples code from data.** All paths use `process.env.INSTALL_DIR || __dirname`.
+- **Right-click disabled on all client pages** (`customer.html`, `preview.html`, `collection.html`) — only images are targeted, not the full page.

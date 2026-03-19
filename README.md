@@ -1,7 +1,3 @@
-<div align="center">
-  <img src="public/logo.svg" alt="Delyvr" width="400">
-</div>
-
 # Delyvr
 
 A self-hosted photo delivery platform for photographers. Upload photos, share a branded download link with your client - they get a beautiful gallery preview and a one-click ZIP download.
@@ -14,12 +10,13 @@ A self-hosted photo delivery platform for photographers. Upload photos, share a 
 
 - **Drag & Drop Upload** - drop individual files or entire folders from your computer
 - **Custom Backgrounds** - upload a hero image per gallery; stored as normalised JPEG
-- **Photo Preview Page** - thumbnail grid with full-screen lightbox, keyboard/touch navigation, and individual photo download
-- **Clean Lightbox** - download button discreetly placed next to the close button, giving full space to the photo
+- **Photo Preview Page** - masonry grid with full-screen lightbox, keyboard/touch navigation, and individual photo download. Photos display at their natural aspect ratio.
+- **Clean Lightbox** - download and favorite buttons discreetly placed next to the close button, giving full space to the photo
 - **ZIP Downloads** - all photos packaged into a single named download
 - **Download Toggle** - enable or disable downloads per gallery from the dashboard; useful for draft galleries or contact sheets
 - **Client Favorites** - clients can heart photos from the grid or the lightbox; each visitor is tracked anonymously so multiple people can vote independently; the admin sees vote counts per photo sorted from most to least voted, with a reset option
-- **Right-Click Protection** - browser context menu is disabled on images to prevent casual saving
+- **Collections** - group multiple galleries under a single shareable link (e.g. one collection per wedding, one gallery per key moment). Clients can browse and download each gallery individually or download the entire collection as a single ZIP with one sub-folder per gallery
+- **Right-Click Protection** - browser context menu is disabled on images across all client pages to prevent casual saving
 - **Gallery Management** - rename galleries inline, set cover images, copy links, delete from the dashboard
 - **Custom Logo** - upload your own logo from the dashboard; shown on both admin and client pages; revert to default anytime
 - **Social Media Previews** - auto-generated OG images (1200×630) injected into share links
@@ -114,6 +111,25 @@ All settings live in your `docker-compose.yml` environment block (or in a `.env`
 6. **Create Gallery** - click "Create Gallery & Get Link"
 7. **Share** - copy the generated link and send it to your client
 
+### Collections
+
+Collections group multiple galleries under a single shareable link. The typical use case is one collection per wedding, with one gallery per key moment (getting ready, ceremony, cocktail, dinner...).
+
+**Creating a collection:**
+1. In the Collections section of the dashboard, type a name and click **+ New Collection**
+2. Drag gallery items from the gallery list into the collection's drop zone
+3. Drag pills within the collection to reorder galleries in chronological order
+4. Copy the collection link and share it with your client
+
+**What the client sees on the collection page:**
+- All galleries as cards with cover image, name, and photo count
+- Clicking a cover browses the gallery
+- A **Copy Link** button per gallery to share individual galleries
+- A **Download** button per gallery (if downloads are enabled)
+- A **Download All Galleries** button that downloads a single ZIP with one sub-folder per gallery
+
+A gallery can belong to only one collection. Deleting a collection does not delete the galleries — they remain accessible individually.
+
 ### Download toggle
 
 Each gallery in the dashboard has a **Downloads** toggle. When disabled:
@@ -135,10 +151,10 @@ Two concrete use cases:
 
 ### What your client sees
 
-When your client opens the link they see:
+When your client opens a gallery link they see:
 - Your custom background image (if uploaded)
 - The event name as the page title
-- A **"Browse Photos"** button that opens a thumbnail grid with a full-screen lightbox and individual download
+- A **"Browse Photos"** button that opens a masonry grid with a full-screen lightbox and individual download
 - A **"Download All"** button - all photos arrive as one ZIP file (if downloads are enabled)
 - A heart button on each photo and in the lightbox to mark favorites
 
@@ -296,7 +312,8 @@ delyvr/
 ├── public/
 │   ├── admin.html      # Photographer dashboard
 │   ├── customer.html   # Client download page
-│   ├── preview.html    # Photo browser - thumbnail grid + lightbox
+│   ├── preview.html    # Photo browser - masonry grid + lightbox
+│   ├── collection.html # Client collection page
 │   └── logo.svg        # Default logo (replaced at runtime by a custom upload)
 └── data/               # Runtime data (Docker volume mount)
     ├── uploads/        # Gallery photos, organised by gallery ID
@@ -304,7 +321,8 @@ delyvr/
     ├── thumbnails/     # 400px preview thumbnails, generated automatically
     ├── og-cache/       # 1200×630 OG images, generated on first share
     ├── logo.*          # Custom logo if uploaded (overrides logo.svg)
-    └── galleries.json  # Gallery metadata
+    ├── galleries.json  # Gallery metadata
+    └── collections.json # Collection metadata
 ```
 
 `data/` and its contents are gitignored - they contain user data, not source code.
@@ -312,6 +330,8 @@ delyvr/
 ---
 
 ## API Reference
+
+### Gallery endpoints
 
 | Method | Endpoint | Auth | Description |
 |--------|----------|------|-------------|
@@ -338,6 +358,21 @@ delyvr/
 | `GET` | `/api/galleries` | ✓ | List all galleries |
 | `DELETE` | `/api/gallery/:id` | ✓ | Delete a gallery |
 
+### Collection endpoints
+
+| Method | Endpoint | Auth | Description |
+|--------|----------|------|-------------|
+| `GET` | `/collection/:id` | - | Client collection page (with OG meta tags) |
+| `POST` | `/api/collection/create` | ✓ | Create a collection (`{ name }`) |
+| `GET` | `/api/collections` | ✓ | List all collections (admin) |
+| `GET` | `/api/collection/:id` | - | Collection info with galleries (public) |
+| `POST` | `/api/collection/:id/rename` | ✓ | Rename a collection |
+| `POST` | `/api/collection/:id/galleries` | ✓ | Add a gallery to a collection (`{ galleryId }`) |
+| `PATCH` | `/api/collection/:id/galleries/reorder` | ✓ | Reorder galleries (`{ galleryIds: [...] }`) |
+| `DELETE` | `/api/collection/:id/galleries/:galleryId` | ✓ | Remove a gallery from a collection |
+| `GET` | `/api/collection/:id/download` | - | Download all galleries as ZIP (one sub-folder per gallery) |
+| `DELETE` | `/api/collection/:id` | ✓ | Delete a collection (galleries are NOT deleted) |
+
 Authenticated endpoints require the `X-Admin-Password` header.
 
 ---
@@ -345,7 +380,8 @@ Authenticated endpoints require the `X-Admin-Password` header.
 ## Tips
 
 - **Branding** - use a photo from the same session as the background for a cohesive look
-- **File names** - rename files on your camera before uploading; the original names are preserved
+- **File names** - rename files on your camera before uploading; the original names are preserved and used for sort order
+- **Collections workflow** - create one collection per event, drag galleries into it in chronological order, share the collection link with your client
 - **Draft workflow** - create the gallery with downloads disabled, share the link for client selection, then enable downloads once the final files are ready
 - **Favorites workflow** - for weddings, share the gallery after the event and let clients heart their favorites before offering prints
 - **Disk space** - delete galleries once clients have downloaded; `uploads/` can grow large
