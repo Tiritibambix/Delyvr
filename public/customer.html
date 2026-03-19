@@ -284,7 +284,12 @@
                 
                 // Set download link
                 document.getElementById('downloadBtn').href = `/api/gallery/${galleryId}/download`;
-                
+
+                // Hide download button if downloads are disabled
+                if (data.downloadsEnabled === false) {
+                    document.getElementById('downloadBtn').style.display = 'none';
+                }
+
                 // Set preview link
                 document.getElementById('previewLink').href = `/preview/${galleryId}`;
                 
@@ -301,6 +306,11 @@
         }
         
         loadGallery();
+
+        // Disable right-click on images to prevent casual saving
+        document.addEventListener('contextmenu', (e) => {
+            if (e.target.tagName === 'IMG') e.preventDefault();
+        });
     </script>
 </body>
 </html>
