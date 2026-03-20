@@ -1,0 +1,24 @@
+name: Export Security Alerts
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  security-events: read
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    steps:
+      - name: GitHub Security Alert Export
+        uses: austenstone/security-export@v1.1
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload alerts as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-alerts
+          path: "*.json"
+          retention-days: 1
