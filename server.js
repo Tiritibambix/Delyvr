@@ -171,8 +171,7 @@ function safeResolvePath(base, ...segments) {
     return resolved;
 }
 
-// escapeAttr — kept as alias for escapeHtml for backwards compat in OG tag injection
-const escapeAttr = escapeHtml;
+
 
 // Generate a 400px-wide JPEG thumbnail for a single photo
 async function generateThumbnail(galleryId, filename) {
@@ -304,6 +303,15 @@ const imageLimiter = rateLimit({
     message: { error: 'Too many image requests, please slow down' }
 });
 
+// Rate limiter for admin routes that perform filesystem operations — 60 per minute per IP
+const adminLimiter = rateLimit({
+    windowMs: 60 * 1000,
+    max: 60,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { error: 'Too many requests, please slow down' }
+});
+
 // Rate limiter for general public GET endpoints — 300 requests per minute per IP
 const publicReadLimiter = rateLimit({
     windowMs: 60 * 1000,
@@ -335,8 +343,9 @@ const downloadLimiter = rateLimit({
 
 // Verify password endpoint
 app.post('/api/auth/verify', authLimiter, (req, res) => {
-    const { password } = req.body;
-    if (password === ADMIN_PASSWORD) {
+    const raw = req.body.password;
+    const password = Array.isArray(raw) ? raw[0] : raw;
+    if (typeof password === 'string' && password === ADMIN_PASSWORD) {
         res.json({ success: true });
     } else {
         res.status(401).json({ error: 'Invalid password' });
@@ -344,7 +353,7 @@ app.post('/api/auth/verify', authLimiter, (req, res) => {
 });
 
 // Admin interface - photographer uploads photos here
-app.get('/', (req, res) => {
+app.get('/', publicReadLimiter, (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'admin.html'));
 });
 
@@ -374,7 +383,7 @@ app.get('/api/logo', publicReadLimiter, (_req, res) => {
 });
 
 // Replace the logo (admin only)
-app.post('/api/logo', requireAuth, uploadLogo.single('logo'), (req, res) => {
+app.post('/api/logo', adminLimiter, requireAuth, uploadLogo.single('logo'), (req, res) => {
     if (!req.file) {
         return res.status(400).json({ error: 'No file uploaded' });
     }
@@ -391,7 +400,7 @@ app.post('/api/logo', requireAuth, uploadLogo.single('logo'), (req, res) => {
 });
 
 // Reset logo to the bundled default (admin only)
-app.delete('/api/logo', requireAuth, (_req, res) => {
+app.delete('/api/logo', adminLimiter, requireAuth, (_req, res) => {
     for (const ext of LOGO_EXTS) {
         const p = path.join(DATA_DIR, `logo${ext}`);
         if (fs.existsSync(p)) fs.unlinkSync(p);
@@ -467,7 +476,7 @@ app.post('/api/gallery/:galleryId/upload', requireAuth, validateGalleryId, uploa
 });
 
 // Upload/replace background image — converts to JPEG via sharp
-app.post('/api/gallery/:galleryId/background', requireAuth, validateGalleryId, uploadBackground.single('background'), async (req, res) => {
+app.post('/api/gallery/:galleryId/background', adminLimiter, requireAuth, validateGalleryId, uploadBackground.single('background'), async (req, res) => {
     const { galleryId } = req.params;
     const gallery = galleries.get(galleryId);
 
@@ -694,7 +703,7 @@ app.get('/download/:galleryId', publicReadLimiter, validateGalleryId, (req, res)
     const baseUrl = `${req.protocol}://${req.get('host')}`;
 
     const ogTags = [
-        `<meta property="og:title" content="${escapeAttr(eventName)}">`,
+        `<meta property="og:title" content="${escapeHtml(eventName)}">`,
         `<meta property="og:description" content="Your photos are ready to download.">`,
         `<meta property="og:image" content="${baseUrl}/api/gallery/${galleryId}/og-image">`,
         `<meta property="og:type" content="website">`,
@@ -719,7 +728,7 @@ app.get('/preview/:galleryId', publicReadLimiter, validateGalleryId, (req, res) 
     const baseUrl = `${req.protocol}://${req.get('host')}`;
 
     const ogTags = [
-        `<meta property="og:title" content="${escapeAttr(eventName)}">`,
+        `<meta property="og:title" content="${escapeHtml(eventName)}">`,
         `<meta property="og:description" content="Browse and download individual photos.">`,
         `<meta property="og:image" content="${baseUrl}/api/gallery/${galleryId}/og-image">`,
         `<meta property="og:type" content="website">`,
@@ -1076,7 +1085,7 @@ app.get('/collection/:collectionId', publicReadLimiter, validateCollectionId, (r
 
     const baseUrl = `${req.protocol}://${req.get('host')}`;
     const ogTags = [
-        `<meta property="og:title" content="${escapeAttr(collection.name)}">`,
+        `<meta property="og:title" content="${escapeHtml(collection.name)}">`,
         `<meta property="og:description" content="Your photo galleries are ready.">`,
         `<meta property="og:type" content="website">`,
         `<meta property="og:url" content="${baseUrl}/collection/${collectionId}">`
@@ -1087,7 +1096,7 @@ app.get('/collection/:collectionId', publicReadLimiter, validateCollectionId, (r
 });
 
 // List all galleries (admin)
-app.get('/api/galleries', requireAuth, (req, res) => {
+app.get('/api/galleries', adminLimiter, requireAuth, (req, res) => {
     const galleryList = [];
     const baseUrl = `${req.protocol}://${req.get('host')}`;
     const uploadsDir = path.join(DATA_DIR, 'uploads');
@@ -1147,7 +1156,7 @@ app.get('/api/galleries', requireAuth, (req, res) => {
 });
 
 // Delete gallery
-app.delete('/api/gallery/:galleryId', requireAuth, validateGalleryId, (req, res) => {
+app.delete('/api/gallery/:galleryId', adminLimiter, requireAuth, validateGalleryId, (req, res) => {
     const { galleryId } = req.params;
 
     // Delete photo uploads

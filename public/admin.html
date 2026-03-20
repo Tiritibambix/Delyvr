@@ -1469,19 +1469,45 @@
                 container.innerHTML = '';
                 return;
             }
-            
-            container.innerHTML = selectedFiles.map((file, i) => `
-                <div class="file-item">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <rect x="3" y="3" width="18" height="18" rx="2"/>
-                        <circle cx="8.5" cy="8.5" r="1.5"/>
-                        <path d="M21 15l-5-5L5 21"/>
-                    </svg>
-                    <span class="file-name">${escapeHtml(file.name)}</span>
-                    <span class="file-size">${formatFileSize(file.size)}</span>
-                    <button class="remove-file" onclick="removeFile(${i})">✕</button>
-                </div>
-            `).join('');
+
+            container.innerHTML = '';
+            selectedFiles.forEach((file, i) => {
+                const item = document.createElement('div');
+                item.className = 'file-item';
+
+                const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+                svg.setAttribute('viewBox', '0 0 24 24');
+                svg.setAttribute('fill', 'none');
+                svg.setAttribute('stroke', 'currentColor');
+                svg.setAttribute('stroke-width', '2');
+                const r = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+                r.setAttribute('x','3'); r.setAttribute('y','3');
+                r.setAttribute('width','18'); r.setAttribute('height','18'); r.setAttribute('rx','2');
+                const c = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+                c.setAttribute('cx','8.5'); c.setAttribute('cy','8.5'); c.setAttribute('r','1.5');
+                const p = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+                p.setAttribute('d','M21 15l-5-5L5 21');
+                svg.appendChild(r); svg.appendChild(c); svg.appendChild(p);
+
+                const nameSpan = document.createElement('span');
+                nameSpan.className = 'file-name';
+                nameSpan.textContent = file.name;
+
+                const sizeSpan = document.createElement('span');
+                sizeSpan.className = 'file-size';
+                sizeSpan.textContent = formatFileSize(file.size);
+
+                const btn = document.createElement('button');
+                btn.className = 'remove-file';
+                btn.textContent = '✕';
+                btn.onclick = () => removeFile(i);
+
+                item.appendChild(svg);
+                item.appendChild(nameSpan);
+                item.appendChild(sizeSpan);
+                item.appendChild(btn);
+                container.appendChild(item);
+            });
         }
 
         // Background/Cover image drop zone
