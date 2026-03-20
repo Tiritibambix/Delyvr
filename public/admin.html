@@ -1331,16 +1331,9 @@
         let selectedBgFile = null;
         let adminPassword = '';
 
-        // Check for saved password — sessionStorage is cleared automatically on tab close
-        // The real protection against interception is HTTPS (see README deployment section)
-        const savedPassword = sessionStorage.getItem('adminPassword');
-        if (savedPassword) {
-            adminPassword = savedPassword;
-            document.getElementById('loginModal').classList.add('hidden');
-            loadGalleries();
-            loadCollections();
-            checkLogoState();
-        }
+        // Password is stored only in memory (adminPassword variable).
+        // Requires re-login on page reload for security.
+        // The primary protection against interception is HTTPS (see README deployment section).
 
         // Handle password input enter key
         document.getElementById('passwordInput').addEventListener('keypress', (e) => {
@@ -1358,7 +1351,8 @@
                 
                 if (res.ok) {
                     adminPassword = password;
-                    sessionStorage.setItem('adminPassword', password);
+                    // Password stored in adminPassword variable only — cleared on tab close
+                    // Not persisting to sessionStorage to avoid storing plaintext credentials
                     document.getElementById('loginModal').classList.add('hidden');
                     loadGalleries();
                     loadCollections();

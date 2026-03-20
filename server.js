@@ -449,7 +449,7 @@ app.post('/api/gallery/create', requireAuth, generateGalleryId, upload.array('ph
         success: true,
         galleryId,
         downloadUrl,
-        fileCount: req.files.length
+        fileCount: Array.isArray(req.files) ? req.files.length : 0
     });
 });
 
@@ -705,9 +705,9 @@ app.get('/download/:galleryId', publicReadLimiter, validateGalleryId, (req, res)
     const ogTags = [
         `<meta property="og:title" content="${escapeHtml(eventName)}">`,
         `<meta property="og:description" content="Your photos are ready to download.">`,
-        `<meta property="og:image" content="${baseUrl}/api/gallery/${galleryId}/og-image">`,
+        `<meta property="og:image" content="${escapeHtml(baseUrl)}/api/gallery/${escapeHtml(galleryId)}/og-image">`,
         `<meta property="og:type" content="website">`,
-        `<meta property="og:url" content="${baseUrl}/download/${galleryId}">`
+        `<meta property="og:url" content="${escapeHtml(baseUrl)}/download/${escapeHtml(galleryId)}">`
     ].join('\n    ');
 
     const html = fs.readFileSync(path.join(__dirname, 'public', 'customer.html'), 'utf8');
@@ -730,9 +730,9 @@ app.get('/preview/:galleryId', publicReadLimiter, validateGalleryId, (req, res) 
     const ogTags = [
         `<meta property="og:title" content="${escapeHtml(eventName)}">`,
         `<meta property="og:description" content="Browse and download individual photos.">`,
-        `<meta property="og:image" content="${baseUrl}/api/gallery/${galleryId}/og-image">`,
+        `<meta property="og:image" content="${escapeHtml(baseUrl)}/api/gallery/${escapeHtml(galleryId)}/og-image">`,
         `<meta property="og:type" content="website">`,
-        `<meta property="og:url" content="${baseUrl}/preview/${galleryId}">`
+        `<meta property="og:url" content="${escapeHtml(baseUrl)}/preview/${escapeHtml(galleryId)}">`
     ].join('\n    ');
 
     const html = fs.readFileSync(path.join(__dirname, 'public', 'preview.html'), 'utf8');
@@ -1088,7 +1088,7 @@ app.get('/collection/:collectionId', publicReadLimiter, validateCollectionId, (r
         `<meta property="og:title" content="${escapeHtml(collection.name)}">`,
         `<meta property="og:description" content="Your photo galleries are ready.">`,
         `<meta property="og:type" content="website">`,
-        `<meta property="og:url" content="${baseUrl}/collection/${collectionId}">`
+        `<meta property="og:url" content="${escapeHtml(baseUrl)}/collection/${escapeHtml(collectionId)}">`
     ].join('\n    ');
 
     const html = fs.readFileSync(path.join(__dirname, 'public', 'collection.html'), 'utf8');
