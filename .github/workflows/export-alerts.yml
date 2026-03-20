@@ -14,11 +14,9 @@ jobs:
       - name: GitHub Security Alert Export
         uses: austenstone/security-export@v1.1
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Upload alerts as artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: security-alerts
-          path: "*.json"
-          retention-days: 1
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          secret-scanning: false
+          dependabot: false
+          code-scanning: true
+          create-artifact: true
+          artifact-name: code-scanning-alerts
