@@ -8,6 +8,7 @@ const { v4: uuidv4 } = require('uuid');
 const archiver = require('archiver');
 const rateLimit = require('express-rate-limit');
 const sharp = require('sharp');
+const escapeHtml = require('escape-html');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -160,21 +161,24 @@ function findLogoFile() {
     return null;
 }
 
-// Escape a string for safe use in HTML attribute values (OG meta tag injection)
-function escapeAttr(str) {
-    return String(str)
-        .replace(/&/g, '&amp;')
-        .replace(/"/g, '&quot;')
-        .replace(/'/g, '&#x27;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;');
+// Safely resolve a path and verify it stays within an allowed base directory.
+// Returns the resolved path, or throws if it would escape the base.
+function safeResolvePath(base, ...segments) {
+    const resolved = path.resolve(base, ...segments);
+    if (!resolved.startsWith(path.resolve(base) + path.sep) && resolved !== path.resolve(base)) {
+        throw new Error('Path traversal attempt detected');
+    }
+    return resolved;
 }
+
+// escapeAttr — kept as alias for escapeHtml for backwards compat in OG tag injection
+const escapeAttr = escapeHtml;
 
 // Generate a 400px-wide JPEG thumbnail for a single photo
 async function generateThumbnail(galleryId, filename) {
-    const src  = path.join(DATA_DIR, 'uploads', galleryId, filename);
-    const dir  = path.join(THUMBNAILS_DIR, galleryId);
-    const dest = path.join(dir, filename + '.jpg');
+    const src  = safeResolvePath(safeResolvePath(path.join(DATA_DIR, 'uploads'), galleryId), filename);
+    const dir  = safeResolvePath(THUMBNAILS_DIR, galleryId);
+    const dest = safeResolvePath(dir, filename + '.jpg');
     if (fs.existsSync(dest)) return;
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
     try {
@@ -193,7 +197,7 @@ async function generateGalleryThumbnails(galleryId, files) {
 const storage = multer.diskStorage({
     destination: (req, file, cb) => {
         const galleryId = req.galleryId || req.params.galleryId;
-        const uploadPath = path.join(DATA_DIR, 'uploads', galleryId);
+        const uploadPath = safeResolvePath(path.join(DATA_DIR, 'uploads'), galleryId);
         if (!fs.existsSync(uploadPath)) {
             fs.mkdirSync(uploadPath, { recursive: true });
         }
@@ -300,6 +304,15 @@ const imageLimiter = rateLimit({
     message: { error: 'Too many image requests, please slow down' }
 });
 
+// Rate limiter for general public GET endpoints — 300 requests per minute per IP
+const publicReadLimiter = rateLimit({
+    windowMs: 60 * 1000,
+    max: 300,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { error: 'Too many requests, please slow down' }
+});
+
 // Rate limiter for public write endpoints (favorites toggle) — 120 per minute per IP
 const publicWriteLimiter = rateLimit({
     windowMs: 60 * 1000,
@@ -347,7 +360,7 @@ const LOGO_CONTENT_TYPES = {
 
 const LOGO_EXTS = ['.svg', '.png', '.jpg', '.jpeg', '.gif', '.webp'];
 
-app.get('/api/logo', (_req, res) => {
+app.get('/api/logo', publicReadLimiter, (_req, res) => {
     const custom = findLogoFile();
     // X-Custom-Logo lets the admin page know whether a custom logo is active
     res.setHeader('X-Custom-Logo', custom ? '1' : '0');
@@ -415,7 +428,7 @@ app.post('/api/gallery/create', requireAuth, generateGalleryId, upload.array('ph
 
     if (gallery) {
         gallery.files = req.files.map(f => f.filename);
-        gallery.eventName = (String(req.body.eventName || 'Untitled Event')).trim().substring(0, 200);
+        gallery.eventName = (String(Array.isArray(req.body.eventName) ? req.body.eventName[0] : (req.body.eventName || 'Untitled Event'))).trim().substring(0, 200);
         saveGalleries();
         generateGalleryThumbnails(galleryId, gallery.files).catch(() => {});
     }
@@ -476,7 +489,7 @@ app.post('/api/gallery/:galleryId/background', requireAuth, validateGalleryId, u
         }
 
         // Invalidate og-cache so it is regenerated with the new image
-        const ogFile = path.join(OG_CACHE_DIR, `${galleryId}.jpg`);
+        const ogFile = safeResolvePath(OG_CACHE_DIR, `${galleryId}.jpg`);
         if (fs.existsSync(ogFile)) fs.unlinkSync(ogFile);
 
         // Convert and save as JPEG
@@ -496,7 +509,7 @@ app.post('/api/gallery/:galleryId/background', requireAuth, validateGalleryId, u
 });
 
 // Serve background image (legacy route — kept for backwards compatibility)
-app.get('/api/background/:galleryId', validateGalleryId, (req, res) => {
+app.get('/api/background/:galleryId', publicReadLimiter, validateGalleryId, (req, res) => {
     const { galleryId } = req.params;
     const backgroundsDir = path.join(DATA_DIR, 'backgrounds');
 
@@ -511,7 +524,7 @@ app.get('/api/background/:galleryId', validateGalleryId, (req, res) => {
 });
 
 // Serve background image (REST-style route used by admin.html and customer.html)
-app.get('/api/gallery/:galleryId/background', validateGalleryId, (req, res) => {
+app.get('/api/gallery/:galleryId/background', publicReadLimiter, validateGalleryId, (req, res) => {
     const { galleryId } = req.params;
     const backgroundsDir = path.join(DATA_DIR, 'backgrounds');
 
@@ -554,16 +567,16 @@ app.post('/api/gallery/:galleryId/rename', requireAuth, validateGalleryId, (req,
         return res.status(404).json({ error: 'Gallery not found' });
     }
 
-    gallery.eventName = (String(req.body.eventName || 'Untitled Event')).trim().substring(0, 200);
+    gallery.eventName = (String(Array.isArray(req.body.eventName) ? req.body.eventName[0] : (req.body.eventName || 'Untitled Event'))).trim().substring(0, 200);
     saveGalleries();
 
     res.json({ success: true, eventName: gallery.eventName });
 });
 
 // List photos in a gallery (used by preview.html)
-app.get('/api/gallery/:galleryId/photos', validateGalleryId, (req, res) => {
+app.get('/api/gallery/:galleryId/photos', publicReadLimiter, validateGalleryId, (req, res) => {
     const { galleryId } = req.params;
-    const galleryPath = path.join(DATA_DIR, 'uploads', galleryId);
+    const galleryPath = safeResolvePath(path.join(DATA_DIR, 'uploads'), galleryId);
 
     if (!fs.existsSync(galleryPath)) {
         return res.status(404).json({ error: 'Gallery not found' });
@@ -593,7 +606,7 @@ app.get('/api/gallery/:galleryId/photo/:filename', imageLimiter, validateGallery
     const { galleryId, filename } = req.params;
 
     if (req.query.thumb === '1') {
-        const thumbPath = path.join(THUMBNAILS_DIR, galleryId, filename + '.jpg');
+        const thumbPath = safeResolvePath(safeResolvePath(THUMBNAILS_DIR, galleryId), filename + '.jpg');
 
         if (!fs.existsSync(thumbPath)) {
             // Generate on-the-fly if missing
@@ -606,7 +619,7 @@ app.get('/api/gallery/:galleryId/photo/:filename', imageLimiter, validateGallery
         // Fall through to original if thumbnail generation failed
     }
 
-    const filePath = path.join(DATA_DIR, 'uploads', galleryId, filename);
+    const filePath = safeResolvePath(safeResolvePath(path.join(DATA_DIR, 'uploads'), galleryId), filename);
     if (!fs.existsSync(filePath)) {
         return res.status(404).send('Photo not found');
     }
@@ -614,7 +627,7 @@ app.get('/api/gallery/:galleryId/photo/:filename', imageLimiter, validateGallery
 });
 
 // Download a single photo as an attachment
-app.get('/api/gallery/:galleryId/download/:filename', validateGalleryId, validateFilename, (req, res) => {
+app.get('/api/gallery/:galleryId/download/:filename', downloadLimiter, validateGalleryId, validateFilename, (req, res) => {
     const { galleryId, filename } = req.params;
 
     const gallery = galleries.get(galleryId);
@@ -622,7 +635,7 @@ app.get('/api/gallery/:galleryId/download/:filename', validateGalleryId, validat
         return res.status(403).json({ error: 'Downloads are disabled for this gallery' });
     }
 
-    const filePath = path.join(DATA_DIR, 'uploads', galleryId, filename);
+    const filePath = safeResolvePath(safeResolvePath(path.join(DATA_DIR, 'uploads'), galleryId), filename);
 
     if (!fs.existsSync(filePath)) {
         return res.status(404).send('Photo not found');
@@ -634,7 +647,7 @@ app.get('/api/gallery/:galleryId/download/:filename', validateGalleryId, validat
 // Serve/generate OG image (1200×630 JPEG, cached)
 app.get('/api/gallery/:galleryId/og-image', imageLimiter, validateGalleryId, async (req, res) => {
     const { galleryId } = req.params;
-    const cacheFile = path.join(OG_CACHE_DIR, `${galleryId}.jpg`);
+    const cacheFile = safeResolvePath(OG_CACHE_DIR, `${galleryId}.jpg`);
 
     if (fs.existsSync(cacheFile)) {
         return res.sendFile(cacheFile);
@@ -649,7 +662,7 @@ app.get('/api/gallery/:galleryId/og-image', imageLimiter, validateGalleryId, asy
     }
 
     if (!sourceFile) {
-        const galleryPath = path.join(DATA_DIR, 'uploads', galleryId);
+        const galleryPath = safeResolvePath(path.join(DATA_DIR, 'uploads'), galleryId);
         if (!fs.existsSync(galleryPath)) return res.status(404).send('Gallery not found');
         const files = fs.readdirSync(galleryPath).filter(f => !f.startsWith('.'));
         if (files.length === 0) return res.status(404).send('No photos');
@@ -668,9 +681,9 @@ app.get('/api/gallery/:galleryId/og-image', imageLimiter, validateGalleryId, asy
 });
 
 // Customer download page — serves HTML with OG meta tags injected
-app.get('/download/:galleryId', validateGalleryId, (req, res) => {
+app.get('/download/:galleryId', publicReadLimiter, validateGalleryId, (req, res) => {
     const { galleryId } = req.params;
-    const galleryPath = path.join(DATA_DIR, 'uploads', galleryId);
+    const galleryPath = safeResolvePath(path.join(DATA_DIR, 'uploads'), galleryId);
 
     if (!fs.existsSync(galleryPath)) {
         return res.status(404).send('Gallery not found');
@@ -693,9 +706,9 @@ app.get('/download/:galleryId', validateGalleryId, (req, res) => {
 });
 
 // Preview page — serves HTML with OG meta tags injected
-app.get('/preview/:galleryId', validateGalleryId, (req, res) => {
+app.get('/preview/:galleryId', publicReadLimiter, validateGalleryId, (req, res) => {
     const { galleryId } = req.params;
-    const galleryPath = path.join(DATA_DIR, 'uploads', galleryId);
+    const galleryPath = safeResolvePath(path.join(DATA_DIR, 'uploads'), galleryId);
 
     if (!fs.existsSync(galleryPath)) {
         return res.status(404).send('Gallery not found');
@@ -718,7 +731,7 @@ app.get('/preview/:galleryId', validateGalleryId, (req, res) => {
 });
 
 // Get gallery info (for customer and preview pages)
-app.get('/api/gallery/:galleryId/info', validateGalleryId, (req, res) => {
+app.get('/api/gallery/:galleryId/info', publicReadLimiter, validateGalleryId, (req, res) => {
     const { galleryId } = req.params;
 
     const backgroundsDir = path.join(DATA_DIR, 'backgrounds');
@@ -727,7 +740,7 @@ app.get('/api/gallery/:galleryId/info', validateGalleryId, (req, res) => {
         backgroundFile = fs.readdirSync(backgroundsDir).find(f => f.startsWith(galleryId)) || null;
     }
 
-    const galleryPath = path.join(DATA_DIR, 'uploads', galleryId);
+    const galleryPath = safeResolvePath(path.join(DATA_DIR, 'uploads'), galleryId);
     let fileCount = 0;
     if (fs.existsSync(galleryPath)) {
         fileCount = fs.readdirSync(galleryPath).filter(f => !f.startsWith('.')).length;
@@ -748,7 +761,7 @@ app.get('/api/gallery/:galleryId/info', validateGalleryId, (req, res) => {
 // Download all photos as ZIP
 app.get('/api/gallery/:galleryId/download', downloadLimiter, validateGalleryId, (req, res) => {
     const { galleryId } = req.params;
-    const galleryPath = path.join(DATA_DIR, 'uploads', galleryId);
+    const galleryPath = safeResolvePath(path.join(DATA_DIR, 'uploads'), galleryId);
 
     if (!fs.existsSync(galleryPath)) {
         return res.status(404).json({ error: 'Gallery not found' });
@@ -822,7 +835,7 @@ app.post('/api/gallery/:galleryId/favorites', publicWriteLimiter, validateGaller
 });
 
 // Get favorites for this visitor (public — used by preview page on load)
-app.get('/api/gallery/:galleryId/favorites-public', validateGalleryId, (req, res) => {
+app.get('/api/gallery/:galleryId/favorites-public', publicReadLimiter, validateGalleryId, (req, res) => {
     const { galleryId } = req.params;
     const { visitorId } = req.query;
     const gallery = galleries.get(galleryId);
@@ -905,7 +918,7 @@ app.get('/api/collections', requireAuth, (req, res) => {
 });
 
 // Get collection info (public — used by collection page)
-app.get('/api/collection/:collectionId', validateCollectionId, (req, res) => {
+app.get('/api/collection/:collectionId', publicReadLimiter, validateCollectionId, (req, res) => {
     const { collectionId } = req.params;
     const collection = collections.get(collectionId);
     if (!collection) return res.status(404).json({ error: 'Collection not found' });
@@ -946,7 +959,7 @@ app.post('/api/collection/:collectionId/rename', requireAuth, validateCollection
     const { collectionId } = req.params;
     const collection = collections.get(collectionId);
     if (!collection) return res.status(404).json({ error: 'Collection not found' });
-    collection.name = (String(req.body.name || 'Untitled Collection')).trim().substring(0, 200);
+    collection.name = (String(Array.isArray(req.body.name) ? req.body.name[0] : (req.body.name || 'Untitled Collection'))).trim().substring(0, 200);
     saveCollections();
     res.json({ success: true, name: collection.name });
 });
@@ -1029,7 +1042,7 @@ app.get('/api/collection/:collectionId/download', downloadLimiter, validateColle
 
     for (const galleryId of collection.galleryIds) {
         const gallery = galleries.get(galleryId);
-        const galleryPath = path.join(DATA_DIR, 'uploads', galleryId);
+        const galleryPath = safeResolvePath(path.join(DATA_DIR, 'uploads'), galleryId);
         if (!fs.existsSync(galleryPath)) continue;
 
         const folderName = (gallery ? gallery.eventName : galleryId)
@@ -1056,7 +1069,7 @@ app.delete('/api/collection/:collectionId', requireAuth, validateCollectionId, (
 });
 
 // Collection page — serves HTML with OG meta tags injected
-app.get('/collection/:collectionId', validateCollectionId, (req, res) => {
+app.get('/collection/:collectionId', publicReadLimiter, validateCollectionId, (req, res) => {
     const { collectionId } = req.params;
     const collection = collections.get(collectionId);
     if (!collection) return res.status(404).send('Collection not found');
@@ -1138,7 +1151,7 @@ app.delete('/api/gallery/:galleryId', requireAuth, validateGalleryId, (req, res)
     const { galleryId } = req.params;
 
     // Delete photo uploads
-    const galleryPath = path.join(DATA_DIR, 'uploads', galleryId);
+    const galleryPath = safeResolvePath(path.join(DATA_DIR, 'uploads'), galleryId);
     if (fs.existsSync(galleryPath)) {
         fs.rmSync(galleryPath, { recursive: true });
     }
@@ -1151,10 +1164,10 @@ app.delete('/api/gallery/:galleryId', requireAuth, validateGalleryId, (req, res)
     }
 
     // Delete thumbnails
-    fs.rmSync(path.join(THUMBNAILS_DIR, galleryId), { recursive: true, force: true });
+    fs.rmSync(safeResolvePath(THUMBNAILS_DIR, galleryId), { recursive: true, force: true });
 
     // Delete og-cache
-    const ogFile = path.join(OG_CACHE_DIR, `${galleryId}.jpg`);
+    const ogFile = safeResolvePath(OG_CACHE_DIR, `${galleryId}.jpg`);
     if (fs.existsSync(ogFile)) fs.unlinkSync(ogFile);
 
     galleries.delete(galleryId);
@@ -1184,5 +1197,5 @@ app.use((err, req, res, next) => {
 });
 
 app.listen(PORT, () => {
-    console.log(`\n📸 Delyvr is running on port ${PORT}\n`);
+    console.log(`\n📸 MeTransfer is running on port ${PORT}\n`);
 });

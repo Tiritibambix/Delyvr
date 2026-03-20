@@ -867,7 +867,6 @@
 
                 const favFill = isFav ? 'white' : 'none';
                 const favClass = isFav ? 'favorited' : '';
-                const safeFilename = photo.filename.replace(/'/g, "\\'");
                 const downloadBtn = downloadsEnabled ? `
                         <a class="photo-download" href="/api/gallery/${galleryId}/download/${encodeURIComponent(photo.filename)}" onclick="event.stopPropagation();" download>
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -877,16 +876,25 @@
 
                 card.innerHTML = `
                     <div class="loading"></div>
-                    <img data-src="${photo.thumbnailUrl}" alt="${photo.filename}">
+                    <img data-src="${photo.thumbnailUrl}" alt="">
                     <div class="photo-overlay">
-                        <span class="photo-name">${photo.filename}</span>
-                        <button class="photo-favorite ${favClass}" data-filename="${photo.filename}" onclick="event.stopPropagation(); toggleFavorite('${safeFilename}')">
+                        <span class="photo-name"></span>
+                        <button class="photo-favorite ${favClass}" data-filename="" data-index="${index}">
                             <svg viewBox="0 0 24 24" fill="${favFill}" stroke="currentColor" stroke-width="2">
                                 <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" stroke-linecap="round" stroke-linejoin="round"/>
                             </svg>
                         </button>
                         ${downloadBtn}
                     </div>`;
+
+                // Set text content safely via DOM (never via innerHTML)
+                card.querySelector('.photo-name').textContent = photo.filename;
+                const favBtn = card.querySelector('.photo-favorite');
+                favBtn.dataset.filename = photo.filename;
+                favBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    toggleFavorite(favBtn.dataset.filename);
+                });
 
                 const img = card.querySelector('img');
                 img.onload = function() {
