@@ -1184,5 +1184,5 @@ app.use((err, req, res, next) => {
 });
 
 app.listen(PORT, () => {
-    console.log(`\n📸 MeTransfer is running on port ${PORT}\n`);
+    console.log(`\n📸 Delyvr is running on port ${PORT}\n`);
 });
