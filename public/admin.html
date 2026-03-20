@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Delyvr - Dashboard</title>
+    <title>MeTransfer — Dashboard</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=Fraunces:wght@400;600&display=swap" rel="stylesheet">
@@ -1331,7 +1331,8 @@
         let selectedBgFile = null;
         let adminPassword = '';
 
-        // Check for saved password
+        // Check for saved password — sessionStorage is cleared automatically on tab close
+        // The real protection against interception is HTTPS (see README deployment section)
         const savedPassword = sessionStorage.getItem('adminPassword');
         if (savedPassword) {
             adminPassword = savedPassword;
@@ -1476,7 +1477,7 @@
                         <circle cx="8.5" cy="8.5" r="1.5"/>
                         <path d="M21 15l-5-5L5 21"/>
                     </svg>
-                    <span class="file-name">${file.name}</span>
+                    <span class="file-name">${escapeHtml(file.name)}</span>
                     <span class="file-size">${formatFileSize(file.size)}</span>
                     <button class="remove-file" onclick="removeFile(${i})">✕</button>
                 </div>

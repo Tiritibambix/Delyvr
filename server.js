@@ -271,9 +271,9 @@ function validateFilename(req, res, next) {
     next();
 }
 
-// Simple password authentication middleware
+// Simple password authentication middleware — header only, never query param
 function requireAuth(req, res, next) {
-    const password = req.headers['x-admin-password'] || req.query.password;
+    const password = req.headers['x-admin-password'];
     if (password === ADMIN_PASSWORD) {
         next();
     } else {
@@ -298,6 +298,24 @@ const imageLimiter = rateLimit({
     standardHeaders: true,
     legacyHeaders: false,
     message: { error: 'Too many image requests, please slow down' }
+});
+
+// Rate limiter for public write endpoints (favorites toggle) — 120 per minute per IP
+const publicWriteLimiter = rateLimit({
+    windowMs: 60 * 1000,
+    max: 120,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { error: 'Too many requests, please slow down' }
+});
+
+// Rate limiter for ZIP downloads — 10 per minute per IP (CPU + bandwidth intensive)
+const downloadLimiter = rateLimit({
+    windowMs: 60 * 1000,
+    max: 10,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { error: 'Too many download requests, please slow down' }
 });
 
 // --- Routes ---
@@ -516,8 +534,8 @@ app.patch('/api/gallery/:galleryId/downloads', requireAuth, validateGalleryId, (
         return res.status(404).json({ error: 'Gallery not found' });
     }
 
-    const { enabled } = req.body;
-    if (typeof enabled !== 'boolean') {
+    const enabled = req.body.enabled;
+    if (enabled !== true && enabled !== false) {
         return res.status(400).json({ error: 'enabled must be a boolean' });
     }
 
@@ -728,7 +746,7 @@ app.get('/api/gallery/:galleryId/info', validateGalleryId, (req, res) => {
 });
 
 // Download all photos as ZIP
-app.get('/api/gallery/:galleryId/download', validateGalleryId, (req, res) => {
+app.get('/api/gallery/:galleryId/download', downloadLimiter, validateGalleryId, (req, res) => {
     const { galleryId } = req.params;
     const galleryPath = path.join(DATA_DIR, 'uploads', galleryId);
 
@@ -765,14 +783,14 @@ app.get('/api/gallery/:galleryId/download', validateGalleryId, (req, res) => {
 });
 
 // Toggle favorite for a photo (public, no auth) — per visitor
-app.post('/api/gallery/:galleryId/favorites', validateGalleryId, (req, res) => {
+app.post('/api/gallery/:galleryId/favorites', publicWriteLimiter, validateGalleryId, (req, res) => {
     const { galleryId } = req.params;
     const { filename, visitorId } = req.body;
 
-    if (!filename || !SAFE_FILENAME_RE.test(filename)) {
+    if (typeof filename !== 'string' || !SAFE_FILENAME_RE.test(filename)) {
         return res.status(400).json({ error: 'Invalid filename' });
     }
-    if (!visitorId || typeof visitorId !== 'string' || visitorId.length > 64) {
+    if (typeof visitorId !== 'string' || visitorId.length < 4 || visitorId.length > 64 || !/^[a-zA-Z0-9_-]+$/.test(visitorId)) {
         return res.status(400).json({ error: 'Invalid visitorId' });
     }
 
@@ -854,7 +872,11 @@ function validateCollectionId(req, res, next) {
 
 // Create a new collection (admin only)
 app.post('/api/collection/create', requireAuth, (req, res) => {
-    const name = (String(req.body.name || 'Untitled Collection')).trim().substring(0, 200);
+    const rawName = req.body.name;
+    if (typeof rawName !== 'string' && rawName !== undefined) {
+        return res.status(400).json({ error: 'name must be a string' });
+    }
+    const name = (String(rawName || 'Untitled Collection')).trim().substring(0, 200);
     const id = uuidv4();
     collections.set(id, {
         id,
@@ -934,7 +956,7 @@ app.post('/api/collection/:collectionId/galleries', requireAuth, validateCollect
     const { collectionId } = req.params;
     const { galleryId } = req.body;
 
-    if (!UUID_V4_REGEX.test(galleryId)) {
+    if (typeof galleryId !== 'string' || !UUID_V4_REGEX.test(galleryId)) {
         return res.status(400).json({ error: 'Invalid gallery ID' });
     }
 
@@ -988,7 +1010,7 @@ app.delete('/api/collection/:collectionId/galleries/:galleryId', requireAuth, va
 });
 
 // Download all photos in a collection as a ZIP (one sub-folder per gallery)
-app.get('/api/collection/:collectionId/download', validateCollectionId, (req, res) => {
+app.get('/api/collection/:collectionId/download', downloadLimiter, validateCollectionId, (req, res) => {
     const { collectionId } = req.params;
     const collection = collections.get(collectionId);
     if (!collection) return res.status(404).json({ error: 'Collection not found' });
@@ -1162,5 +1184,5 @@ app.use((err, req, res, next) => {
 });
 
 app.listen(PORT, () => {
-    console.log(`\n📸 Delyvr is running on port ${PORT}\n`);
+    console.log(`\n📸 MeTransfer is running on port ${PORT}\n`);
 });

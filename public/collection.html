@@ -366,6 +366,12 @@
 
         const collectionId = window.location.pathname.split('/').pop();
 
+        function escapeHtml(str) {
+            const d = document.createElement('div');
+            d.textContent = String(str);
+            return d.innerHTML;
+        }
+
         function downloadAll() {
             window.location.href = `/api/collection/${collectionId}/download`;
         }
@@ -429,10 +435,10 @@
 
                     card.innerHTML = `
                         <a class="gallery-card-cover" href="/preview/${gallery.id}">
-                            ${gallery.background ? `<img data-src="${gallery.background}" alt="${gallery.eventName}">` : ''}
+                            ${gallery.background ? `<img data-src="${escapeHtml(gallery.background)}" alt="${escapeHtml(gallery.eventName)}">` : ''}
                         </a>
                         <div class="gallery-card-body">
-                            <div class="gallery-card-name">${gallery.eventName}</div>
+                            <div class="gallery-card-name">${escapeHtml(gallery.eventName)}</div>
                             <div class="gallery-card-meta">${gallery.fileCount} ${photoWord}</div>
                             <div class="gallery-card-actions">
                                 <button class="btn-copy-link" onclick="copyGalleryLink('${gallery.id}', this)">
