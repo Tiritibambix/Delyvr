@@ -1,6 +1,6 @@
 services:
   delyvr:
-    image: andrepadua/delyvr:latest
+    image: tiritibambix/delyvr:main-latest
     restart: unless-stopped
     ports:
       - "${PORT:-3000}:3000"
