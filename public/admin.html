@@ -27,6 +27,19 @@
             --error: #ff453a;
         }
 
+        html.light {
+            --bg-primary: #fafafa;
+            --bg-secondary: #ffffff;
+            --bg-tertiary: #f0f0f2;
+            --text-primary: #1a1a1c;
+            --text-secondary: #6e6e73;
+            --accent: #b8922e;
+            --accent-hover: #c9a962;
+            --border: #d1d1d6;
+            --success: #28a745;
+            --error: #dc3545;
+        }
+
         body {
             font-family: 'Instrument Sans', -apple-system, BlinkMacSystemFont, sans-serif;
             background: var(--bg-primary);
@@ -46,6 +59,27 @@
             margin-bottom: 48px;
             padding-bottom: 32px;
             border-bottom: 1px solid var(--border);
+            position: relative;
+        }
+
+        .theme-toggle {
+            position: absolute;
+            top: 0;
+            right: 0;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            color: var(--text-secondary);
+            border-radius: 8px;
+            padding: 6px 12px;
+            font-size: 0.8rem;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-family: inherit;
+        }
+
+        .theme-toggle:hover {
+            border-color: var(--accent);
+            color: var(--accent);
         }
 
         h1 {
@@ -65,11 +99,8 @@
 
         .logo-wrap img {
             display: block;
-            max-width: 360px;
-            max-height: 108px;
+            height: 128px;
             width: auto;
-            height: auto;
-            object-fit: contain;
         }
 
         .logo-wrap .logo-hint {
@@ -962,8 +993,50 @@
         .collection-item {
             background: var(--bg-tertiary);
             border-radius: 12px;
-            padding: 20px;
+            overflow: hidden;
             margin-bottom: 12px;
+        }
+
+        .collection-cover {
+            width: 100%;
+            height: 100px;
+            background: var(--bg-secondary);
+            position: relative;
+            cursor: pointer;
+            border-bottom: 1px solid var(--border);
+            overflow: hidden;
+        }
+
+        .collection-cover img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            display: block;
+        }
+
+        .collection-cover-placeholder {
+            position: absolute;
+            inset: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--text-secondary);
+            font-size: 0.75rem;
+            gap: 6px;
+        }
+
+        .collection-cover.has-image .collection-cover-placeholder {
+            background: rgba(0,0,0,0.5);
+            opacity: 0;
+            transition: opacity 0.2s;
+        }
+
+        .collection-cover.has-image:hover .collection-cover-placeholder {
+            opacity: 1;
+        }
+
+        .collection-body {
+            padding: 16px 20px 20px;
         }
 
         .collection-header {
@@ -1232,6 +1305,7 @@
 
     <div class="container">
         <header>
+            <button class="theme-toggle" id="themeToggleBtn" onclick="toggleTheme()">☀️ Light mode</button>
             <div class="logo-wrap" onclick="document.getElementById('logoInput').click()" title="Click to change logo">
                 <img src="/api/logo" alt="Logo" id="adminLogo">
                 <span class="logo-hint">Change logo</span>
@@ -1330,6 +1404,20 @@
     </div>
 
     <script>
+        // Apply site theme from server settings
+        async function applyTheme() {
+            try {
+                const res = await fetch('/api/settings');
+                if (res.ok) {
+                    const s = await res.json();
+                    document.documentElement.classList.toggle('light', s.theme === 'light');
+                    const btn = document.getElementById('themeToggleBtn');
+                    if (btn) btn.textContent = s.theme === 'light' ? '🌙 Dark mode' : '☀️ Light mode';
+                }
+            } catch (e) {}
+        }
+        applyTheme();
+
         let selectedFiles = [];
         let selectedBgFile = null;
         let adminPassword = '';
@@ -1625,6 +1713,44 @@
             document.getElementById('progressFill').style.width = '0%';
             document.getElementById('resultSection').classList.remove('visible');
             document.getElementById('uploadSection').style.display = 'block';
+        }
+
+        async function toggleTheme() {
+            const isLight = document.documentElement.classList.contains('light');
+            const newTheme = isLight ? 'dark' : 'light';
+            try {
+                const res = await fetch('/api/settings/theme', {
+                    method: 'PATCH',
+                    headers: { 'X-Admin-Password': adminPassword, 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ theme: newTheme })
+                });
+                if (res.ok) {
+                    document.documentElement.classList.toggle('light', newTheme === 'light');
+                    const btn = document.getElementById('themeToggleBtn');
+                    if (btn) btn.textContent = newTheme === 'light' ? '🌙 Dark mode' : '☀️ Light mode';
+                }
+            } catch (err) {
+                console.error('Could not update theme:', err);
+            }
+        }
+
+        async function uploadCollectionBackground(collectionId, file) {
+            const formData = new FormData();
+            formData.append('background', file);
+            try {
+                const res = await fetch(`/api/collection/${collectionId}/background`, {
+                    method: 'POST',
+                    headers: { 'X-Admin-Password': adminPassword },
+                    body: formData
+                });
+                if (res.ok) {
+                    loadCollections();
+                } else {
+                    alert('Could not upload collection cover.');
+                }
+            } catch (err) {
+                alert('Could not upload collection cover: ' + err.message);
+            }
         }
 
         async function checkLogoState() {
@@ -2062,6 +2188,21 @@
                     }).join('');
 
                 return `<div class="collection-item">
+                    <div class="collection-cover ${c.hasBackground ? 'has-image' : ''}"
+                         onclick="document.getElementById('col-cover-input-${c.id}').click()">
+                        ${c.hasBackground ? `<img src="/api/collection/${c.id}/background?t=${Date.now()}" alt="Cover">` : ''}
+                        <div class="collection-cover-placeholder">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="width:16px;height:16px;opacity:0.5">
+                                <rect x="3" y="3" width="18" height="18" rx="2"/>
+                                <circle cx="8.5" cy="8.5" r="1.5"/>
+                                <path d="M21 15l-5-5L5 21"/>
+                            </svg>
+                            ${c.hasBackground ? 'Change cover' : 'Add cover'}
+                        </div>
+                        <input type="file" id="col-cover-input-${c.id}" accept="image/*" style="display:none"
+                               onchange="uploadCollectionBackground('${c.id}', this.files[0])">
+                    </div>
+                    <div class="collection-body">
                     <div class="collection-header">
                         <div class="collection-name" onclick="startEditCollectionName('${c.id}', this)" title="Click to rename">${escapeHtml(c.name)}</div>
                         <div class="collection-meta">${c.galleryIds.length} ${c.galleryIds.length === 1 ? 'gallery' : 'galleries'}</div>
@@ -2076,6 +2217,7 @@
                          ondragleave="handleColDragLeave(event, '${c.id}')"
                          ondrop="handleColDrop(event, '${c.id}')">
                         ${pillsHtml}
+                    </div>
                     </div>
                 </div>`;
             }).join('');

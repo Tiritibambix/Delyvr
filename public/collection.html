@@ -21,6 +21,17 @@
             --border: #2d2d30;
         }
 
+        html.light {
+            --bg-primary: #fafafa;
+            --bg-secondary: #ffffff;
+            --bg-tertiary: #f0f0f2;
+            --text-primary: #1a1a1c;
+            --text-secondary: #6e6e73;
+            --accent: #b8922e;
+            --accent-hover: #c9a962;
+            --border: #d1d1d6;
+        }
+
         body {
             font-family: 'Instrument Sans', -apple-system, BlinkMacSystemFont, sans-serif;
             background: var(--bg-primary);
@@ -33,6 +44,24 @@
             text-align: center;
             padding: 64px 24px 48px;
             border-bottom: 1px solid var(--border);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .header-bg {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            opacity: 0.18;
+            z-index: 0;
+            pointer-events: none;
+        }
+
+        .header > *:not(.header-bg) {
+            position: relative;
+            z-index: 1;
         }
 
         .logo {
@@ -256,6 +285,7 @@
 
     <div id="mainContent" style="display:none;">
         <div class="header">
+            <img class="header-bg" id="headerBg" style="display:none" alt="">
             <img src="/api/logo" alt="Logo" class="logo">
             <h1 id="collectionTitle"></h1>
             <p class="header-meta" id="headerMeta"></p>
@@ -364,6 +394,19 @@
         document.getElementById('notFoundText').textContent = t.notFoundText;
         document.getElementById('downloadAllText').textContent = t.downloadAll;
 
+
+        // Apply site theme from server settings
+        async function applyTheme() {
+            try {
+                const res = await fetch('/api/settings');
+                if (res.ok) {
+                    const s = await res.json();
+                    document.documentElement.classList.toggle('light', s.theme === 'light');
+                }
+            } catch (e) {}
+        }
+        applyTheme();
+
         const collectionId = window.location.pathname.split('/').pop();
 
         function escapeHtml(str) {
@@ -406,6 +449,12 @@
                 document.title = data.name;
                 document.getElementById('collectionTitle').textContent = data.name;
 
+                if (data.background) {
+                    const bg = document.getElementById('headerBg');
+                    bg.src = data.background;
+                    bg.style.display = 'block';
+                }
+
                 const count = data.galleries.length;
                 const galleryWord = count === 1 ? t.gallery : t.galleries;
                 document.getElementById('headerMeta').textContent = `${count} ${galleryWord}`;
@@ -434,7 +483,7 @@
                         : '';
 
                     card.innerHTML = `
-                        <a class="gallery-card-cover" href="/preview/${gallery.id}?from=${collectionId}">
+                        <a class="gallery-card-cover" href="/preview/${gallery.id}">
                             ${gallery.background ? `<img data-src="${escapeHtml(gallery.background)}" alt="${escapeHtml(gallery.eventName)}">` : ''}
                         </a>
                         <div class="gallery-card-body">

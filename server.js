@@ -96,6 +96,24 @@ function saveCollections() {
     fs.writeFileSync(COLLECTIONS_FILE, JSON.stringify(data, null, 2));
 }
 
+// Settings — theme and other site-wide preferences
+const SETTINGS_FILE = path.join(DATA_DIR, 'settings.json');
+let siteSettings = { theme: 'dark' };
+
+function loadSettings() {
+    if (fs.existsSync(SETTINGS_FILE)) {
+        try {
+            siteSettings = { ...siteSettings, ...JSON.parse(fs.readFileSync(SETTINGS_FILE, 'utf8')) };
+        } catch (err) {
+            console.error('Error loading settings:', err);
+        }
+    }
+}
+
+function saveSettings() {
+    fs.writeFileSync(SETTINGS_FILE, JSON.stringify(siteSettings, null, 2));
+}
+
 // Reconcile galleries.json with the uploads directory on disk.
 // Runs once on startup to handle two cases:
 //   1. Entry in JSON but no uploads folder → remove the stale entry
@@ -137,6 +155,7 @@ function reconcileGalleries() {
 loadGalleries();
 reconcileGalleries();
 loadCollections();
+loadSettings();
 
 // Ensure directories exist
 ['uploads', 'backgrounds', 'thumbnails', 'og-cache'].forEach(dir => {
@@ -914,6 +933,10 @@ app.post('/api/collection/create', requireAuth, (req, res) => {
 // List all collections (admin only)
 app.get('/api/collections', requireAuth, (req, res) => {
     const baseUrl = `${req.protocol}://${req.get('host')}`;
+    const backgroundsDir = path.join(DATA_DIR, 'backgrounds');
+    const bgFiles = fs.existsSync(backgroundsDir)
+        ? new Set(fs.readdirSync(backgroundsDir))
+        : new Set();
     const list = Array.from(collections.values())
         .sort((a, b) => new Date(b.created) - new Date(a.created))
         .map(c => ({
@@ -921,6 +944,7 @@ app.get('/api/collections', requireAuth, (req, res) => {
             name: c.name,
             created: c.created,
             galleryIds: c.galleryIds,
+            hasBackground: [...bgFiles].some(f => f.startsWith(`collection-${c.id}`)),
             collectionUrl: `${baseUrl}/collection/${c.id}`
         }));
     res.json(list);
@@ -956,9 +980,12 @@ app.get('/api/collection/:collectionId', publicReadLimiter, validateCollectionId
         })
         .filter(Boolean);
 
+    const hasCollectionBackground = [...bgFiles].some(f => f.startsWith(`collection-${collectionId}`));
+
     res.json({
         id: collectionId,
         name: collection.name,
+        background: hasCollectionBackground ? `/api/collection/${collectionId}/background` : null,
         galleries: galleriesData
     });
 });
@@ -1145,8 +1172,7 @@ app.get('/api/galleries', adminLimiter, requireAuth, (req, res) => {
                     hasBackground,
                     downloadUrl: `${baseUrl}/download/${galleryId}`,
                     favoritesCount: Object.keys(gallery.favorites || {}).length,
-                    collectionId,
-                    downloadsEnabled: gallery.downloadsEnabled !== false
+                    collectionId
                 });
             }
         });
@@ -1193,6 +1219,65 @@ app.delete('/api/gallery/:galleryId', adminLimiter, requireAuth, validateGallery
     if (collectionChanged) saveCollections();
 
     res.json({ success: true });
+});
+
+// --- Settings routes ---
+
+// Get site settings (public — used by all pages to apply theme)
+app.get('/api/settings', publicReadLimiter, (req, res) => {
+    res.json(siteSettings);
+});
+
+// Update theme (admin only)
+app.patch('/api/settings/theme', adminLimiter, requireAuth, (req, res) => {
+    const { theme } = req.body;
+    if (theme !== 'dark' && theme !== 'light') {
+        return res.status(400).json({ error: 'theme must be "dark" or "light"' });
+    }
+    siteSettings.theme = theme;
+    saveSettings();
+    res.json({ success: true, theme: siteSettings.theme });
+});
+
+// --- Collection background routes ---
+
+// Upload/replace collection background image
+app.post('/api/collection/:collectionId/background', adminLimiter, requireAuth, validateCollectionId, uploadBackground.single('background'), async (req, res) => {
+    const { collectionId } = req.params;
+    const collection = collections.get(collectionId);
+    if (!collection) return res.status(404).json({ error: 'Collection not found' });
+    if (!req.file) return res.status(400).json({ error: 'No background file provided' });
+
+    try {
+        const backgroundsDir = path.join(DATA_DIR, 'backgrounds');
+        const existing = fs.existsSync(backgroundsDir)
+            ? fs.readdirSync(backgroundsDir).find(f => f.startsWith(`collection-${collectionId}`))
+            : null;
+        if (existing) fs.unlinkSync(path.join(backgroundsDir, existing));
+
+        const dest = path.join(backgroundsDir, `collection-${collectionId}.jpg`);
+        await sharp(req.file.buffer)
+            .resize(2400, null, { withoutEnlargement: true })
+            .jpeg({ quality: 85 })
+            .toFile(dest);
+
+        collection.background = `collection-${collectionId}.jpg`;
+        saveCollections();
+        res.json({ success: true, background: collection.background });
+    } catch (err) {
+        res.status(500).json({ error: 'Failed to process background image' });
+    }
+});
+
+// Serve collection background image
+app.get('/api/collection/:collectionId/background', publicReadLimiter, validateCollectionId, (req, res) => {
+    const { collectionId } = req.params;
+    const backgroundsDir = path.join(DATA_DIR, 'backgrounds');
+    if (fs.existsSync(backgroundsDir)) {
+        const bgFile = fs.readdirSync(backgroundsDir).find(f => f.startsWith(`collection-${collectionId}`));
+        if (bgFile) return res.sendFile(path.join(backgroundsDir, bgFile));
+    }
+    res.status(404).send('Background not found');
 });
 
 // Error handling — never expose internal details (file paths, stack traces) to the client
