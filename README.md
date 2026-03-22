@@ -19,7 +19,10 @@ A self-hosted photo delivery platform for photographers. Upload photos, share a 
 - **ZIP Downloads** - all photos packaged into a single named download
 - **Download Toggle** - enable or disable downloads per gallery from the dashboard; useful for draft galleries or contact sheets
 - **Client Favorites** - clients can heart photos from the grid or the lightbox; each visitor is tracked anonymously so multiple people can vote independently; the admin sees vote counts per photo sorted from most to least voted, with a reset option
-- **Collections** - group multiple galleries under a single shareable link (e.g. one collection per wedding, one gallery per key moment). Clients can browse and download each gallery individually or download the entire collection as a single ZIP with one sub-folder per gallery
+- **Collections** - group multiple galleries under a single shareable link (e.g. one collection per wedding, one gallery per key moment). Each collection can have its own cover image. Clients can browse and download each gallery individually or download the entire collection as a single ZIP with one sub-folder per gallery
+- **Back to Collection** - when a client opens a gallery from a collection page, a back button appears in the navigation bar. Clients who received a direct gallery link see nothing — the collection stays private
+- **Gallery Grid View** - the admin dashboard displays galleries as a visual card grid with 16/9 cover images, making it easy to distinguish galleries with the same name across different events
+- **Light / Dark Mode** - toggle between light and dark theme from the admin dashboard; the choice applies site-wide to all visitors immediately and persists across restarts
 - **Right-Click Protection** - browser context menu is disabled on images across all client pages to prevent casual saving
 - **Gallery Management** - rename galleries inline, set cover images, copy links, delete from the dashboard
 - **Custom Logo** - upload your own logo from the dashboard; shown on both admin and client pages; revert to default anytime
@@ -115,31 +118,43 @@ All settings live in your `docker-compose.yml` environment block (or in a `.env`
 6. **Create Gallery** - click "Create Gallery & Get Link"
 7. **Share** - copy the generated link and send it to your client
 
+### Gallery grid view
+
+The admin dashboard displays galleries as a card grid rather than a flat list. Each card shows a 16/9 cover image, making it easy to visually distinguish galleries that share the same name across different events — for example two "Getting Ready" galleries from two different weddings.
+
+Galleries remain draggable: drag a card into a collection drop zone to assign it.
+
 ### Collections
 
 Collections group multiple galleries under a single shareable link. The typical use case is one collection per wedding, with one gallery per key moment (getting ready, ceremony, cocktail, dinner...).
 
 **Creating a collection:**
 1. In the Collections section of the dashboard, type a name and click **+ New Collection**
-2. Drag gallery items from the gallery list into the collection's drop zone
-3. Drag pills within the collection to reorder galleries in chronological order
-4. Copy the collection link and share it with your client
+2. Optionally add a cover image by clicking or dropping a photo onto the collection cover zone
+3. Drag gallery cards from the gallery grid into the collection's drop zone
+4. Drag pills within the collection to reorder galleries in chronological order
+5. Copy the collection link and share it with your client
 
 **What the client sees on the collection page:**
+- The collection cover image as a subtle hero background behind the header (if set)
 - All galleries as cards with cover image, name, and photo count
-- Clicking a cover browses the gallery
+- Clicking a cover browses the gallery, with a **← Back to collection** button in the navigation bar
 - A **Copy Link** button per gallery to share individual galleries
 - A **Download** button per gallery (if downloads are enabled)
 - A **Download All Galleries** button that downloads a single ZIP with one sub-folder per gallery
 
 A gallery can belong to only one collection. Deleting a collection does not delete the galleries — they remain accessible individually.
 
+### Back to collection
+
+When a client reaches a gallery by clicking through from a collection page, a back button appears in the top navigation bar of the preview page. Clients who received a direct link to the gallery see no back button — the collection is never exposed to them.
+
 ### Download toggle
 
 Each gallery in the dashboard has a **Downloads** toggle. When disabled:
 - The download button is hidden on the client pages
 - ZIP and individual photo download endpoints return 403
-- The gallery remains fully browsable - clients can view all photos in the lightbox
+- The gallery remains fully browsable — clients can view all photos in the lightbox
 
 This is useful for draft galleries where you want clients to make a selection before you deliver the final files.
 
@@ -152,6 +167,10 @@ From the admin dashboard, each gallery shows a favorite count. Clicking **View**
 Two concrete use cases:
 - **Portrait / couples sessions** - share a draft gallery, let the client pick the photos they want retouched. Favorites replace the back-and-forth of emails and filename lists.
 - **Weddings** - ask clients which photos they loved most after delivery. Opens the door to offering prints.
+
+### Light / Dark mode
+
+The admin dashboard includes a theme toggle button. Switching between light and dark mode applies the change immediately to all pages — admin and client — for every visitor. The choice is stored in `data/settings.json` and persists across server restarts and container updates.
 
 ### What your client sees
 
@@ -326,7 +345,8 @@ delyvr/
     ├── og-cache/       # 1200×630 OG images, generated on first share
     ├── logo.*          # Custom logo if uploaded (overrides logo.svg)
     ├── galleries.json  # Gallery metadata
-    └── collections.json # Collection metadata
+    ├── collections.json # Collection metadata
+    └── settings.json   # Site-wide settings — created automatically on first change
 ```
 
 `data/` and its contents are gitignored - they contain user data, not source code.
@@ -371,11 +391,20 @@ delyvr/
 | `GET` | `/api/collections` | ✓ | List all collections (admin) |
 | `GET` | `/api/collection/:id` | - | Collection info with galleries (public) |
 | `POST` | `/api/collection/:id/rename` | ✓ | Rename a collection |
+| `POST` | `/api/collection/:id/background` | ✓ | Upload/replace collection cover image |
+| `GET` | `/api/collection/:id/background` | - | Serve collection cover image |
 | `POST` | `/api/collection/:id/galleries` | ✓ | Add a gallery to a collection (`{ galleryId }`) |
 | `PATCH` | `/api/collection/:id/galleries/reorder` | ✓ | Reorder galleries (`{ galleryIds: [...] }`) |
 | `DELETE` | `/api/collection/:id/galleries/:galleryId` | ✓ | Remove a gallery from a collection |
 | `GET` | `/api/collection/:id/download` | - | Download all galleries as ZIP (one sub-folder per gallery) |
 | `DELETE` | `/api/collection/:id` | ✓ | Delete a collection (galleries are NOT deleted) |
+
+### Settings endpoints
+
+| Method | Endpoint | Auth | Description |
+|--------|----------|------|-------------|
+| `GET` | `/api/settings` | - | Get site settings (theme, etc.) |
+| `PATCH` | `/api/settings/theme` | ✓ | Set theme (`{ "theme": "dark"\|"light" }`) |
 
 Authenticated endpoints require the `X-Admin-Password` header.
 
@@ -385,7 +414,8 @@ Authenticated endpoints require the `X-Admin-Password` header.
 
 - **Branding** - use a photo from the same session as the background for a cohesive look
 - **File names** - rename files on your camera before uploading; the original names are preserved and used for sort order
-- **Collections workflow** - create one collection per event, drag galleries into it in chronological order, share the collection link with your client
+- **Gallery covers** - always upload a cover for each gallery; it's the main visual identifier in the grid and on the collection page
+- **Collections workflow** - create one collection per event, add a cover photo, drag galleries into it in chronological order, share the collection link with your client
 - **Draft workflow** - create the gallery with downloads disabled, share the link for client selection, then enable downloads once the final files are ready
 - **Favorites workflow** - for weddings, share the gallery after the event and let clients heart their favorites before offering prints
 - **Disk space** - delete galleries once clients have downloaded; `uploads/` can grow large

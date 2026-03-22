@@ -26,6 +26,7 @@ There is no public registration. The entire admin side is protected by a single 
 | Unique IDs | uuid v4 |
 | Environment config | dotenv |
 | Rate limiting | express-rate-limit |
+| HTML escaping | escape-html (used server-side for OG tag injection) |
 | Frontend | Vanilla HTML/CSS/JS — no framework, no build step |
 | Fonts | Google Fonts (Instrument Sans, Fraunces) |
 
@@ -50,11 +51,13 @@ delyvr/
 │   └── collection.html # Client collection page (multiple galleries)
 └── data/               # Runtime data root (Docker volume mount at /data)
     ├── uploads/        # Gallery photos, organised as uploads/{galleryId}/
-    ├── backgrounds/    # Background images, named {galleryId}.jpg (normalised JPEG)
+    ├── backgrounds/    # Background images — {galleryId}.jpg for galleries,
+    │                   # collection-{collectionId}.jpg for collections (normalised JPEG)
     ├── thumbnails/     # 400px JPEG thumbnails, generated on upload or first request
     ├── og-cache/       # 1200×630 OG images, generated on first share
     ├── galleries.json  # Gallery metadata
-    └── collections.json # Collection metadata
+    ├── collections.json # Collection metadata
+    └── settings.json   # Site-wide settings (theme) — created automatically on first change
 ```
 
 ---
@@ -99,22 +102,48 @@ delyvr/
   id: string,
   name: string,
   created: string,          // ISO 8601
-  galleryIds: string[]      // ordered list — order is the client display order
+  galleryIds: string[],     // ordered list — order is the client display order
+  background: string|null   // filename inside backgrounds/ (collection-{id}.jpg)
 }
 ```
+
+**Settings** — stored in `settings.json`:
+
+```js
+{
+  theme: 'dark' | 'light'   // default 'dark' — applies site-wide to all pages
+}
+```
+
+`settings.json` is created automatically the first time the theme is changed via the admin. If it does not exist, `siteSettings` defaults to `{ theme: 'dark' }`.
 
 One gallery belongs to at most one collection. The server enforces this on `POST /api/collection/:id/galleries`. Deleting a gallery removes it from any collection automatically.
 
 ### Authentication
 
-`requireAuth` middleware checks `X-Admin-Password` header (or `?password` query param). Login is rate-limited at 10 attempts per IP per 15 minutes via `authLimiter`.
+`requireAuth` middleware checks the `X-Admin-Password` header only — the `?password` query param has been removed to prevent credentials leaking into server logs and browser history. Login is rate-limited at 10 attempts per IP per 15 minutes via `authLimiter`.
 
 `validateGalleryId` and `validateCollectionId` both enforce UUID v4 format before any filesystem operation, closing path traversal vectors. `validateFilename` enforces `/^[a-zA-Z0-9._\-]+$/`.
+
+### Path safety
+
+All filesystem paths that incorporate user-controlled values (`galleryId`, `collectionId`, `filename`) go through `safeResolvePath(base, ...segments)`. This function resolves the final path and throws if it would escape the base directory, defending against path traversal even when input passes UUID/filename validation.
+
+### Rate limiting
+
+| Limiter | Limit | Applied to |
+|---------|-------|-----------|
+| `authLimiter` | 10/15 min | `POST /api/auth/verify` |
+| `imageLimiter` | 600/min | Photo and OG image serving |
+| `publicReadLimiter` | 300/min | All public GET routes |
+| `publicWriteLimiter` | 120/min | `POST /favorites` |
+| `downloadLimiter` | 10/min | Gallery and collection ZIP downloads |
+| `adminLimiter` | 60/min | Admin routes with filesystem access |
 
 ### File upload pipeline
 
 - **`upload`** — photos into `uploads/{galleryId}/`. Accepts JPEG, PNG, GIF, WebP, TIFF, BMP, raw (CR2, NEF, ARW). Filenames sanitised. Limit: `MAX_UPLOAD_MB`.
-- **`uploadBackground`** — background normalised to JPEG via sharp (max 2400px wide, quality 85). Stored as `backgrounds/{galleryId}.jpg`.
+- **`uploadBackground`** — background normalised to JPEG via sharp (max 2400px wide, quality 85). Used for both gallery and collection backgrounds.
 - **`uploadLogo`** — stored in memory, written to `DATA_DIR/logo.{ext}`. Accepts JPEG, PNG, GIF, WebP, SVG. Limit: 5 MB.
 
 ### Photo sort order
@@ -127,7 +156,7 @@ One gallery belongs to at most one collection. The server enforces this on `POST
 
 ### OG image generation
 
-1200×630 JPEG, cached in `og-cache/`. Source: background image if present, else first photo. Cache invalidated when background is replaced.
+1200×630 JPEG, cached in `og-cache/`. Source: background image if present, else first photo. Cache invalidated when background is replaced. Event/collection names injected into OG meta tags via `escapeHtml()` from the `escape-html` package (CodeQL-recognised sanitiser).
 
 ### ZIP streaming
 
@@ -151,15 +180,22 @@ Per-photo, per-visitor voting. Structure: `favorites[filename] = [visitorId, ...
 ### Collections
 
 - `POST /api/collection/create` — creates collection, returns `collectionUrl`
-- `GET /api/collections` — admin list
-- `GET /api/collection/:id` — public, returns collection with gallery details
+- `GET /api/collections` — admin list, includes `hasBackground` per collection
+- `GET /api/collection/:id` — public, returns collection with gallery details and `background` URL
 - `POST /api/collection/:id/rename`
+- `POST /api/collection/:id/background` — upload/replace cover (same sharp pipeline as gallery backgrounds, stored as `backgrounds/collection-{id}.jpg`)
+- `GET /api/collection/:id/background` — serve cover image
 - `POST /api/collection/:id/galleries` — add gallery (enforces one-collection-per-gallery)
 - `PATCH /api/collection/:id/galleries/reorder` — accepts full ordered `galleryIds` array, validates all IDs belong to collection
 - `DELETE /api/collection/:id/galleries/:galleryId` — remove from collection
 - `GET /api/collection/:id/download` — ZIP with sub-folders
 - `DELETE /api/collection/:id` — delete collection only, galleries untouched
 - `GET /collection/:id` — serves `collection.html` with OG meta tags
+
+### Settings
+
+- `GET /api/settings` — public, returns `siteSettings` (currently `{ theme }`)
+- `PATCH /api/settings/theme` — admin only, accepts `{ theme: 'dark' | 'light' }`, persists to `settings.json`
 
 ---
 
@@ -198,14 +234,23 @@ Per-photo, per-visitor voting. Structure: `favorites[filename] = [visitorId, ...
 |--------|------|------|-------------|
 | `GET` | `/collection/:id` | — | Collection page |
 | `POST` | `/api/collection/create` | ✓ | Create collection |
-| `GET` | `/api/collections` | ✓ | List collections |
-| `GET` | `/api/collection/:id` | — | Collection info |
+| `GET` | `/api/collections` | ✓ | List collections (includes `hasBackground`) |
+| `GET` | `/api/collection/:id` | — | Collection info (includes `background` URL) |
 | `POST` | `/api/collection/:id/rename` | ✓ | Rename |
+| `POST` | `/api/collection/:id/background` | ✓ | Upload/replace cover image |
+| `GET` | `/api/collection/:id/background` | — | Serve cover image |
 | `POST` | `/api/collection/:id/galleries` | ✓ | Add gallery |
 | `PATCH` | `/api/collection/:id/galleries/reorder` | ✓ | Reorder galleries |
 | `DELETE` | `/api/collection/:id/galleries/:galleryId` | ✓ | Remove gallery |
 | `GET` | `/api/collection/:id/download` | — | ZIP all galleries |
 | `DELETE` | `/api/collection/:id` | ✓ | Delete collection |
+
+### Settings
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| `GET` | `/api/settings` | — | Get site settings |
+| `PATCH` | `/api/settings/theme` | ✓ | Set theme (`{ theme: 'dark'\|'light' }`) |
 
 ---
 
@@ -215,20 +260,25 @@ All HTML files are standalone — no bundler, no imports, all JS inline.
 
 ### `public/admin.html`
 
-- Login via `sessionStorage` (cleared on tab close)
-- **Galleries section** — drag-and-drop upload, inline rename, cover upload, download toggle, favorites count/view/reset, delete
-- Gallery items are `draggable="true"` — can be dragged into collection drop zones
-- **Collections section** (above galleries) — create, rename inline, copy link, delete. Each collection shows gallery pills that are draggable for reordering within the collection.
-- `_galleriesData` cache populated inside `loadGalleries()` and used by `renderCollections()` to show gallery names in pills
+- Login via in-memory `adminPassword` variable only — not persisted to `sessionStorage` or `localStorage`. Requires re-login on page reload.
+- `applyTheme()` called on load — fetches `/api/settings` and adds `class="light"` on `<html>` if needed.
+- Theme toggle button in the header — calls `toggleTheme()` which PATCHes `/api/settings/theme` and updates the class immediately.
+- **Galleries section** — displayed as a responsive card grid (`auto-fill, minmax(280px, 1fr)`). Each card shows a 16/9 cover, inline rename, downloads toggle, favorites count/view/reset, copy link, delete, drag-and-drop.
+- Gallery cards are `draggable="true"` — can be dragged into collection drop zones. Cursor is `grab` / `grabbing`.
+- **Collections section** (above galleries) — create, rename inline, copy link, delete. Each collection has a cover zone (click or drag to upload). Gallery pills inside each collection are draggable for reordering (`cursor: grab`).
+- `_galleriesData` cache populated inside `loadGalleries()` and used by `renderCollections()` to show gallery names in pills.
+- `html.light {}` CSS vars defined for full light mode support.
 
 ### `public/customer.html`
 
-Single-gallery download page. Hides download button when `downloadsEnabled` is false. Right-click on images disabled.
+Single-gallery download page. Hides download button when `downloadsEnabled` is false. Right-click on images disabled. `applyTheme()` called on load. `html.light .bg-overlay` uses a pale gradient so text remains readable in light mode.
 
 ### `public/preview.html`
 
 Full photo browser for a single gallery.
 
+- `applyTheme()` called on load. `html.light .hero-overlay` uses a pale gradient variant.
+- **`?from=` param** — if present, a back button appears in the actions bar linking to `/collection/{from}`. The button is hidden when the param is absent, so clients with a direct gallery link never see it. `collection.html` appends `?from={collectionId}` to all gallery links.
 - **Masonry layout** — JS-based, round-robin column distribution (left-to-right chronological order). `getColCount()` returns 4/3/2/1 based on viewport width. Re-renders on resize (debounced).
 - No `aspect-ratio` constraint — photos display at natural ratio.
 - Lazy loading via `IntersectionObserver`.
@@ -237,13 +287,16 @@ Full photo browser for a single gallery.
 - Right-click on images disabled.
 - **Visitor ID** — `delyvr_visitor_id` in `localStorage`, shared across all galleries on the device.
 - Favorites fetched from `/favorites-public?visitorId=` on load. Toggled optimistically with server sync and revert on error.
+- Favorite button uses `data-filename` + `addEventListener` instead of inline `onclick` — avoids incomplete sanitisation of filenames with special characters.
 
 ### `public/collection.html`
 
 Client-facing collection page.
 
+- `applyTheme()` called on load.
 - Full i18n: EN, FR, ES, PT, IT (same language detection as other client pages).
-- Gallery cards with clickable 16/9 cover (navigates to `/preview/:id`).
+- **Hero background** — if the collection has a cover, it is displayed as a subtle full-bleed image (opacity 18%) behind the header.
+- Gallery cards with clickable 16/9 cover navigating to `/preview/:id?from={collectionId}`.
 - **Copy Link** button (outlined style) copies gallery preview URL with translated feedback.
 - **Download** button (accent style, if enabled) downloads gallery ZIP.
 - **Download All Galleries** button (visible if any gallery is downloadable) downloads collection ZIP.
@@ -255,15 +308,21 @@ Client-facing collection page.
 ## Conventions and Gotchas
 
 - **No build step.** Do not introduce a bundler, TypeScript, or a frontend framework without discussing it first.
-- **No external database.** Metadata lives in `galleries.json` and `collections.json`.
+- **No external database.** Metadata lives in `galleries.json`, `collections.json`, and `settings.json`.
 - **`downloadsEnabled` defaults to `true`.** Check is `gallery.downloadsEnabled !== false` — missing field means enabled.
 - **`favorites` defaults to `{}`.** `gallery.favorites || {}` used everywhere.
 - **`galleryIds` order is authoritative** for collection display order. The reorder endpoint validates the full array before saving.
 - **One gallery = one collection max.** Enforced server-side on add. The `collectionId` field returned by `/api/galleries` reflects this.
+- **Collection background naming** — stored as `backgrounds/collection-{id}.jpg` to avoid collisions with gallery backgrounds which use `{galleryId}.jpg`.
+- **`settings.json` is optional.** If absent, the server defaults to `{ theme: 'dark' }`. It is created on first `PATCH /api/settings/theme`.
+- **Theme is server-side.** All pages call `GET /api/settings` on load and apply `class="light"` on `<html>`. Changing the theme in the admin affects every visitor immediately.
+- **`safeResolvePath(base, ...segments)`** must be used for every path that incorporates a user-controlled value. It resolves the path and throws if it escapes the base directory.
+- **`escape-html` package** is used directly (not via an alias) for OG tag injection so CodeQL recognises it as a trusted sanitiser.
 - **Visitor IDs are not authenticated.** Random client-generated strings — not security-sensitive.
 - **Photo sort is natural locale sort** (`numeric: true, sensitivity: base`). Rename files on camera before uploading to control display order.
 - **Backgrounds replace on upload.** Old file deleted, OG cache invalidated.
 - **Galleries can be re-discovered from disk.** The filesystem is authoritative.
-- **Password in sessionStorage.** Cleared on tab close — intentional.
+- **Password never stored in sessionStorage.** Kept in the `adminPassword` JS variable only — cleared when the tab closes.
+- **`?password` query param removed.** `requireAuth` only checks the `X-Admin-Password` header to prevent credentials leaking into logs.
 - **INSTALL_DIR decouples code from data.** All paths use `process.env.INSTALL_DIR || __dirname`.
 - **Right-click disabled on all client pages** (`customer.html`, `preview.html`, `collection.html`) — only images are targeted, not the full page.
