@@ -36,6 +36,7 @@ A self-hosted photo delivery platform for photographers. Upload photos, share a 
 
 ### Admin Dashboard
 ![Admin Dashboard](docs/screenshots/admin.png)
+![Admin Dashboard 2](docs/screenshots/admin-2.png)
 
 ### Gallery Created
 ![Gallery Created](docs/screenshots/gallery-created.png)
