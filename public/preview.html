@@ -81,6 +81,15 @@
             );
         }
 
+        html.light .hero-overlay {
+            background: linear-gradient(
+                to bottom,
+                rgba(250, 250, 250, 0.1) 0%,
+                rgba(250, 250, 250, 0.6) 70%,
+                rgba(250, 250, 250, 1) 100%
+            );
+        }
+
         .hero-content {
             position: relative;
             z-index: 10;
@@ -119,7 +128,7 @@
             position: sticky;
             top: 0;
             z-index: 100;
-            background: rgba(10, 10, 11, 0.9);
+            background: color-mix(in srgb, var(--bg-primary) 90%, transparent);
             backdrop-filter: blur(20px);
             border-bottom: 1px solid var(--border);
             padding: 16px 24px;
@@ -359,7 +368,7 @@
             position: fixed;
             inset: 0;
             z-index: 1000;
-            background: rgba(0, 0, 0, 0.95);
+            background: rgba(0, 0, 0, 0.92);
             display: none;
             align-items: center;
             justify-content: center;
