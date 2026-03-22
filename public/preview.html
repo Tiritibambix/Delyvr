@@ -126,6 +126,27 @@
             font-size: 0.9rem;
         }
 
+        .back-to-collection {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            color: var(--text-secondary);
+            text-decoration: none;
+            font-size: 0.85rem;
+            transition: color 0.2s;
+            white-space: nowrap;
+        }
+
+        .back-to-collection:hover {
+            color: var(--accent);
+        }
+
+        .back-to-collection svg {
+            width: 16px;
+            height: 16px;
+            flex-shrink: 0;
+        }
+
         .download-all-btn {
             display: inline-flex;
             align-items: center;
@@ -574,6 +595,12 @@
     <!-- Actions Bar -->
     <div class="actions-bar" id="actionsBar" style="display: none;">
         <div class="actions-left">
+            <a class="back-to-collection" id="backToCollection" href="#" style="display:none;">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M19 12H5m0 0l7 7m-7-7l7-7" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+                <span id="backToCollectionText"></span>
+            </a>
             <span id="photoCount"></span>
         </div>
         <a class="download-all-btn" id="downloadAllBtn" href="#">
@@ -628,6 +655,7 @@
                 downloadAll: 'Download All',
                 download: 'Download',
                 clickToPreview: 'Click any photo to preview',
+                backToCollection: '← Back to collection',
                 loadingGallery: 'Loading gallery...',
                 notFoundTitle: 'Gallery Not Found',
                 notFoundText: 'This gallery may have been removed or the link is incorrect.'
@@ -639,6 +667,7 @@
                 downloadAll: 'Baixar Todas',
                 download: 'Baixar',
                 clickToPreview: 'Clique em qualquer foto para visualizar',
+                backToCollection: '← Voltar à coleção',
                 loadingGallery: 'Carregando galeria...',
                 notFoundTitle: 'Galeria Não Encontrada',
                 notFoundText: 'Esta galeria pode ter sido removida ou o link está incorreto.'
@@ -650,6 +679,7 @@
                 downloadAll: 'Descargar Todas',
                 download: 'Descargar',
                 clickToPreview: 'Haz clic en cualquier foto para ver',
+                backToCollection: '← Volver a la colección',
                 loadingGallery: 'Cargando galería...',
                 notFoundTitle: 'Galería No Encontrada',
                 notFoundText: 'Esta galería puede haber sido eliminada o el enlace es incorrecto.'
@@ -661,6 +691,7 @@
                 downloadAll: 'Scarica Tutte',
                 download: 'Scarica',
                 clickToPreview: 'Clicca su una foto per visualizzarla',
+                backToCollection: '← Torna alla collezione',
                 loadingGallery: 'Caricamento galleria...',
                 notFoundTitle: 'Galleria Non Trovata',
                 notFoundText: 'Questa galleria potrebbe essere stata rimossa o il link non è corretto.'
@@ -672,6 +703,7 @@
                 downloadAll: 'Tout Télécharger',
                 download: 'Télécharger',
                 clickToPreview: 'Cliquez sur une photo pour l\'aperçu',
+                backToCollection: '← Retour à la collection',
                 loadingGallery: 'Chargement de la galerie...',
                 notFoundTitle: 'Galerie Introuvable',
                 notFoundText: 'Cette galerie a peut-être été supprimée ou le lien est incorrect.'
@@ -702,6 +734,7 @@
         document.getElementById('notFoundText').textContent = t.notFoundText;
 
         const galleryId = window.location.pathname.split('/').pop();
+        const fromCollection = new URLSearchParams(window.location.search).get('from');
         let photos = [];
         let currentPhotoIndex = 0;
 
@@ -779,6 +812,14 @@
                 document.getElementById('heroSection').style.display = 'flex';
                 document.getElementById('actionsBar').style.display = 'flex';
                 document.getElementById('galleryContainer').style.display = 'block';
+
+                // Show back-to-collection button if ?from= param is present
+                if (fromCollection) {
+                    const backBtn = document.getElementById('backToCollection');
+                    backBtn.href = `/collection/${fromCollection}`;
+                    document.getElementById('backToCollectionText').textContent = t.backToCollection;
+                    backBtn.style.display = 'inline-flex';
+                }
 
                 // Set title
                 const title = (info.eventName && info.eventName !== 'Untitled Event') 

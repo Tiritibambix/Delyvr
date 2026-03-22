@@ -36,11 +36,8 @@
         }
 
         .logo {
-            max-width: 360px;
-            max-height: 108px;
+            height: 64px;
             width: auto;
-            height: auto;
-            object-fit: contain;
             margin-bottom: 32px;
             opacity: 0;
             transform: translateY(10px);
@@ -437,7 +434,7 @@
                         : '';
 
                     card.innerHTML = `
-                        <a class="gallery-card-cover" href="/preview/${gallery.id}">
+                        <a class="gallery-card-cover" href="/preview/${gallery.id}?from=${collectionId}">
                             ${gallery.background ? `<img data-src="${escapeHtml(gallery.background)}" alt="${escapeHtml(gallery.eventName)}">` : ''}
                         </a>
                         <div class="gallery-card-body">
