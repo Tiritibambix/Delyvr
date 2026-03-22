@@ -582,44 +582,41 @@
 
         .gallery-list {
             display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
             gap: 16px;
         }
 
         .gallery-item {
-            display: flex;
-            align-items: center;
-            gap: 16px;
-            padding: 16px 20px;
             background: var(--bg-tertiary);
+            border: 1px solid var(--border);
             border-radius: 12px;
-            transition: transform 0.2s;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            transition: border-color 0.2s, box-shadow 0.2s;
+            cursor: grab;
         }
 
         .gallery-item:hover {
-            transform: translateX(4px);
+            border-color: var(--accent);
+            box-shadow: 0 4px 20px rgba(0,0,0,0.3);
         }
 
         .gallery-cover {
-            width: 120px;
-            height: 80px;
-            border-radius: 8px;
+            width: 100%;
+            aspect-ratio: 16/9;
             overflow: hidden;
             background: var(--bg-secondary);
-            flex-shrink: 0;
             position: relative;
             cursor: pointer;
-            border: 2px dashed var(--border);
-            transition: all 0.3s;
+            border-bottom: 1px solid var(--border);
+            flex-shrink: 0;
         }
 
         .gallery-cover:hover,
         .gallery-cover.drag-over {
-            border-color: var(--accent);
-        }
-
-        .gallery-cover.has-image {
-            border-style: solid;
-            border-color: transparent;
+            outline: 2px solid var(--accent);
+            outline-offset: -2px;
         }
 
         .gallery-cover img {
@@ -643,81 +640,80 @@
         }
 
         .gallery-cover-placeholder svg {
-            width: 24px;
-            height: 24px;
+            width: 28px;
+            height: 28px;
             margin-bottom: 4px;
-            opacity: 0.5;
+            opacity: 0.4;
         }
 
         .gallery-cover.has-image .gallery-cover-placeholder {
-            background: rgba(0, 0, 0, 0.6);
+            background: rgba(0, 0, 0, 0.55);
             opacity: 0;
-            transition: opacity 0.3s;
+            transition: opacity 0.2s;
         }
 
         .gallery-cover.has-image:hover .gallery-cover-placeholder {
             opacity: 1;
         }
 
-        .gallery-cover-placeholder span {
-            line-height: 1.2;
-        }
+        .gallery-cover-placeholder span { line-height: 1.2; }
 
-        .gallery-cover input[type="file"] {
-            display: none;
-        }
+        .gallery-cover input[type="file"] { display: none; }
 
         .gallery-info {
+            padding: 12px 14px 8px;
             flex: 1;
             min-width: 0;
         }
 
         .gallery-name {
             font-weight: 600;
-            margin-bottom: 4px;
+            font-size: 0.95rem;
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
             cursor: pointer;
-            padding: 2px 6px;
-            margin: -2px -6px;
+            padding: 2px 4px;
+            margin: -2px -4px 4px;
             border-radius: 4px;
             transition: background 0.2s;
         }
 
-        .gallery-name:hover {
-            background: var(--bg-secondary);
-        }
+        .gallery-name:hover { background: var(--bg-secondary); }
 
         .gallery-name-input {
             font-weight: 600;
-            font-size: inherit;
+            font-size: 0.95rem;
             font-family: inherit;
             background: var(--bg-secondary);
             border: 1px solid var(--accent);
             border-radius: 4px;
             color: var(--text-primary);
-            padding: 2px 6px;
-            margin: -3px -7px;
-            width: calc(100% + 14px);
+            padding: 2px 4px;
+            width: 100%;
             outline: none;
+            margin-bottom: 4px;
+            display: block;
         }
 
         .gallery-meta {
-            font-size: 0.85rem;
+            font-size: 0.78rem;
             color: var(--text-secondary);
+            margin-bottom: 2px;
         }
 
         .gallery-actions {
             display: flex;
-            gap: 8px;
-            flex-shrink: 0;
+            gap: 6px;
+            padding: 8px 14px 12px;
+            border-top: 1px solid var(--border);
         }
 
         .gallery-actions button {
-            padding: 8px 14px;
+            flex: 1;
+            padding: 6px 10px;
             border-radius: 6px;
-            font-size: 0.8rem;
+            font-size: 0.75rem;
             font-weight: 500;
             cursor: pointer;
             transition: all 0.2s;
@@ -746,29 +742,31 @@
         }
 
         .favorites-meta {
-            color: var(--text-secondary);
-            font-size: 0.8rem;
-            margin-top: 8px;
             display: flex;
             align-items: center;
             gap: 6px;
+            font-size: 0.78rem;
+            color: var(--text-secondary);
+            margin-top: 4px;
+            flex-wrap: wrap;
         }
 
-        /* Downloads toggle */
+        /* Downloads toggle — compact for card layout */
         .downloads-toggle {
-            display: flex;
+            display: inline-flex;
             align-items: center;
-            gap: 8px;
-            margin-top: 8px;
-            font-size: 0.8rem;
+            gap: 6px;
+            font-size: 0.78rem;
             color: var(--text-secondary);
             user-select: none;
+            margin-top: 6px;
+            cursor: pointer;
         }
 
         .toggle-switch {
             position: relative;
-            width: 32px;
-            height: 18px;
+            width: 28px;
+            height: 16px;
             flex-shrink: 0;
         }
 
@@ -783,7 +781,7 @@
             position: absolute;
             inset: 0;
             background: var(--border);
-            border-radius: 18px;
+            border-radius: 16px;
             cursor: pointer;
             transition: background 0.2s;
         }
@@ -791,8 +789,8 @@
         .toggle-track::after {
             content: '';
             position: absolute;
-            top: 3px;
-            left: 3px;
+            top: 2px;
+            left: 2px;
             width: 12px;
             height: 12px;
             background: var(--text-secondary);
@@ -800,12 +798,9 @@
             transition: transform 0.2s, background 0.2s;
         }
 
-        .toggle-switch input:checked + .toggle-track {
-            background: var(--success);
-        }
-
+        .toggle-switch input:checked + .toggle-track { background: var(--success); }
         .toggle-switch input:checked + .toggle-track::after {
-            transform: translateX(14px);
+            transform: translateX(12px);
             background: white;
         }
 
@@ -1145,7 +1140,10 @@
             border-radius: 20px;
             font-size: 0.8rem;
             color: var(--text-primary);
+            cursor: grab;
         }
+
+        .gallery-pill:active { cursor: grabbing; }
 
         .gallery-pill button {
             background: none;
@@ -1251,22 +1249,14 @@
                 padding: 24px 20px;
             }
 
-            .gallery-item {
-                flex-direction: column;
-                align-items: flex-start;
-            }
-
-            .gallery-cover {
-                width: 100%;
-                height: 120px;
-            }
-
-            .gallery-actions {
-                width: 100%;
+            .gallery-list {
+                grid-template-columns: 1fr 1fr;
+                gap: 12px;
             }
 
             .gallery-actions button {
-                flex: 1;
+                font-size: 0.7rem;
+                padding: 5px 8px;
             }
         }
     </style>
@@ -1851,16 +1841,16 @@
                          id="gallery-item-${g.id}"
                          ondragstart="handleGalleryDragStart(event, '${g.id}')"
                          ondragend="handleGalleryDragEnd(event)">
-                        <div class="gallery-cover ${g.hasBackground ? 'has-image' : ''}" 
+
+                        <div class="gallery-cover ${g.hasBackground ? 'has-image' : ''}"
                              id="cover-${g.id}"
                              onclick="document.getElementById('cover-input-${g.id}').click()"
                              ondragover="handleCoverDragOver(event, '${g.id}')"
                              ondragleave="handleCoverDragLeave(event, '${g.id}')"
                              ondrop="handleCoverDrop(event, '${g.id}')">
-                            ${g.hasBackground 
+                            ${g.hasBackground
                                 ? `<img src="/api/gallery/${g.id}/background?t=${Date.now()}" alt="Cover">`
-                                : ''
-                            }
+                                : ''}
                             <div class="gallery-cover-placeholder">
                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
                                     <rect x="3" y="3" width="18" height="18" rx="2"/>
@@ -1869,9 +1859,10 @@
                                 </svg>
                                 <span>${g.hasBackground ? 'Change cover' : 'Drop cover'}</span>
                             </div>
-                            <input type="file" id="cover-input-${g.id}" accept="image/*" 
+                            <input type="file" id="cover-input-${g.id}" accept="image/*"
                                    onchange="handleCoverSelect(event, '${g.id}')" style="display:none;">
                         </div>
+
                         <div class="gallery-info">
                             <div class="gallery-name" onclick="startEditGalleryName('${g.id}', this)" title="Click to rename">${escapeHtml(g.eventName)}</div>
                             <div class="gallery-meta">${g.fileCount} photos • ${new Date(g.created).toLocaleDateString()}${g.collectionId ? ` • <span style="color:var(--accent)">⊕ In collection</span>` : ''}</div>
@@ -1883,11 +1874,12 @@
                                 </span>
                                 Downloads
                             </label>
-                            <div class="gallery-meta favorites-meta">
-                                ♥ ${g.favoritesCount || 0} favorite${g.favoritesCount !== 1 ? 's' : ''}
-                                ${g.favoritesCount > 0 ? `<button class="btn-favorites-view" onclick="viewFavorites('${g.id}')">View</button> <button class="btn-favorites-reset" onclick="resetFavorites('${g.id}')">Reset</button>` : ''}
+                            <div class="favorites-meta">
+                                ♥ ${g.favoritesCount || 0} fav${g.favoritesCount !== 1 ? 's' : ''}
+                                ${g.favoritesCount > 0 ? `<button class="btn-favorites-view" onclick="viewFavorites('${g.id}')">View</button><button class="btn-favorites-reset" onclick="resetFavorites('${g.id}')">Reset</button>` : ''}
                             </div>
                         </div>
+
                         <div class="gallery-actions">
                             <button class="btn-copy" onclick="copyGalleryLink('${g.id}', 'download', this)">Copy Link</button>
                             <button class="btn-delete" onclick="deleteGallery('${g.id}')">Delete</button>
