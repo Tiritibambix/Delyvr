@@ -14,8 +14,8 @@ A self-hosted photo delivery platform for photographers. Upload photos, share a 
 
 - **Drag & Drop Upload** - drop individual files or entire folders from your computer
 - **Custom Backgrounds** - upload a hero image per gallery; stored as normalised JPEG
-- **Photo Preview Page** - masonry grid with full-screen lightbox, keyboard/touch navigation, and individual photo download. Photos display at their natural aspect ratio.
-- **Clean Lightbox** - download and favorite buttons discreetly placed next to the close button, giving full space to the photo
+- **Photo Preview Page** - masonry grid with full-screen lightbox, keyboard/touch navigation, and individual photo download. Photos display at their natural aspect ratio. The lightbox serves 1920px previews for fast loading — originals are only downloaded when explicitly requested.
+- **Clean Lightbox** - download and favorite buttons discreetly placed next to the close button on desktop; a persistent bottom action bar (Prev / Fav / Close / Save / Next) on mobile. Swipe left/right to navigate.
 - **ZIP Downloads** - all photos packaged into a single named download
 - **Download Toggle** - enable or disable downloads per gallery from the dashboard; useful for draft galleries or contact sheets
 - **Client Favorites** - clients can heart photos from the grid or the lightbox; each visitor is tracked anonymously so multiple people can vote independently; the admin sees vote counts per photo sorted from most to least voted, with a reset option
@@ -28,6 +28,7 @@ A self-hosted photo delivery platform for photographers. Upload photos, share a 
 - **Custom Logo** - upload your own logo from the dashboard; shown on both admin and client pages; revert to default anytime
 - **Social Media Previews** - auto-generated OG images (1200×630) injected into share links
 - **Multi-Language Support** - client pages auto-detect browser language; supports English, Portuguese, Spanish, Italian, and French
+- **Mobile Responsive** - all client pages adapt to small screens; the admin dashboard stacks correctly on mobile
 - **No Database Required** - file-based storage, simple to deploy and back up
 
 ---
@@ -342,7 +343,8 @@ delyvr/
 └── data/               # Runtime data (Docker volume mount)
     ├── uploads/        # Gallery photos, organised by gallery ID
     ├── backgrounds/    # Background images, one per gallery (JPEG)
-    ├── thumbnails/     # 400px preview thumbnails, generated automatically
+    ├── thumbnails/     # 400px JPEG thumbnails, generated automatically
+    ├── previews/       # 1920px JPEG previews for lightbox display, generated automatically
     ├── og-cache/       # 1200×630 OG images, generated on first share
     ├── logo.*          # Custom logo if uploaded (overrides logo.svg)
     ├── galleries.json  # Gallery metadata
@@ -372,6 +374,7 @@ delyvr/
 | `GET` | `/api/gallery/:id/info` | - | Gallery metadata (includes `downloadsEnabled`) |
 | `GET` | `/api/gallery/:id/photos` | - | List photos with URLs (used by preview page) |
 | `GET` | `/api/gallery/:id/photo/:filename` | - | Serve photo; add `?thumb=1` for 400px thumbnail |
+| `GET` | `/api/gallery/:id/preview/:filename` | - | Serve 1920px preview for lightbox (falls back to original) |
 | `GET` | `/api/gallery/:id/download` | - | Download all photos as ZIP (403 if downloads disabled) |
 | `GET` | `/api/gallery/:id/download/:filename` | - | Download a single photo (403 if downloads disabled) |
 | `GET` | `/api/gallery/:id/background` | - | Serve background image |

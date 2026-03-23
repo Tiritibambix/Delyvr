@@ -1112,7 +1112,7 @@
             const photo = photos[currentPhotoIndex];
             const downloadUrl = `/api/gallery/${galleryId}/download/${encodeURIComponent(photo.filename)}`;
 
-            document.getElementById('lightboxImg').src = photo.url;
+            document.getElementById('lightboxImg').src = photo.previewUrl || photo.url;
 
             // Desktop download button
             document.getElementById('lightboxDownload').href = downloadUrl;

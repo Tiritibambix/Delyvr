@@ -54,6 +54,7 @@ delyvr/
     ├── backgrounds/    # Background images — {galleryId}.jpg for galleries,
     │                   # collection-{collectionId}.jpg for collections (normalised JPEG)
     ├── thumbnails/     # 400px JPEG thumbnails, generated on upload or first request
+    ├── previews/       # 1920px JPEG previews for lightbox, generated on upload or first request
     ├── og-cache/       # 1200×630 OG images, generated on first share
     ├── galleries.json  # Gallery metadata
     ├── collections.json # Collection metadata
@@ -154,6 +155,10 @@ All filesystem paths that incorporate user-controlled values (`galleryId`, `coll
 
 400px-wide JPEG thumbnails are generated via sharp on upload (fire-and-forget) and on-the-fly if missing when `?thumb=1` is requested.
 
+### Preview generation
+
+1920px JPEG previews (longest side, `fit: inside`, quality 85) are generated via sharp on upload alongside thumbnails. Served by `GET /api/gallery/:id/preview/:filename`. Generated on-the-fly if missing (covers galleries uploaded before the feature). Falls back to the original if generation fails. The lightbox uses `previewUrl` instead of `url` — originals are only served on download. Previews are deleted with the gallery.
+
 ### OG image generation
 
 1200×630 JPEG, cached in `og-cache/`. Source: background image if present, else first photo. Cache invalidated when background is replaced. Event/collection names injected into OG meta tags via `escapeHtml()` from the `escape-html` package (CodeQL-recognised sanitiser).
@@ -217,6 +222,7 @@ Per-photo, per-visitor voting. Structure: `favorites[filename] = [visitorId, ...
 | `GET` | `/api/gallery/:id/info` | — | Metadata |
 | `GET` | `/api/gallery/:id/photos` | — | Photo list (sorted) |
 | `GET` | `/api/gallery/:id/photo/:filename` | — | Serve photo or thumbnail |
+| `GET` | `/api/gallery/:id/preview/:filename` | — | Serve 1920px lightbox preview (fallback to original) |
 | `GET` | `/api/gallery/:id/download` | — | ZIP download |
 | `GET` | `/api/gallery/:id/download/:filename` | — | Single photo download |
 | `GET` | `/api/gallery/:id/background` | — | Serve background |
@@ -268,6 +274,7 @@ All HTML files are standalone — no bundler, no imports, all JS inline.
 - **Collections section** (above galleries) — create, rename inline, copy link, delete. Each collection has a cover zone (click or drag to upload). Gallery pills inside each collection are draggable for reordering (`cursor: grab`).
 - `_galleriesData` cache populated inside `loadGalleries()` and used by `renderCollections()` to show gallery names in pills.
 - `html.light {}` CSS vars defined for full light mode support.
+- **Mobile layout** — collection create row stacks vertically (≤600px), button full-width. After gallery creation, the link row hides the URL input on mobile and shows a full-width Copy Link button. Theme toggle gets `padding-top: 44px` on the header to avoid overlapping the logo.
 
 ### `public/customer.html`
 
@@ -288,6 +295,9 @@ Full photo browser for a single gallery.
 - **Visitor ID** — `delyvr_visitor_id` in `localStorage`, shared across all galleries on the device.
 - Favorites fetched from `/favorites-public?visitorId=` on load. Toggled optimistically with server sync and revert on error.
 - Favorite button uses `data-filename` + `addEventListener` instead of inline `onclick` — avoids incomplete sanitisation of filenames with special characters.
+- **Mobile lightbox** — on screens ≤768px, the close button and nav arrows are hidden. A fixed bottom action bar (`.lightbox-mobile-bar`) replaces them with five buttons: Prev / Fav / Close / Save / Next. The bar uses `safe-area-inset-bottom` for notched phones.
+- **Swipe navigation** — `touchstart`/`touchend` on the lightbox element detect horizontal swipes (min 50px, must exceed vertical delta). The old tap-zone buttons that were blocking touch events have been removed.
+- **Lightbox image padding** — on mobile, `padding-bottom: 72px` on `.lightbox-content` prevents the image from being hidden behind the bottom bar.
 
 ### `public/collection.html`
 
@@ -319,6 +329,7 @@ Client-facing collection page.
 - **`safeResolvePath(base, ...segments)`** must be used for every path that incorporates a user-controlled value. It resolves the path and throws if it escapes the base directory.
 - **`escape-html` package** is used directly (not via an alias) for OG tag injection so CodeQL recognises it as a trusted sanitiser.
 - **Visitor IDs are not authenticated.** Random client-generated strings — not security-sensitive.
+- **Lightbox uses `previewUrl`, not `url`.** The `/api/gallery/:id/photos` response includes both. `url` is the full original (used nowhere in the UI — only available server-side). `previewUrl` points to the 1920px preview. Download links always use `downloadUrl` which serves the original.
 - **Photo sort is natural locale sort** (`numeric: true, sensitivity: base`). Rename files on camera before uploading to control display order.
 - **Backgrounds replace on upload.** Old file deleted, OG cache invalidated.
 - **Galleries can be re-discovered from disk.** The filesystem is authoritative.
