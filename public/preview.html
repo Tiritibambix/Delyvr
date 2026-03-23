@@ -409,89 +409,55 @@
             fill: white;
         }
 
-        /* Mobile Lightbox Menu */
-        .lightbox-mobile-menu {
-            position: fixed;
-            top: 20px;
-            left: 20px;
-            background: var(--bg-secondary);
-            border: 1px solid var(--border);
-            border-radius: 12px;
-            padding: 16px;
-            z-index: 1020;
+        /* Mobile action bar — visible only on mobile */
+        .lightbox-mobile-bar {
             display: none;
-            flex-direction: column;
-            gap: 12px;
-            min-width: 160px;
-            opacity: 0;
-            animation: slideDown 0.2s ease forwards;
-        }
-
-        @keyframes slideDown {
-            from {
-                opacity: 0;
-                transform: translateY(-10px);
-            }
-            to {
-                opacity: 1;
-                transform: translateY(0);
-            }
-        }
-
-        .lightbox-mobile-menu.visible {
-            display: flex;
-        }
-
-        .lightbox-mobile-menu button {
-            background: transparent;
-            border: none;
-            color: var(--text-primary);
-            cursor: pointer;
-            padding: 8px 12px;
-            text-align: left;
-            font-size: 0.9rem;
-            transition: color 0.2s;
-            font-family: inherit;
-        }
-
-        .lightbox-mobile-menu button:hover {
-            color: var(--accent);
-        }
-
-        /* Mobile Tap Zones */
-        .lightbox-tap-zone {
-            position: absolute;
-            z-index: 1005;
-            cursor: pointer;
-            background: transparent;
-            border: none;
-            padding: 0;
-        }
-
-        .lightbox-tap-zone-left {
-            top: 0;
+            position: fixed;
+            bottom: 0;
             left: 0;
-            width: 10vw;
-            height: 10vh;
-            min-width: 40px;
-            min-height: 40px;
-        }
-
-        .lightbox-tap-zone-right {
-            top: 0;
             right: 0;
-            width: 10vw;
-            height: 10vh;
-            min-width: 40px;
-            min-height: 40px;
+            z-index: 1020;
+            background: rgba(10, 10, 11, 0.95);
+            backdrop-filter: blur(12px);
+            border-top: 1px solid var(--border);
+            padding: 12px 8px;
+            padding-bottom: max(12px, env(safe-area-inset-bottom));
         }
 
-        @media (min-width: 769px) {
-            .lightbox-tap-zone,
-            .lightbox-mobile-menu {
-                display: none !important;
-            }
+        @media (max-width: 768px) {
+            .lightbox-mobile-bar { display: flex; align-items: center; justify-content: space-around; }
         }
+
+        .lightbox-mobile-bar button,
+        .lightbox-mobile-bar a {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 4px;
+            background: none;
+            border: none;
+            color: var(--text-secondary);
+            cursor: pointer;
+            font-size: 0.62rem;
+            font-family: inherit;
+            text-decoration: none;
+            padding: 6px 10px;
+            border-radius: 8px;
+            transition: color 0.2s;
+            min-width: 52px;
+        }
+
+        .lightbox-mobile-bar button:active,
+        .lightbox-mobile-bar a:active { color: var(--accent); }
+
+        .lightbox-mobile-bar button svg,
+        .lightbox-mobile-bar a svg {
+            width: 22px;
+            height: 22px;
+        }
+
+        .lightbox-mobile-bar .mb-fav.favorited { color: #dc3250; }
+        .lightbox-mobile-bar .mb-fav.favorited svg { fill: #dc3250; }
 
         .photo-download {
             display: flex;
@@ -688,11 +654,12 @@
         @media (max-width: 768px) {
             .lightbox-content {
                 max-width: calc(100vw - 20px);
-                max-height: calc(100vh - 20px);
+                max-height: calc(100vh - 80px);
+                padding-bottom: 72px;
             }
 
             .lightbox-img {
-                max-height: calc(100vh - 20px);
+                max-height: calc(100vh - 92px);
             }
         }
     </style>
@@ -743,22 +710,33 @@
         <button class="lightbox-nav lightbox-prev" onclick="navigateLightbox(-1)">‹</button>
         <button class="lightbox-nav lightbox-next" onclick="navigateLightbox(1)">›</button>
 
-        <!-- Mobile Tap Zones -->
-        <button class="lightbox-tap-zone lightbox-tap-zone-left" id="tapZoneLeft" onclick="toggleMobileMenu()"></button>
-        <button class="lightbox-tap-zone lightbox-tap-zone-right" id="tapZoneRight" onclick="toggleMobileMenu()"></button>
-
-        <!-- Mobile Menu -->
-        <div class="lightbox-mobile-menu" id="mobileLightboxMenu">
-            <button onclick="closeLightbox()">Close</button>
-            <button onclick="navigateLightbox(-1)">← Previous</button>
-            <button onclick="navigateLightbox(1)">Next →</button>
-            <button onclick="toggleFavoriteFromLightbox()">❤️ Favorite</button>
-            <a id="mobileDownloadLink" href="#" download style="padding: 8px 12px; color: var(--text-primary); text-decoration: none; font-size: 0.9rem;">↓ Download</a>
-        </div>
-
         <!-- Photo -->
         <div class="lightbox-content">
             <img class="lightbox-img" id="lightboxImg">
+        </div>
+
+        <!-- Mobile Action Bar -->
+        <div class="lightbox-mobile-bar">
+            <button onclick="navigateLightbox(-1)">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 18l-6-6 6-6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                Prev
+            </button>
+            <button class="mb-fav" id="mobileBarFav" onclick="toggleFavoriteFromLightbox()">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                Fav
+            </button>
+            <button onclick="closeLightbox()">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                Close
+            </button>
+            <a class="mb-dl" id="mobileBarDownload" href="#" download>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 4v12m0 0l-4-4m4 4l4-4M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                Save
+            </a>
+            <button onclick="navigateLightbox(1)">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                Next
+            </button>
         </div>
     </div>
 
@@ -902,6 +880,12 @@
                 const favBtn = document.getElementById('lightboxFavorite');
                 favBtn.classList.toggle('favorited', !wasFavorited);
                 favBtn.querySelector('svg').setAttribute('fill', wasFavorited ? 'none' : 'white');
+                // Sync mobile bar fav button
+                const mobileBarFav = document.getElementById('mobileBarFav');
+                if (mobileBarFav) {
+                    mobileBarFav.classList.toggle('favorited', !wasFavorited);
+                    mobileBarFav.querySelector('svg').setAttribute('fill', wasFavorited ? 'none' : '#dc3250');
+                }
             }
 
             // Sync to server
@@ -967,6 +951,8 @@
                 if (!downloadsEnabled) {
                     document.getElementById('downloadAllBtn').style.display = 'none';
                     document.getElementById('lightboxDownload').style.display = 'none';
+                    const mobileBarDl = document.getElementById('mobileBarDownload');
+                    if (mobileBarDl) mobileBarDl.style.display = 'none';
                 }
 
                 // Load background
@@ -1112,19 +1098,7 @@
 
         function closeLightbox() {
             document.getElementById('lightbox').classList.remove('active');
-            document.getElementById('mobileLightboxMenu').classList.remove('visible');
             document.body.style.overflow = '';
-        }
-
-        function toggleMobileMenu() {
-            const menu = document.getElementById('mobileLightboxMenu');
-            menu.classList.toggle('visible');
-            // Auto-hide after 3 seconds
-            if (menu.classList.contains('visible')) {
-                setTimeout(() => {
-                    menu.classList.remove('visible');
-                }, 3000);
-            }
         }
 
         function navigateLightbox(direction) {
@@ -1136,15 +1110,33 @@
 
         function updateLightbox() {
             const photo = photos[currentPhotoIndex];
+            const downloadUrl = `/api/gallery/${galleryId}/download/${encodeURIComponent(photo.filename)}`;
+
             document.getElementById('lightboxImg').src = photo.url;
-            document.getElementById('lightboxDownload').href = `/api/gallery/${galleryId}/download/${encodeURIComponent(photo.filename)}`;
+
+            // Desktop download button
+            document.getElementById('lightboxDownload').href = downloadUrl;
             document.getElementById('lightboxDownload').setAttribute('download', photo.filename);
-            document.getElementById('mobileDownloadLink').href = `/api/gallery/${galleryId}/download/${encodeURIComponent(photo.filename)}`;
-            document.getElementById('mobileDownloadLink').setAttribute('download', photo.filename);
+
+            // Mobile bar download link
+            const mobileBarDl = document.getElementById('mobileBarDownload');
+            if (mobileBarDl) {
+                mobileBarDl.href = downloadUrl;
+                mobileBarDl.setAttribute('download', photo.filename);
+            }
+
+            // Fav state — desktop button
             const isFav = localFavorites.has(photo.filename);
             const favBtn = document.getElementById('lightboxFavorite');
             favBtn.classList.toggle('favorited', isFav);
             favBtn.querySelector('svg').setAttribute('fill', isFav ? 'white' : 'none');
+
+            // Fav state — mobile bar button
+            const mobileBarFav = document.getElementById('mobileBarFav');
+            if (mobileBarFav) {
+                mobileBarFav.classList.toggle('favorited', isFav);
+                mobileBarFav.querySelector('svg').setAttribute('fill', isFav ? '#dc3250' : 'none');
+            }
         }
 
         // Keyboard navigation

@@ -548,6 +548,17 @@
             border-radius: 10px;
         }
 
+        @media (max-width: 600px) {
+            .link-row {
+                flex-direction: column;
+                align-items: stretch;
+                gap: 8px;
+            }
+            .link-row label { display: none; }
+            .link-row input { display: none; }
+            .copy-btn { width: 100%; padding: 12px; font-size: 1rem; }
+        }
+
         .link-row label {
             font-size: 0.85rem;
             color: var(--text-secondary);
@@ -992,6 +1003,15 @@
             display: flex;
             gap: 12px;
             margin-bottom: 24px;
+        }
+
+        @media (max-width: 600px) {
+            .collection-create-row {
+                flex-direction: column;
+            }
+            .btn-create-collection {
+                width: 100%;
+            }
         }
 
         .collection-create-row input {
