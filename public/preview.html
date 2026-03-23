@@ -56,6 +56,22 @@
             overflow: hidden;
         }
 
+        @media (max-width: 768px) {
+            .hero {
+                height: 20vh;
+                min-height: 140px;
+                max-height: 200px;
+            }
+        }
+
+        @media (max-height: 600px) and (orientation: landscape) {
+            .hero {
+                height: 12vh;
+                min-height: 80px;
+                max-height: 120px;
+            }
+        }
+
         .hero-bg {
             position: absolute;
             inset: 0;
@@ -138,6 +154,12 @@
             gap: 16px;
         }
 
+        @media (max-width: 768px) {
+            .actions-bar {
+                display: none;
+            }
+        }
+
         .actions-left {
             display: flex;
             align-items: center;
@@ -177,10 +199,34 @@
             padding: 24px;
         }
 
+        @media (max-width: 768px) {
+            .gallery-container {
+                padding: 12px;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .gallery-container {
+                padding: 8px;
+            }
+        }
+
         .gallery-grid {
             display: flex;
             align-items: flex-start;
             gap: 10px;
+        }
+
+        @media (max-width: 768px) {
+            .gallery-grid {
+                gap: 4px;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .gallery-grid {
+                gap: 2px;
+            }
         }
 
         .masonry-col {
@@ -188,6 +234,18 @@
             display: flex;
             flex-direction: column;
             gap: 10px;
+        }
+
+        @media (max-width: 768px) {
+            .masonry-col {
+                gap: 4px;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .masonry-col {
+                gap: 2px;
+            }
         }
 
         .photo-card {
@@ -255,6 +313,12 @@
             padding: 12px;
         }
 
+        @media (max-width: 768px) {
+            .photo-overlay {
+                opacity: 0.6;
+            }
+        }
+
         .photo-card:hover .photo-overlay {
             opacity: 1;
         }
@@ -317,6 +381,12 @@
             z-index: 1010;
         }
 
+        @media (max-width: 768px) {
+            .lightbox-favorite-btn {
+                display: none;
+            }
+        }
+
         .lightbox-favorite-btn:hover {
             background: var(--bg-secondary);
             border-color: #dc3250;
@@ -337,6 +407,90 @@
 
         .lightbox-favorite-btn.favorited svg {
             fill: white;
+        }
+
+        /* Mobile Lightbox Menu */
+        .lightbox-mobile-menu {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 16px;
+            z-index: 1020;
+            display: none;
+            flex-direction: column;
+            gap: 12px;
+            min-width: 160px;
+            opacity: 0;
+            animation: slideDown 0.2s ease forwards;
+        }
+
+        @keyframes slideDown {
+            from {
+                opacity: 0;
+                transform: translateY(-10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .lightbox-mobile-menu.visible {
+            display: flex;
+        }
+
+        .lightbox-mobile-menu button {
+            background: transparent;
+            border: none;
+            color: var(--text-primary);
+            cursor: pointer;
+            padding: 8px 12px;
+            text-align: left;
+            font-size: 0.9rem;
+            transition: color 0.2s;
+            font-family: inherit;
+        }
+
+        .lightbox-mobile-menu button:hover {
+            color: var(--accent);
+        }
+
+        /* Mobile Tap Zones */
+        .lightbox-tap-zone {
+            position: absolute;
+            z-index: 1005;
+            cursor: pointer;
+            background: transparent;
+            border: none;
+            padding: 0;
+        }
+
+        .lightbox-tap-zone-left {
+            top: 0;
+            left: 0;
+            width: 10vw;
+            height: 10vh;
+            min-width: 40px;
+            min-height: 40px;
+        }
+
+        .lightbox-tap-zone-right {
+            top: 0;
+            right: 0;
+            width: 10vw;
+            height: 10vh;
+            min-width: 40px;
+            min-height: 40px;
+        }
+
+        @media (min-width: 769px) {
+            .lightbox-tap-zone,
+            .lightbox-mobile-menu {
+                display: none !important;
+            }
         }
 
         .photo-download {
@@ -400,6 +554,12 @@
             z-index: 1010;
         }
 
+        @media (max-width: 768px) {
+            .lightbox-close {
+                display: none;
+            }
+        }
+
         .lightbox-close:hover {
             background: var(--bg-secondary);
             border-color: var(--accent);
@@ -422,6 +582,12 @@
             justify-content: center;
             transition: all 0.2s;
             z-index: 1010;
+        }
+
+        @media (max-width: 768px) {
+            .lightbox-nav {
+                display: none;
+            }
         }
 
         .lightbox-nav:hover {
@@ -473,6 +639,12 @@
             text-decoration: none;
         }
 
+        @media (max-width: 768px) {
+            .lightbox-download-btn {
+                display: none;
+            }
+        }
+
         .lightbox-download-btn:hover {
             background: var(--bg-secondary);
             border-color: var(--accent);
@@ -514,68 +686,13 @@
 
         /* Responsive */
         @media (max-width: 768px) {
-            .hero {
-                height: 40vh;
-                min-height: 280px;
-            }
-
-            .actions-bar {
-                padding: 12px 16px;
-            }
-
-            .actions-left {
-                font-size: 0.8rem;
-            }
-
-            .download-all-btn {
-                padding: 8px 14px;
-                font-size: 0.8rem;
-            }
-
-            .gallery-container {
-                padding: 8px;
-            }
-
-            .gallery-grid {
-                gap: 5px;
-            }
-
-            .masonry-col {
-                gap: 5px;
-            }
-
-            .lightbox-nav {
-                width: 40px;
-                height: 40px;
-            }
-
-            .lightbox-prev {
-                left: 10px;
-            }
-
-            .lightbox-next {
-                right: 10px;
-            }
-
             .lightbox-content {
-                max-width: calc(100vw - 120px);
-                max-height: calc(100vh - 80px);
+                max-width: calc(100vw - 20px);
+                max-height: calc(100vh - 20px);
             }
 
             .lightbox-img {
-                max-height: calc(100vh - 80px);
-            }
-
-            .lightbox-download-btn {
-                right: 70px;
-                width: 40px;
-                height: 40px;
-            }
-
-            .lightbox-favorite-btn {
-                right: 120px;
-                width: 40px;
-                height: 40px;
+                max-height: calc(100vh - 20px);
             }
         }
     </style>
@@ -611,6 +728,7 @@
 
     <!-- Lightbox -->
     <div class="lightbox" id="lightbox">
+        <!-- Desktop Controls -->
         <button class="lightbox-close" onclick="closeLightbox()">×</button>
         <a class="lightbox-download-btn" id="lightboxDownload" href="#" download title="Download">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -624,6 +742,21 @@
         </button>
         <button class="lightbox-nav lightbox-prev" onclick="navigateLightbox(-1)">‹</button>
         <button class="lightbox-nav lightbox-next" onclick="navigateLightbox(1)">›</button>
+
+        <!-- Mobile Tap Zones -->
+        <button class="lightbox-tap-zone lightbox-tap-zone-left" id="tapZoneLeft" onclick="toggleMobileMenu()"></button>
+        <button class="lightbox-tap-zone lightbox-tap-zone-right" id="tapZoneRight" onclick="toggleMobileMenu()"></button>
+
+        <!-- Mobile Menu -->
+        <div class="lightbox-mobile-menu" id="mobileLightboxMenu">
+            <button onclick="closeLightbox()">Close</button>
+            <button onclick="navigateLightbox(-1)">← Previous</button>
+            <button onclick="navigateLightbox(1)">Next →</button>
+            <button onclick="toggleFavoriteFromLightbox()">❤️ Favorite</button>
+            <a id="mobileDownloadLink" href="#" download style="padding: 8px 12px; color: var(--text-primary); text-decoration: none; font-size: 0.9rem;">↓ Download</a>
+        </div>
+
+        <!-- Photo -->
         <div class="lightbox-content">
             <img class="lightbox-img" id="lightboxImg">
         </div>
@@ -979,7 +1112,19 @@
 
         function closeLightbox() {
             document.getElementById('lightbox').classList.remove('active');
+            document.getElementById('mobileLightboxMenu').classList.remove('visible');
             document.body.style.overflow = '';
+        }
+
+        function toggleMobileMenu() {
+            const menu = document.getElementById('mobileLightboxMenu');
+            menu.classList.toggle('visible');
+            // Auto-hide after 3 seconds
+            if (menu.classList.contains('visible')) {
+                setTimeout(() => {
+                    menu.classList.remove('visible');
+                }, 3000);
+            }
         }
 
         function navigateLightbox(direction) {
@@ -994,6 +1139,8 @@
             document.getElementById('lightboxImg').src = photo.url;
             document.getElementById('lightboxDownload').href = `/api/gallery/${galleryId}/download/${encodeURIComponent(photo.filename)}`;
             document.getElementById('lightboxDownload').setAttribute('download', photo.filename);
+            document.getElementById('mobileDownloadLink').href = `/api/gallery/${galleryId}/download/${encodeURIComponent(photo.filename)}`;
+            document.getElementById('mobileDownloadLink').setAttribute('download', photo.filename);
             const isFav = localFavorites.has(photo.filename);
             const favBtn = document.getElementById('lightboxFavorite');
             favBtn.classList.toggle('favorited', isFav);
