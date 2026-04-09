@@ -212,40 +212,33 @@
         }
 
         .gallery-grid {
-            display: flex;
-            align-items: flex-start;
-            gap: 10px;
+            columns: 4;
+            column-gap: 10px;
         }
 
-        @media (max-width: 768px) {
-            .gallery-grid {
-                gap: 4px;
-            }
+        @media (max-width: 1400px) {
+            .gallery-grid { columns: 3; }
         }
 
-        @media (max-width: 480px) {
-            .gallery-grid {
-                gap: 2px;
-            }
+        @media (max-width: 900px) {
+            .gallery-grid { columns: 2; column-gap: 4px; }
+        }
+
+        @media (max-width: 560px) {
+            .gallery-grid { columns: 1; }
         }
 
         .masonry-col {
-            flex: 1;
-            display: flex;
-            flex-direction: column;
-            gap: 10px;
+            break-inside: avoid;
+            margin-bottom: 10px;
         }
 
         @media (max-width: 768px) {
-            .masonry-col {
-                gap: 4px;
-            }
+            .masonry-col { margin-bottom: 4px; }
         }
 
         @media (max-width: 480px) {
-            .masonry-col {
-                gap: 2px;
-            }
+            .masonry-col { margin-bottom: 2px; }
         }
 
         .photo-card {
@@ -254,6 +247,16 @@
             background: var(--bg-secondary);
             cursor: pointer;
             transition: transform 0.3s ease, box-shadow 0.3s ease;
+            break-inside: avoid;
+            margin-bottom: 10px;
+        }
+
+        @media (max-width: 768px) {
+            .photo-card { margin-bottom: 4px; }
+        }
+
+        @media (max-width: 480px) {
+            .photo-card { margin-bottom: 2px; }
         }
 
         .photo-card:hover {
@@ -1031,20 +1034,11 @@
         function renderGallery(downloadsEnabled = true) {
             _lastDownloadsEnabled = downloadsEnabled;
             const grid = document.getElementById('galleryGrid');
-            const colCount = getColCount();
 
-            // Build column containers
-            const cols = Array.from({ length: colCount }, () => {
-                const col = document.createElement('div');
-                col.className = 'masonry-col';
-                return col;
-            });
-
-            // Distribute photos left-to-right using a round-robin
-            // (preserves chronological left-to-right reading order)
+            // CSS columns handles layout — no JS column distribution needed
+            grid.innerHTML = '';
             photos.forEach((photo, index) => {
                 const isFav = localFavorites.has(photo.filename);
-                const colIndex = index % colCount;
 
                 const card = document.createElement('div');
                 card.className = 'photo-card';
@@ -1087,25 +1081,13 @@
                     this.previousElementSibling.style.display = 'none';
                 };
 
-                cols[colIndex].appendChild(card);
+                grid.appendChild(card);
             });
-
-            grid.innerHTML = '';
-            cols.forEach(col => grid.appendChild(col));
 
             lazyLoadImages();
         }
 
-        // Re-render on resize (debounced) to update column count
-        let _resizeTimer;
-        window.addEventListener('resize', () => {
-            clearTimeout(_resizeTimer);
-            _resizeTimer = setTimeout(() => {
-                const newCount = getColCount();
-                const current = document.querySelectorAll('.masonry-col').length;
-                if (newCount !== current) renderGallery(_lastDownloadsEnabled);
-            }, 200);
-        });
+        // CSS columns handles responsive layout — no resize re-render needed
 
         function lazyLoadImages() {
             const images = document.querySelectorAll('.photo-card img[data-src]');
