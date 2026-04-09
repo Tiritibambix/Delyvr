@@ -61,6 +61,39 @@ const GALLERIES_FILE = path.join(DATA_DIR, 'galleries.json');
 const collections = new Map();
 const COLLECTIONS_FILE = path.join(DATA_DIR, 'collections.json');
 
+// Settings file
+const SETTINGS_FILE = path.join(DATA_DIR, 'settings.json');
+
+const SETTINGS_DEFAULTS = {
+    theme: 'dark',
+    website: '',
+    socials: {
+        instagram: '',
+        facebook: '',
+        pinterest: '',
+        tiktok: '',
+        linkedin: '',
+        '500px': '',
+        flickr: '',
+        behance: ''
+    }
+};
+
+function loadSettings() {
+    if (fs.existsSync(SETTINGS_FILE)) {
+        try {
+            return { ...SETTINGS_DEFAULTS, ...JSON.parse(fs.readFileSync(SETTINGS_FILE, 'utf8')) };
+        } catch (e) {
+            return { ...SETTINGS_DEFAULTS };
+        }
+    }
+    return { ...SETTINGS_DEFAULTS };
+}
+
+function saveSettings(data) {
+    fs.writeFileSync(SETTINGS_FILE, JSON.stringify(data, null, 2));
+}
+
 // Load galleries from file on startup
 function loadGalleries() {
     if (fs.existsSync(GALLERIES_FILE)) {
@@ -1278,6 +1311,54 @@ app.delete('/api/gallery/:galleryId', adminLimiter, requireAuth, validateGallery
 
     res.json({ success: true });
 });
+
+// --- Settings routes ---
+
+// GET /api/settings — public, used by all pages to apply theme and render socials
+app.get('/api/settings', publicReadLimiter, (_req, res) => {
+    res.json(loadSettings());
+});
+
+// POST /api/settings — admin only, saves theme + socials + website
+app.post('/api/settings', adminLimiter, requireAuth, (req, res) => {
+    const current = loadSettings();
+
+    // theme
+    if (typeof req.body.theme === 'string' && ['dark', 'light'].includes(req.body.theme)) {
+        current.theme = req.body.theme;
+    }
+
+    // website
+    if (typeof req.body.website === 'string') {
+        current.website = req.body.website.trim().slice(0, 500);
+    }
+
+    // socials — only known keys, only strings
+    const SOCIAL_KEYS = ['instagram', 'facebook', 'pinterest', 'tiktok', 'linkedin', '500px', 'flickr', 'behance'];
+    if (req.body.socials && typeof req.body.socials === 'object' && !Array.isArray(req.body.socials)) {
+        current.socials = current.socials || {};
+        for (const key of SOCIAL_KEYS) {
+            if (typeof req.body.socials[key] === 'string') {
+                current.socials[key] = req.body.socials[key].trim().slice(0, 500);
+            }
+        }
+    }
+
+    saveSettings(current);
+    res.json(current);
+});
+
+// Legacy theme-only route — kept for backward compat with older admin.html (POST + PATCH)
+function handleThemeUpdate(req, res) {
+    const current = loadSettings();
+    if (typeof req.body.theme === 'string' && ['dark', 'light'].includes(req.body.theme)) {
+        current.theme = req.body.theme;
+        saveSettings(current);
+    }
+    res.json(current);
+}
+app.post('/api/settings/theme', adminLimiter, requireAuth, handleThemeUpdate);
+app.patch('/api/settings/theme', adminLimiter, requireAuth, handleThemeUpdate);
 
 // Error handling — never expose internal details (file paths, stack traces) to the client
 app.use((err, req, res, next) => {
