@@ -1108,11 +1108,26 @@
             updateLightbox();
         }
 
+        // Preload adjacent previews so navigation feels instant
+        function preloadAdjacentPreviews(index) {
+            const offsets = [-1, 1];
+            offsets.forEach(offset => {
+                const i = (index + offset + photos.length) % photos.length;
+                if (photos[i]) {
+                    const img = new Image();
+                    img.src = photos[i].previewUrl || photos[i].url;
+                }
+            });
+        }
+
         function updateLightbox() {
             const photo = photos[currentPhotoIndex];
             const downloadUrl = `/api/gallery/${galleryId}/download/${encodeURIComponent(photo.filename)}`;
 
             document.getElementById('lightboxImg').src = photo.previewUrl || photo.url;
+
+            // Preload neighbours in background
+            preloadAdjacentPreviews(currentPhotoIndex);
 
             // Desktop download button
             document.getElementById('lightboxDownload').href = downloadUrl;

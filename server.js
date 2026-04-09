@@ -140,7 +140,7 @@ reconcileGalleries();
 loadCollections();
 
 // Ensure directories exist
-['uploads', 'backgrounds', 'thumbnails', 'og-cache'].forEach(dir => {
+['uploads', 'backgrounds', 'thumbnails', 'previews', 'og-cache'].forEach(dir => {
     const dirPath = path.join(DATA_DIR, dir);
     if (!fs.existsSync(dirPath)) {
         fs.mkdirSync(dirPath, { recursive: true });
@@ -149,6 +149,25 @@ loadCollections();
 if (!fs.existsSync(path.join(__dirname, 'public'))) {
     fs.mkdirSync(path.join(__dirname, 'public'), { recursive: true });
 }
+
+// Generate missing previews for all galleries on startup (background, non-blocking).
+// Runs after reconcileGalleries and directory creation so the galleries map and
+// the previews/ directory are both ready.
+setImmediate(() => {
+    for (const [galleryId, gallery] of galleries.entries()) {
+        const files = Array.isArray(gallery.files) ? gallery.files : [];
+        if (files.length === 0) continue;
+        const missing = files.filter(f => {
+            try {
+                const p = safeResolvePath(safeResolvePath(PREVIEWS_DIR, galleryId), f + '.jpg');
+                return !fs.existsSync(p);
+            } catch { return false; }
+        });
+        if (missing.length > 0) {
+            generateGalleryPreviews(galleryId, missing).catch(() => {});
+        }
+    }
+});
 
 // --- Helper functions ---
 
@@ -662,27 +681,40 @@ app.get('/api/gallery/:galleryId/photo/:filename', imageLimiter, validateGallery
     res.sendFile(filePath);
 });
 
-// Serve 1920px preview for lightbox — falls back to original if preview unavailable
-app.get('/api/gallery/:galleryId/preview/:filename', imageLimiter, validateGalleryId, validateFilename, async (req, res) => {
+// Serve 1920px preview for lightbox.
+// If the preview already exists on disk, serve it immediately.
+// If not, serve the original right away (non-blocking) and generate the preview
+// in the background so subsequent requests hit the cache.
+app.get('/api/gallery/:galleryId/preview/:filename', imageLimiter, validateGalleryId, validateFilename, (req, res) => {
     const { galleryId, filename } = req.params;
 
-    const previewPath = safeResolvePath(safeResolvePath(PREVIEWS_DIR, galleryId), filename + '.jpg');
-
-    if (!fs.existsSync(previewPath)) {
-        // Generate on-the-fly if missing (e.g. galleries uploaded before this feature)
-        await generatePreview(galleryId, filename);
+    let previewPath;
+    try {
+        previewPath = safeResolvePath(safeResolvePath(PREVIEWS_DIR, galleryId), filename + '.jpg');
+    } catch {
+        return res.status(400).send('Invalid path');
     }
 
     if (fs.existsSync(previewPath)) {
         return res.sendFile(previewPath);
     }
 
-    // Fall back to original if preview generation failed
-    const filePath = safeResolvePath(safeResolvePath(path.join(DATA_DIR, 'uploads'), galleryId), filename);
-    if (!fs.existsSync(filePath)) {
+    // Preview not ready yet — serve original immediately, generate in background
+    let originalPath;
+    try {
+        originalPath = safeResolvePath(safeResolvePath(path.join(DATA_DIR, 'uploads'), galleryId), filename);
+    } catch {
+        return res.status(400).send('Invalid path');
+    }
+
+    if (!fs.existsSync(originalPath)) {
         return res.status(404).send('Photo not found');
     }
-    res.sendFile(filePath);
+
+    // Kick off background generation (no await — response already sent)
+    generatePreview(galleryId, filename).catch(() => {});
+
+    res.sendFile(originalPath);
 });
 
 // Download a single photo as an attachment
