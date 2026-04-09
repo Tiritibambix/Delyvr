@@ -1,5 +1,6 @@
 require('dotenv').config();
 
+const net     = require('net');
 const express = require('express');
 const multer = require('multer');
 const path = require('path');
@@ -33,6 +34,66 @@ const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
 if (!ADMIN_PASSWORD) {
     console.error('FATAL: ADMIN_PASSWORD environment variable is not set. Set it in your .env file.');
     process.exit(1);
+}
+
+// IP allowlist for admin routes (optional).
+// Set ADMIN_ALLOWED_IPS in .env as a comma-separated list of IPs or CIDR ranges.
+// Example: ADMIN_ALLOWED_IPS=88.123.45.67,192.168.1.0/24
+// If unset or empty, all IPs are allowed.
+const ADMIN_ALLOWED_IPS_RAW = process.env.ADMIN_ALLOWED_IPS || '';
+const ADMIN_ALLOWED_IPS = ADMIN_ALLOWED_IPS_RAW
+    .split(',')
+    .map(s => s.trim())
+    .filter(Boolean);
+
+// Convert an IPv4 or IPv6 address string to a BigInt for bitwise comparison
+function ipToBigInt(ip) {
+    if (net.isIPv4(ip)) {
+        return ip.split('.').reduce((acc, octet) => (acc << 8n) | BigInt(parseInt(octet, 10)), 0n);
+    }
+    // Expand IPv6 (handle ::)
+    const parts = ip.split(':');
+    const full = [];
+    for (let i = 0; i < parts.length; i++) {
+        if (parts[i] === '') {
+            const fill = 8 - parts.filter(p => p !== '').length;
+            for (let j = 0; j <= fill; j++) full.push('0000');
+        } else {
+            full.push(parts[i].padStart(4, '0'));
+        }
+    }
+    return BigInt('0x' + full.join(''));
+}
+
+// Check whether a given IP is covered by a CIDR range or matches exactly
+function ipMatchesCIDR(ip, cidr) {
+    try {
+        if (!cidr.includes('/')) return ip === cidr;
+        const [rangeIp, prefixStr] = cidr.split('/');
+        const prefix = parseInt(prefixStr, 10);
+        // Normalise IPv4-mapped IPv6 addresses (::ffff:x.x.x.x)
+        const normalise = addr => addr.startsWith('::ffff:') ? addr.slice(7) : addr;
+        const normIp    = normalise(ip);
+        const normRange = normalise(rangeIp);
+        if (net.isIPv4(normIp) !== net.isIPv4(normRange)) return false;
+        const bits = net.isIPv4(normIp) ? 32n : 128n;
+        const shift = bits - BigInt(prefix);
+        const mask  = ((1n << BigInt(prefix)) - 1n) << shift;
+        return (ipToBigInt(normIp) & mask) === (ipToBigInt(normRange) & mask);
+    } catch { return false; }
+}
+
+// Middleware: block requests whose IP is not in the allowlist.
+// No-op when ADMIN_ALLOWED_IPS is empty.
+function requireAllowedIP(req, res, next) {
+    if (ADMIN_ALLOWED_IPS.length === 0) return next();
+    // Express sets req.ip, honouring trust proxy if configured
+    const raw = req.ip || '';
+    const ip  = raw.startsWith('::ffff:') ? raw.slice(7) : raw;
+    const allowed = ADMIN_ALLOWED_IPS.some(cidr => ipMatchesCIDR(ip, cidr));
+    if (allowed) return next();
+    console.warn(`[AUTH] IP blocked: ${ip} — not in ADMIN_ALLOWED_IPS`);
+    res.status(403).json({ error: 'Forbidden' });
 }
 
 // File size limits (from .env, in MB)
@@ -352,10 +413,22 @@ function validateFilename(req, res, next) {
 
 // Simple password authentication middleware — header only, never query param
 function requireAuth(req, res, next) {
+    // Check IP allowlist first
+    if (ADMIN_ALLOWED_IPS.length > 0) {
+        const raw = req.ip || '';
+        const ip  = raw.startsWith('::ffff:') ? raw.slice(7) : raw;
+        const allowed = ADMIN_ALLOWED_IPS.some(cidr => ipMatchesCIDR(ip, cidr));
+        if (!allowed) {
+            console.warn(`[AUTH] IP blocked: ${ip} — route: ${req.method} ${req.path}`);
+            return res.status(403).json({ error: 'Forbidden' });
+        }
+    }
     const password = req.headers['x-admin-password'];
     if (password === ADMIN_PASSWORD) {
         next();
     } else {
+        const ip = (req.ip || '').replace(/^::ffff:/, '');
+        console.warn(`[AUTH] Failed auth attempt — IP: ${ip} — route: ${req.method} ${req.path}`);
         res.status(401).json({ error: 'Unauthorized' });
     }
 }
@@ -418,12 +491,14 @@ const downloadLimiter = rateLimit({
 // --- Routes ---
 
 // Verify password endpoint
-app.post('/api/auth/verify', authLimiter, (req, res) => {
+app.post('/api/auth/verify', authLimiter, requireAllowedIP, (req, res) => {
     const raw = req.body.password;
     const password = Array.isArray(raw) ? raw[0] : raw;
     if (typeof password === 'string' && password === ADMIN_PASSWORD) {
         res.json({ success: true });
     } else {
+        const ip = (req.ip || '').replace(/^::ffff:/, '');
+        console.warn(`[AUTH] Failed login attempt — IP: ${ip}`);
         res.status(401).json({ error: 'Invalid password' });
     }
 });
