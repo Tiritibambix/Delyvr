@@ -360,13 +360,13 @@
 
         .login-card input {
             width: 100%;
-            padding: 14px 18px;
+            padding: 14px 48px 14px 18px;
             background: var(--bg-tertiary);
             border: 1px solid var(--border);
             border-radius: 10px;
             color: var(--text-primary);
             font-size: 1rem;
-            margin-bottom: 16px;
+            margin-bottom: 0;
             transition: border-color 0.2s;
         }
 
@@ -375,7 +375,36 @@
             border-color: var(--accent);
         }
 
-        .login-card button {
+        .password-wrap {
+            position: relative;
+            margin-bottom: 16px;
+        }
+
+        .password-toggle {
+            position: absolute;
+            right: 14px;
+            top: 50%;
+            transform: translateY(-50%);
+            background: none;
+            border: none;
+            cursor: pointer;
+            color: var(--text-secondary);
+            padding: 0;
+            display: flex;
+            align-items: center;
+            transition: color 0.2s;
+        }
+
+        .password-toggle:hover {
+            color: var(--text-primary);
+        }
+
+        .password-toggle svg {
+            width: 18px;
+            height: 18px;
+        }
+
+        .login-card button:not(.password-toggle) {
             width: 100%;
             padding: 14px 24px;
             background: var(--accent);
@@ -388,7 +417,7 @@
             transition: background 0.2s;
         }
 
-        .login-card button:hover {
+        .login-card button:not(.password-toggle):hover {
             background: var(--accent-hover);
         }
 
@@ -1485,7 +1514,15 @@
         <div class="login-card">
             <h2>Welcome Back</h2>
             <p>Enter your password to access the dashboard</p>
-            <input type="password" id="passwordInput" placeholder="Password" autofocus>
+            <div class="password-wrap">
+                <input type="password" id="passwordInput" placeholder="Password" autofocus>
+                <button class="password-toggle" type="button" onclick="togglePasswordVisibility()" aria-label="Show password" tabindex="-1">
+                    <svg id="eyeIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                        <circle cx="12" cy="12" r="3"/>
+                    </svg>
+                </button>
+            </div>
             <button onclick="login()">Sign In</button>
             <p class="login-error" id="loginError">Invalid password</p>
         </div>
@@ -2707,6 +2744,16 @@
         }
 
         // Profile modal
+        function togglePasswordVisibility() {
+            const input = document.getElementById('passwordInput');
+            const icon  = document.getElementById('eyeIcon');
+            const isHidden = input.type === 'password';
+            input.type = isHidden ? 'text' : 'password';
+            icon.innerHTML = isHidden
+                ? '<path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><line x1="1" y1="1" x2="23" y2="23"/>'
+                : '<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>';
+        }
+
         function openProfileModal() {
             // Load current settings into fields
             fetch('/api/settings').then(r => r.json()).then(s => {
