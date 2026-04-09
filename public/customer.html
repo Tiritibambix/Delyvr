@@ -56,9 +56,14 @@
             color: var(--accent);
         }
 
+        html, body {
+            height: 100%;
+            overflow: hidden;
+        }
+
         body {
             font-family: 'Instrument Sans', -apple-system, BlinkMacSystemFont, sans-serif;
-            min-height: 100vh;
+            height: 100%;
             display: flex;
             flex-direction: column;
             align-items: center;
@@ -230,9 +235,6 @@
             }
             html.light .social-footer {
                 background: #ffffff;
-            }
-            .content {
-                padding-bottom: 80px;
             }
         }
 
