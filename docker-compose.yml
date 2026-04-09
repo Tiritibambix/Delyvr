@@ -10,5 +10,9 @@ services:
       - MAX_UPLOAD_MB=${MAX_UPLOAD_MB:-200}
       - MAX_BACKGROUND_MB=${MAX_BACKGROUND_MB:-20}
       - TRUST_PROXY=${TRUST_PROXY:-1}
+      # Optional: restrict admin access to specific IPs or CIDR ranges.
+      # Comma-separated list. Leave unset to allow all IPs (default).
+      # Example: ADMIN_ALLOWED_IPS=88.123.45.67,192.168.1.0/24
+      # - ADMIN_ALLOWED_IPS=${ADMIN_ALLOWED_IPS}
     volumes:
       - ${GALLERY_DIR:-./data}:/data # Set GALLERY_DIR in .env to change where data is stored on the host.

@@ -4,32 +4,40 @@
 
 # Delyvr
 
-A self-hosted photo delivery platform for photographers. Upload photos, share a branded download link with your client - they get a beautiful gallery preview and a one-click ZIP download.
+A self-hosted photo delivery platform for photographers. Upload photos, share a branded download link with your client — they get a beautiful gallery preview and a one-click ZIP download.
 
 > Based on the original work of [Andre Padua (apadua)](https://github.com/apadua/MeTransfer). Thank you for the foundation.
 
 ---
 
+## ⚠️ Security Notice
+
+This application is provided as-is. While reasonable security measures have been implemented (see the Security section below), no independent audit has been performed. You are responsible for reviewing the code, assessing the risks for your use case, and validating that the deployment meets your security requirements before exposing this to the internet. The repository owner accepts no liability for any damages or data loss resulting from the use of this software.
+
+---
+
 ## Features
 
-- **Drag & Drop Upload** - drop individual files or entire folders from your computer
-- **Custom Backgrounds** - upload a hero image per gallery; stored as normalised JPEG
-- **Photo Preview Page** - masonry grid with full-screen lightbox, keyboard/touch navigation, and individual photo download. Photos display at their natural aspect ratio. The lightbox serves 1920px previews for fast loading — originals are only downloaded when explicitly requested.
-- **Clean Lightbox** - download and favorite buttons discreetly placed next to the close button on desktop; a persistent bottom action bar (Prev / Fav / Close / Save / Next) on mobile. Swipe left/right to navigate.
-- **ZIP Downloads** - all photos packaged into a single named download
-- **Download Toggle** - enable or disable downloads per gallery from the dashboard; useful for draft galleries or contact sheets
-- **Client Favorites** - clients can heart photos from the grid or the lightbox; each visitor is tracked anonymously so multiple people can vote independently; the admin sees vote counts per photo sorted from most to least voted, with a reset option
-- **Collections** - group multiple galleries under a single shareable link (e.g. one collection per wedding, one gallery per key moment). Each collection can have its own cover image. Clients can browse and download each gallery individually or download the entire collection as a single ZIP with one sub-folder per gallery
-- **Back to Collection** - when a client opens a gallery from a collection page, a back button appears in the navigation bar. Clients who received a direct gallery link see nothing — the collection stays private
-- **Gallery Grid View** - the admin dashboard displays galleries as a visual card grid with 16/9 cover images, making it easy to distinguish galleries with the same name across different events
-- **Light / Dark Mode** - toggle between light and dark theme from the admin dashboard; the choice applies site-wide to all visitors immediately and persists across restarts
-- **Right-Click Protection** - browser context menu is disabled on images across all client pages to prevent casual saving
-- **Gallery Management** - rename galleries inline, set cover images, copy links, delete from the dashboard
-- **Custom Logo** - upload your own logo from the dashboard; shown on both admin and client pages; revert to default anytime
-- **Social Media Previews** - auto-generated OG images (1200×630) injected into share links
-- **Multi-Language Support** - client pages auto-detect browser language; supports English, Portuguese, Spanish, Italian, and French
-- **Mobile Responsive** - all client pages adapt to small screens; the admin dashboard stacks correctly on mobile
-- **No Database Required** - file-based storage, simple to deploy and back up
+- **Drag & Drop Upload** — drop individual files or entire folders from your computer
+- **Custom Backgrounds** — upload a hero image per gallery; stored as normalised JPEG
+- **Photo Preview Page** — masonry grid with full-screen lightbox, keyboard/touch navigation, and individual photo download. Photos display at their natural aspect ratio.
+- **Fast Lightbox** — 1920px previews generated automatically at upload time and served in the lightbox; originals are only transferred on explicit download. Adjacent photos are preloaded in the background for instant navigation.
+- **Clean Lightbox** — download and favorite buttons on desktop; a persistent bottom action bar (Prev / Fav / Close / Save / Next) on mobile with swipe support.
+- **ZIP Downloads** — all photos packaged into a single named download
+- **Download Toggle** — enable or disable downloads per gallery from the dashboard
+- **Client Favorites** — clients can heart photos from the grid or the lightbox; each visitor is tracked anonymously so multiple people can vote independently; the admin sees vote counts sorted descending with a reset option
+- **Collections** — group multiple galleries under a single shareable link. Each collection can have its own cover image. Clients can browse and download each gallery individually or download the entire collection as a ZIP with one sub-folder per gallery.
+- **Back to Collection** — when a client reaches a gallery via a collection link, a back button appears in the navigation bar. Direct gallery links show nothing.
+- **Gallery Grid View** — the admin dashboard displays galleries as a visual card grid with 16/9 cover images
+- **Light / Dark Mode** — toggle from the admin dashboard; applies site-wide to all visitors immediately and persists across restarts
+- **Social Links & Website** — set your website URL and social network links from the admin dashboard (Profile modal); displayed as icons in the footer of all client pages
+- **Right-Click Protection** — browser context menu disabled on images across all client pages
+- **Gallery Management** — rename inline, set cover images, copy links, delete
+- **Custom Logo** — upload your own logo; shown on all pages; revert to default anytime
+- **Social Media Previews** — auto-generated OG images (1200×630) injected into share links
+- **Multi-Language Support** — client pages auto-detect browser language; supports English, French, Spanish, Portuguese, and Italian
+- **Mobile Responsive** — all client pages adapt to small screens; the customer page is fully fixed (no scroll)
+- **No Database Required** — file-based storage, simple to deploy and back up
 
 ---
 
@@ -68,15 +76,18 @@ services:
     image: tiritibambix/delyvr:main-latest
     restart: unless-stopped
     ports:
-      - "3000:3000"
+      - "${PORT:-3000}:3000"
     environment:
-      - INSTALL_DIR=/data # Needed for container deployment. Do not change this value.
-      - ADMIN_PASSWORD=STRONGPASSWORD
+      - INSTALL_DIR=/data
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD}
       - MAX_UPLOAD_MB=${MAX_UPLOAD_MB:-200}
       - MAX_BACKGROUND_MB=${MAX_BACKGROUND_MB:-20}
-      - TRUST_PROXY=0
+      - TRUST_PROXY=${TRUST_PROXY:-1}
+      # Optional: restrict admin access to specific IPs or CIDR ranges
+      # Leave unset to allow all IPs (default)
+      # - ADMIN_ALLOWED_IPS=88.123.45.67,192.168.1.0/24
     volumes:
-      - ./data:/data
+      - ${GALLERY_DIR:-./data}:/data
 ```
 
 ### 3. Start the container
@@ -101,30 +112,62 @@ All settings live in your `docker-compose.yml` environment block (or in a `.env`
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `ADMIN_PASSWORD` | *(required)* | Password to access the admin dashboard |
+| `ADMIN_PASSWORD` | *(required)* | Password to access the admin dashboard. Use a long random string. |
 | `PORT` | `3000` | TCP port the server listens on |
 | `MAX_UPLOAD_MB` | `200` | Max size per photo file, in MB |
 | `MAX_BACKGROUND_MB` | `20` | Max size for background images, in MB |
 | `INSTALL_DIR` | *(project dir)* | Set to `/data` in Docker. Do not change. |
-| `TRUST_PROXY` | `0` | Set to `1` when running behind a reverse proxy (Nginx, Caddy, Traefik). Enables correct client IP detection for rate limiting and HTTPS detection. |
+| `TRUST_PROXY` | `0` | Set to `1` when running behind a reverse proxy (Nginx, Caddy, Traefik). Enables correct client IP detection for rate limiting. |
+| `ADMIN_ALLOWED_IPS` | *(unset — all IPs allowed)* | Comma-separated list of IPs or CIDR ranges allowed to access admin routes. Example: `88.123.45.67,192.168.1.0/24`. When unset, no IP restriction is applied. |
+
+---
+
+## Security
+
+The following measures are implemented in the codebase:
+
+**Authentication & access control**
+- Admin password verified via `X-Admin-Password` header only — never via query string, never stored in sessionStorage
+- Login endpoint rate-limited to 10 attempts per IP per 15 minutes
+- Optional IP allowlist (`ADMIN_ALLOWED_IPS`) supporting individual IPs and CIDR ranges, applied to all admin routes including the login endpoint
+- All admin route failures and blocked IP attempts are logged to stdout with an `[AUTH]` prefix, visible via `docker logs`
+
+**Input validation & path safety**
+- All filesystem paths incorporating user-controlled values go through `safeResolvePath()`, which resolves and verifies the path stays within the allowed base directory
+- Gallery and collection IDs validated as UUID v4 before any filesystem operation
+- Filenames validated against a strict allowlist pattern
+- All `req.body` parameters type-checked before use
+
+**Output sanitisation**
+- HTML escaping via the `escape-html` package on all OG tag injections
+
+**Rate limiting**
+
+| Limiter | Limit | Applied to |
+|---------|-------|------------|
+| `authLimiter` | 10 / 15 min | Login endpoint |
+| `imageLimiter` | 600 / min | Photo and OG image serving |
+| `publicReadLimiter` | 300 / min | All public GET routes |
+| `publicWriteLimiter` | 120 / min | Favorites toggle |
+| `downloadLimiter` | 10 / min | ZIP downloads |
+| `adminLimiter` | 60 / min | Admin routes with filesystem access |
+
+**What is not covered**
+- Gallery links are public by design — anyone with the UUID can access photos. UUIDs are not guessable but are not secret if the link is forwarded.
+- There is no HTTPS at the application level — you must terminate SSL at your reverse proxy.
+- There is no multi-user or per-gallery password system.
 
 ---
 
 ## Usage
 
-1. **Open the Dashboard** - go to `http://localhost:3000`
-2. **Log in** - enter your admin password
-3. **Enter an Event Name** - e.g. "Johnson Wedding" or "Senior Photos - Sarah"
-4. **Upload Photos** - drag and drop files or entire folders onto the upload zone
-5. **Add a Background** *(optional)* - upload a hero image shown on the client page
-6. **Create Gallery** - click "Create Gallery & Get Link"
-7. **Share** - copy the generated link and send it to your client
-
-### Gallery grid view
-
-The admin dashboard displays galleries as a card grid rather than a flat list. Each card shows a 16/9 cover image, making it easy to visually distinguish galleries that share the same name across different events — for example two "Getting Ready" galleries from two different weddings.
-
-Galleries remain draggable: drag a card into a collection drop zone to assign it.
+1. **Open the Dashboard** — go to `http://localhost:3000`
+2. **Log in** — enter your admin password
+3. **Enter an Event Name** — e.g. "Johnson Wedding" or "Senior Photos - Sarah"
+4. **Upload Photos** — drag and drop files or entire folders onto the upload zone
+5. **Add a Background** *(optional)* — upload a hero image shown on the client page
+6. **Create Gallery** — click "Create Gallery & Get Link"
+7. **Share** — copy the generated link and send it to your client
 
 ### Collections
 
@@ -137,51 +180,23 @@ Collections group multiple galleries under a single shareable link. The typical 
 4. Drag pills within the collection to reorder galleries in chronological order
 5. Copy the collection link and share it with your client
 
-**What the client sees on the collection page:**
-- The collection cover image as a subtle hero background behind the header (if set)
-- All galleries as cards with cover image, name, and photo count
-- Clicking a cover browses the gallery, with a **← Back to collection** button in the navigation bar
-- A **Copy Link** button per gallery to share individual galleries
-- A **Download** button per gallery (if downloads are enabled)
-- A **Download All Galleries** button that downloads a single ZIP with one sub-folder per gallery
+A gallery can belong to only one collection. Deleting a collection does not delete the galleries.
 
-A gallery can belong to only one collection. Deleting a collection does not delete the galleries — they remain accessible individually.
+### Social links
 
-### Back to collection
-
-When a client reaches a gallery by clicking through from a collection page, a back button appears in the top navigation bar of the preview page. Clients who received a direct link to the gallery see no back button — the collection is never exposed to them.
+Open the **Profile** modal from the top-left button in the admin header. Enter your website URL and any social network URLs you want displayed. Only filled fields appear in the footer of client pages. Leave a field empty to hide that icon.
 
 ### Download toggle
 
-Each gallery in the dashboard has a **Downloads** toggle. When disabled:
-- The download button is hidden on the client pages
-- ZIP and individual photo download endpoints return 403
-- The gallery remains fully browsable — clients can view all photos in the lightbox
-
-This is useful for draft galleries where you want clients to make a selection before you deliver the final files.
+Each gallery has a **Downloads** toggle. When disabled, ZIP and individual photo download endpoints return 403. The gallery remains fully browsable — useful for draft galleries where you want clients to make a selection first.
 
 ### Client favorites
 
-Clients can heart photos directly from the gallery grid or the lightbox. Each device gets a stable anonymous ID so multiple people (family members, a couple) can vote independently without overwriting each other.
-
-From the admin dashboard, each gallery shows a favorite count. Clicking **View** opens a modal with favorited photos sorted by vote count descending, with a ♥ N badge on each thumbnail. **Reset** clears all votes.
-
-Two concrete use cases:
-- **Portrait / couples sessions** - share a draft gallery, let the client pick the photos they want retouched. Favorites replace the back-and-forth of emails and filename lists.
-- **Weddings** - ask clients which photos they loved most after delivery. Opens the door to offering prints.
+Clients can heart photos from the grid or the lightbox. Each device gets a stable anonymous ID so multiple people can vote independently. From the admin dashboard, click **View** on a gallery to see photos sorted by vote count, then **Reset** to clear all votes.
 
 ### Light / Dark mode
 
-The admin dashboard includes a theme toggle button. Switching between light and dark mode applies the change immediately to all pages — admin and client — for every visitor. The choice is stored in `data/settings.json` and persists across server restarts and container updates.
-
-### What your client sees
-
-When your client opens a gallery link they see:
-- Your custom background image (if uploaded)
-- The event name as the page title
-- A **"Browse Photos"** button that opens a masonry grid with a full-screen lightbox and individual download
-- A **"Download All"** button - all photos arrive as one ZIP file (if downloads are enabled)
-- A heart button on each photo and in the lightbox to mark favorites
+The theme toggle in the admin header applies the change immediately to all pages for every visitor. The choice persists across restarts.
 
 ---
 
@@ -189,15 +204,8 @@ When your client opens a gallery link they see:
 
 ### Behind Nginx (free SSL with Let's Encrypt)
 
-Install Nginx and Certbot:
-
 ```bash
 sudo apt install -y nginx certbot python3-certbot-nginx
-```
-
-Create a site config:
-
-```bash
 sudo nano /etc/nginx/sites-available/delyvr
 ```
 
@@ -218,30 +226,18 @@ server {
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
         proxy_cache_bypass $http_upgrade;
-
-        # Required for large photo uploads
         client_max_body_size 500M;
     }
 }
 ```
 
-Enable and reload:
-
 ```bash
 sudo ln -s /etc/nginx/sites-available/delyvr /etc/nginx/sites-enabled/
-sudo nginx -t
-sudo systemctl reload nginx
-```
-
-Get a free SSL certificate:
-
-```bash
+sudo nginx -t && sudo systemctl reload nginx
 sudo certbot --nginx -d photos.yourdomain.com
 ```
 
-Certbot will automatically renew the certificate. Delyvr is now accessible at `https://photos.yourdomain.com`.
-
-Make sure `TRUST_PROXY=1` is set so that rate limiting and HTTPS detection use the real client IP and protocol rather than the proxy's.
+Set `TRUST_PROXY=1` in your compose file so rate limiting uses the real client IP.
 
 ---
 
@@ -249,44 +245,26 @@ Make sure `TRUST_PROXY=1` is set so that rate limiting and HTTPS detection use t
 
 ### 1. Install Node.js
 
-The recommended approach is [nvm](https://github.com/nvm-sh/nvm):
-
 ```bash
 curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.7/install.sh | bash
-source ~/.bashrc          # or ~/.zshrc if you use zsh
-nvm install 20
-nvm use 20
-node -v                   # should print v20.x.x
+source ~/.bashrc
+nvm install 20 && nvm use 20
 ```
 
-Alternatively, using apt (Ubuntu/Debian):
-
-```bash
-curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
-sudo apt-get install -y nodejs
-node -v
-```
-
-### 2. Clone the repository
+### 2. Clone and install
 
 ```bash
 cd /opt
 sudo git clone https://github.com/tiritibambix/delyvr.git
 sudo chown -R $USER:$USER /opt/delyvr
 cd delyvr
-```
-
-### 3. Install dependencies
-
-```bash
 npm install
 ```
 
-### 4. Configure environment
+### 3. Configure
 
 ```bash
-cp .env.example .env
-nano .env
+cp .env.example .env && nano .env
 ```
 
 Set at minimum:
@@ -295,31 +273,18 @@ Set at minimum:
 ADMIN_PASSWORD=your_secure_password_here
 ```
 
-Save and exit (`Ctrl+O`, `Enter`, `Ctrl+X` in nano).
-
-### 5. Start the server
+### 4. Start
 
 ```bash
 npm start
 ```
 
-The server starts at `http://localhost:3000`.
-
 ### Keep it running with PM2
-
-PM2 keeps the process alive across reboots:
 
 ```bash
 npm install -g pm2
 pm2 start server.js --name delyvr
-pm2 save
-pm2 startup   # follow the printed command
-```
-
-To check logs:
-
-```bash
-pm2 logs delyvr
+pm2 save && pm2 startup
 ```
 
 ---
@@ -328,31 +293,29 @@ pm2 logs delyvr
 
 ```
 delyvr/
-├── server.js           # Express server - all routes and middleware
-├── package.json        # Dependencies
+├── server.js           # Express server — all routes and middleware
+├── package.json
 ├── Dockerfile
 ├── docker-compose.yml
-├── .env                # Your config (gitignored - never committed)
+├── .env                # Your config (gitignored)
 ├── .env.example        # Template for new installs
 ├── public/
 │   ├── admin.html      # Photographer dashboard
 │   ├── customer.html   # Client download page
-│   ├── preview.html    # Photo browser - masonry grid + lightbox
+│   ├── preview.html    # Photo browser — masonry grid + lightbox
 │   ├── collection.html # Client collection page
-│   └── logo.svg        # Default logo (replaced at runtime by a custom upload)
+│   └── logo.svg        # Default logo
 └── data/               # Runtime data (Docker volume mount)
     ├── uploads/        # Gallery photos, organised by gallery ID
-    ├── backgrounds/    # Background images, one per gallery (JPEG)
-    ├── thumbnails/     # 400px JPEG thumbnails, generated automatically
-    ├── previews/       # 1920px JPEG previews for lightbox display, generated automatically
+    ├── backgrounds/    # Background images (JPEG)
+    ├── thumbnails/     # 400px JPEG thumbnails, auto-generated
+    ├── previews/       # 1920px JPEG lightbox previews, auto-generated
     ├── og-cache/       # 1200×630 OG images, generated on first share
-    ├── logo.*          # Custom logo if uploaded (overrides logo.svg)
-    ├── galleries.json  # Gallery metadata
-    ├── collections.json # Collection metadata
-    └── settings.json   # Site-wide settings — created automatically on first change
+    ├── logo.*          # Custom logo if uploaded
+    ├── galleries.json
+    ├── collections.json
+    └── settings.json   # Theme + social links — created automatically
 ```
-
-`data/` and its contents are gitignored - they contain user data, not source code.
 
 ---
 
@@ -362,27 +325,27 @@ delyvr/
 
 | Method | Endpoint | Auth | Description |
 |--------|----------|------|-------------|
-| `GET` | `/` | - | Admin dashboard |
-| `GET` | `/download/:id` | - | Client download page (with OG meta tags) |
-| `GET` | `/preview/:id` | - | Photo preview page (with OG meta tags) |
-| `POST` | `/api/auth/verify` | - | Verify admin password |
+| `GET` | `/` | — | Admin dashboard |
+| `GET` | `/download/:id` | — | Client download page |
+| `GET` | `/preview/:id` | — | Photo preview page |
+| `POST` | `/api/auth/verify` | — | Verify admin password |
 | `POST` | `/api/gallery/create` | ✓ | Create gallery and upload photos |
 | `POST` | `/api/gallery/:id/upload` | ✓ | Add photos to existing gallery |
 | `POST` | `/api/gallery/:id/background` | ✓ | Upload/replace background image |
 | `POST` | `/api/gallery/:id/rename` | ✓ | Rename a gallery |
-| `PATCH` | `/api/gallery/:id/downloads` | ✓ | Enable or disable downloads (`{ "enabled": true\|false }`) |
-| `GET` | `/api/gallery/:id/info` | - | Gallery metadata (includes `downloadsEnabled`) |
-| `GET` | `/api/gallery/:id/photos` | - | List photos with URLs (used by preview page) |
-| `GET` | `/api/gallery/:id/photo/:filename` | - | Serve photo; add `?thumb=1` for 400px thumbnail |
-| `GET` | `/api/gallery/:id/preview/:filename` | - | Serve 1920px preview for lightbox (falls back to original) |
-| `GET` | `/api/gallery/:id/download` | - | Download all photos as ZIP (403 if downloads disabled) |
-| `GET` | `/api/gallery/:id/download/:filename` | - | Download a single photo (403 if downloads disabled) |
-| `GET` | `/api/gallery/:id/background` | - | Serve background image |
-| `GET` | `/api/gallery/:id/og-image` | - | Serve/generate 1200×630 OG image |
-| `POST` | `/api/gallery/:id/favorites` | - | Toggle a photo favorite for a visitor (`{ filename, visitorId }`) |
-| `GET` | `/api/gallery/:id/favorites-public` | - | Get this visitor's favorites (`?visitorId=`) |
-| `GET` | `/api/gallery/:id/favorites` | ✓ | List all favorites sorted by vote count (admin) |
-| `DELETE` | `/api/gallery/:id/favorites` | ✓ | Reset all favorites for a gallery |
+| `PATCH` | `/api/gallery/:id/downloads` | ✓ | Enable or disable downloads |
+| `GET` | `/api/gallery/:id/info` | — | Gallery metadata |
+| `GET` | `/api/gallery/:id/photos` | — | Photo list with URLs |
+| `GET` | `/api/gallery/:id/photo/:filename` | — | Serve photo; `?thumb=1` for 400px thumbnail |
+| `GET` | `/api/gallery/:id/preview/:filename` | — | Serve 1920px lightbox preview |
+| `GET` | `/api/gallery/:id/download` | — | ZIP download |
+| `GET` | `/api/gallery/:id/download/:filename` | — | Single photo download |
+| `GET` | `/api/gallery/:id/background` | — | Serve background image |
+| `GET` | `/api/gallery/:id/og-image` | — | Serve/generate OG image |
+| `POST` | `/api/gallery/:id/favorites` | — | Toggle a photo favorite |
+| `GET` | `/api/gallery/:id/favorites-public` | — | Visitor's favorites |
+| `GET` | `/api/gallery/:id/favorites` | ✓ | All favorites sorted by votes (admin) |
+| `DELETE` | `/api/gallery/:id/favorites` | ✓ | Reset all favorites |
 | `GET` | `/api/galleries` | ✓ | List all galleries |
 | `DELETE` | `/api/gallery/:id` | ✓ | Delete a gallery |
 
@@ -390,25 +353,26 @@ delyvr/
 
 | Method | Endpoint | Auth | Description |
 |--------|----------|------|-------------|
-| `GET` | `/collection/:id` | - | Client collection page (with OG meta tags) |
-| `POST` | `/api/collection/create` | ✓ | Create a collection (`{ name }`) |
+| `GET` | `/collection/:id` | — | Client collection page |
+| `POST` | `/api/collection/create` | ✓ | Create a collection |
 | `GET` | `/api/collections` | ✓ | List all collections (admin) |
-| `GET` | `/api/collection/:id` | - | Collection info with galleries (public) |
-| `POST` | `/api/collection/:id/rename` | ✓ | Rename a collection |
-| `POST` | `/api/collection/:id/background` | ✓ | Upload/replace collection cover image |
-| `GET` | `/api/collection/:id/background` | - | Serve collection cover image |
-| `POST` | `/api/collection/:id/galleries` | ✓ | Add a gallery to a collection (`{ galleryId }`) |
-| `PATCH` | `/api/collection/:id/galleries/reorder` | ✓ | Reorder galleries (`{ galleryIds: [...] }`) |
-| `DELETE` | `/api/collection/:id/galleries/:galleryId` | ✓ | Remove a gallery from a collection |
-| `GET` | `/api/collection/:id/download` | - | Download all galleries as ZIP (one sub-folder per gallery) |
-| `DELETE` | `/api/collection/:id` | ✓ | Delete a collection (galleries are NOT deleted) |
+| `GET` | `/api/collection/:id` | — | Collection info with galleries (public) |
+| `POST` | `/api/collection/:id/rename` | ✓ | Rename |
+| `POST` | `/api/collection/:id/background` | ✓ | Upload/replace cover image |
+| `GET` | `/api/collection/:id/background` | — | Serve cover image |
+| `POST` | `/api/collection/:id/galleries` | ✓ | Add gallery to collection |
+| `PATCH` | `/api/collection/:id/galleries/reorder` | ✓ | Reorder galleries |
+| `DELETE` | `/api/collection/:id/galleries/:galleryId` | ✓ | Remove gallery from collection |
+| `GET` | `/api/collection/:id/download` | — | ZIP all galleries |
+| `DELETE` | `/api/collection/:id` | ✓ | Delete collection (galleries kept) |
 
 ### Settings endpoints
 
 | Method | Endpoint | Auth | Description |
 |--------|----------|------|-------------|
-| `GET` | `/api/settings` | - | Get site settings (theme, etc.) |
-| `PATCH` | `/api/settings/theme` | ✓ | Set theme (`{ "theme": "dark"\|"light" }`) |
+| `GET` | `/api/settings` | — | Get site settings (theme, social links) |
+| `POST` | `/api/settings` | ✓ | Update theme, website, and social links |
+| `PATCH` | `/api/settings/theme` | ✓ | Update theme only |
 
 Authenticated endpoints require the `X-Admin-Password` header.
 
@@ -416,14 +380,13 @@ Authenticated endpoints require the `X-Admin-Password` header.
 
 ## Tips
 
-- **Branding** - use a photo from the same session as the background for a cohesive look
-- **File names** - rename files on your camera before uploading; the original names are preserved and used for sort order
-- **Gallery covers** - always upload a cover for each gallery; it's the main visual identifier in the grid and on the collection page
-- **Collections workflow** - create one collection per event, add a cover photo, drag galleries into it in chronological order, share the collection link with your client
-- **Draft workflow** - create the gallery with downloads disabled, share the link for client selection, then enable downloads once the final files are ready
-- **Favorites workflow** - for weddings, share the gallery after the event and let clients heart their favorites before offering prints
-- **Disk space** - delete galleries once clients have downloaded; `uploads/` can grow large
-- **Link expiry** - there is no automatic expiry; delete a gallery from the dashboard when done
+- **Branding** — use a photo from the same session as the background for a cohesive look
+- **File names** — rename files on your camera before uploading; the original names control sort order
+- **Gallery covers** — always upload a cover; it's the main visual identifier in the grid and on the collection page
+- **Collections workflow** — create one collection per event, drag galleries into it in chronological order, share the collection link
+- **Draft workflow** — create the gallery with downloads disabled, share for client selection, enable downloads when ready
+- **Disk space** — delete galleries once clients have downloaded; `uploads/` and `previews/` can grow large
+- **Link expiry** — there is no automatic expiry; delete a gallery from the dashboard when done
 
 ---
 
@@ -431,38 +394,30 @@ Authenticated endpoints require the `X-Admin-Password` header.
 
 ### Upload fails for large batches
 
-Increase the Node.js heap size:
-
 ```bash
 NODE_OPTIONS="--max-old-space-size=4096" npm start
 ```
 
 ### Nginx returns 413 Request Entity Too Large
 
-Add or increase `client_max_body_size` in your Nginx config:
-
-```nginx
-client_max_body_size 500M;
-```
-
-Then reload Nginx: `sudo systemctl reload nginx`
+Add to your Nginx config: `client_max_body_size 500M;` then `sudo systemctl reload nginx`.
 
 ### Downloads time out on very large galleries
 
-- Split the session into multiple galleries
-- Increase the proxy timeout in Nginx: `proxy_read_timeout 300;`
+Split into multiple galleries, or add `proxy_read_timeout 300;` to your Nginx config.
 
-### Server won't start - "ADMIN_PASSWORD is not set"
-
-Make sure `ADMIN_PASSWORD` is set in your environment or `.env` file:
+### Server won't start — "ADMIN_PASSWORD is not set"
 
 ```bash
-cp .env.example .env
-nano .env
+cp .env.example .env && nano .env
 ```
+
+### Admin access blocked unexpectedly
+
+If `ADMIN_ALLOWED_IPS` is set, check `docker logs delyvr` for `[AUTH]` entries showing which IP was blocked. Add your IP to the allowlist or clear the variable to disable the restriction.
 
 ---
 
 ## License
 
-MIT - free to use and modify for your photography business.
+MIT — free to use and modify for your photography business.
