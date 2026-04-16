@@ -1164,6 +1164,49 @@ app.post('/api/collection/:collectionId/rename', requireAuth, validateCollection
 });
 
 // Add a gallery to a collection (admin only)
+
+// Upload/replace collection background image
+app.post('/api/collection/:collectionId/background', adminLimiter, requireAuth, validateCollectionId, uploadBackground.single('background'), async (req, res) => {
+    const { collectionId } = req.params;
+    const collection = collections.get(collectionId);
+
+    if (!collection) return res.status(404).json({ error: 'Collection not found' });
+    if (!req.file) return res.status(400).json({ error: 'No background file provided' });
+
+    try {
+        const backgroundsDir = path.join(DATA_DIR, 'backgrounds');
+        if (!fs.existsSync(backgroundsDir)) fs.mkdirSync(backgroundsDir, { recursive: true });
+
+        // Delete old collection background
+        const existing = fs.readdirSync(backgroundsDir).find(f => f.startsWith(`collection-${collectionId}`));
+        if (existing) fs.unlinkSync(path.join(backgroundsDir, existing));
+
+        const dest = path.join(backgroundsDir, `collection-${collectionId}.jpg`);
+        await sharp(req.file.buffer)
+            .resize(2400, null, { withoutEnlargement: true })
+            .jpeg({ quality: 85 })
+            .toFile(dest);
+
+        collection.background = `collection-${collectionId}.jpg`;
+        saveCollections();
+
+        res.json({ success: true, background: collection.background });
+    } catch (err) {
+        res.status(500).json({ error: 'Failed to process background image' });
+    }
+});
+
+// Serve collection background image
+app.get('/api/collection/:collectionId/background', publicReadLimiter, validateCollectionId, (req, res) => {
+    const { collectionId } = req.params;
+    const backgroundsDir = path.join(DATA_DIR, 'backgrounds');
+    if (fs.existsSync(backgroundsDir)) {
+        const file = fs.readdirSync(backgroundsDir).find(f => f.startsWith(`collection-${collectionId}`));
+        if (file) return res.sendFile(path.join(backgroundsDir, file));
+    }
+    res.status(404).json({ error: 'No background found' });
+});
+
 app.post('/api/collection/:collectionId/galleries', requireAuth, validateCollectionId, (req, res) => {
     const { collectionId } = req.params;
     const { galleryId } = req.body;

@@ -11,14 +11,14 @@
         * { margin: 0; padding: 0; box-sizing: border-box; }
 
         :root {
-            --bg:      #0a0a0b;
-            --bg2:     #111113;
-            --bg3:     #161618;
-            --border:  #1e1e21;
-            --border2: #2a2a2e;
-            --text:    #f0f0f2;
-            --muted:   #4a4a4e;
-            --muted2:  #3a3a3e;
+            --bg:      #0c0c0e;
+            --bg2:     #131316;
+            --bg3:     #1a1a1e;
+            --border:  #252528;
+            --border2: #313136;
+            --text:    #f2f2f4;
+            --muted:   #72727a;
+            --muted2:  #4a4a52;
             --accent:  #c9a962;
             --accent-h:#dfc07a;
             --error:   #e05252;
@@ -26,14 +26,14 @@
         }
 
         html.light {
-            --bg:      #f5f4f0;
-            --bg2:     #eceae5;
-            --bg3:     #e4e2dd;
-            --border:  #dddbd6;
-            --border2: #ccc9c3;
-            --text:    #111110;
-            --muted:   #888680;
-            --muted2:  #aaa8a3;
+            --bg:      #f0efe9;
+            --bg2:     #e8e7e1;
+            --bg3:     #dddcd6;
+            --border:  #c8c7c0;
+            --border2: #b8b7b0;
+            --text:    #18181a;
+            --muted:   #6a6a72;
+            --muted2:  #9a9aa2;
             --accent:  #a07828;
             --accent-h:#c9a962;
             --error:   #c03030;
@@ -45,935 +45,552 @@
             background: var(--bg);
             color: var(--text);
             font-family: 'Instrument Sans', -apple-system, sans-serif;
-            font-size: 13px;
+            font-size: 14px;
+            line-height: 1.5;
         }
 
         body { display: flex; flex-direction: column; height: 100%; }
 
-        /* ── LOGIN MODAL ── */
+        /* ═══════════════════════════════
+           LOGIN
+        ═══════════════════════════════ */
         .login-modal {
-            position: fixed;
-            inset: 0;
+            position: fixed; inset: 0;
             background: var(--bg);
-            display: flex;
-            align-items: center;
-            justify-content: center;
+            display: flex; align-items: center; justify-content: center;
             z-index: 9999;
         }
-
         .login-modal.hidden { display: none; }
 
-        .login-card {
-            width: 320px;
-            text-align: center;
-        }
+        .login-card { width: 320px; text-align: center; }
 
         .login-card h2 {
             font-family: 'Fraunces', serif;
-            font-weight: 300;
-            font-size: 1.6rem;
+            font-weight: 300; font-size: 1.8rem;
             margin-bottom: 6px;
         }
 
-        .login-card > p {
-            font-size: 12px;
-            color: var(--muted);
-            margin-bottom: 24px;
-        }
+        .login-card > p { font-size: 13px; color: var(--muted); margin-bottom: 24px; }
 
-        .password-wrap {
-            position: relative;
-            margin-bottom: 10px;
-        }
+        .password-wrap { position: relative; margin-bottom: 10px; }
 
         .login-card input[type="password"],
         .login-card input[type="text"] {
-            width: 100%;
-            background: var(--bg3);
-            border: 1px solid var(--border2);
-            border-radius: 4px;
-            padding: 0 36px 0 12px;
-            height: 36px;
-            font-size: 13px;
-            color: var(--text);
-            font-family: inherit;
-            outline: none;
-            transition: border-color 0.2s;
+            width: 100%; height: 38px;
+            background: var(--bg3); border: 1px solid var(--border2);
+            border-radius: 4px; padding: 0 38px 0 12px;
+            font-size: 14px; color: var(--text); font-family: inherit;
+            outline: none; transition: border-color 0.2s;
         }
-
         .login-card input:focus { border-color: var(--accent); }
 
         .password-toggle {
-            position: absolute;
-            right: 10px;
-            top: 50%;
-            transform: translateY(-50%);
-            background: none;
-            border: none;
-            cursor: pointer;
-            color: var(--muted);
-            padding: 0;
-            display: flex;
+            position: absolute; right: 10px; top: 50%; transform: translateY(-50%);
+            background: none; border: none; cursor: pointer; color: var(--muted);
+            padding: 0; display: flex;
         }
-
-        .password-toggle svg { width: 16px; height: 16px; }
+        .password-toggle svg { width: 17px; height: 17px; }
 
         .login-card button:not(.password-toggle) {
-            width: 100%;
-            height: 36px;
-            background: var(--accent);
-            border: none;
-            border-radius: 4px;
-            color: #0a0a0b;
-            font-size: 12px;
-            font-weight: 600;
-            letter-spacing: 0.08em;
-            text-transform: uppercase;
-            cursor: pointer;
-            font-family: inherit;
-            transition: background 0.2s;
+            width: 100%; height: 38px;
+            background: var(--accent); border: none; border-radius: 4px;
+            color: #0c0c0e; font-size: 13px; font-weight: 600;
+            letter-spacing: 0.07em; text-transform: uppercase;
+            cursor: pointer; font-family: inherit; transition: background 0.2s;
         }
-
         .login-card button:not(.password-toggle):hover { background: var(--accent-h); }
 
-        .login-error {
-            font-size: 11px;
-            color: var(--error);
-            margin-top: 8px;
-            min-height: 16px;
-            display: none;
-        }
-
+        .login-error { font-size: 12px; color: var(--error); margin-top: 8px; min-height: 18px; display: none; }
         .login-error.visible { display: block; }
 
-        /* ── UPLOAD TOAST ── */
+        /* ═══════════════════════════════
+           UPLOAD TOAST
+        ═══════════════════════════════ */
         .upload-toast {
-            position: fixed;
-            bottom: 24px;
-            right: 24px;
-            background: var(--bg3);
-            border: 1px solid var(--border2);
-            border-radius: 6px;
-            padding: 12px 16px;
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            font-size: 12px;
-            z-index: 8000;
-            opacity: 0;
-            transform: translateY(8px);
+            position: fixed; bottom: 24px; right: 24px;
+            background: var(--bg3); border: 1px solid var(--border2);
+            border-radius: 6px; padding: 12px 16px;
+            display: flex; align-items: center; gap: 10px;
+            font-size: 13px; z-index: 8000;
+            opacity: 0; transform: translateY(8px);
             transition: opacity 0.2s, transform 0.2s;
             pointer-events: none;
         }
-
         .upload-toast.visible { opacity: 1; transform: translateY(0); pointer-events: auto; }
         .upload-toast.success { border-color: var(--success); }
         .upload-toast.error   { border-color: var(--error); }
 
         .upload-toast-spinner {
             width: 14px; height: 14px;
-            border: 2px solid var(--border2);
-            border-top-color: var(--accent);
-            border-radius: 50%;
-            animation: spin 0.7s linear infinite;
+            border: 2px solid var(--border2); border-top-color: var(--accent);
+            border-radius: 50%; animation: spin 0.7s linear infinite;
         }
-
         .upload-toast-icon { width: 14px; height: 14px; }
         .upload-toast-icon.success { color: var(--success); }
         .upload-toast-icon.error   { color: var(--error); }
-
         @keyframes spin { to { transform: rotate(360deg); } }
 
-        /* ── FAVORITES MODAL ── */
+        /* ═══════════════════════════════
+           FAVORITES MODAL
+        ═══════════════════════════════ */
         .favorites-modal {
-            position: fixed;
-            inset: 0;
+            position: fixed; inset: 0;
             background: rgba(0,0,0,0.85);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            z-index: 7000;
-            opacity: 0;
-            pointer-events: none;
-            transition: opacity 0.2s;
-            backdrop-filter: blur(6px);
+            display: flex; align-items: center; justify-content: center;
+            z-index: 7000; opacity: 0; pointer-events: none;
+            transition: opacity 0.2s; backdrop-filter: blur(6px);
         }
-
         .favorites-modal.active { opacity: 1; pointer-events: auto; }
 
         .favorites-modal-card {
-            background: var(--bg2);
-            border: 1px solid var(--border);
-            border-radius: 8px;
-            padding: 24px;
-            width: 90%;
-            max-width: 600px;
-            max-height: 80vh;
-            display: flex;
-            flex-direction: column;
-            gap: 16px;
+            background: var(--bg2); border: 1px solid var(--border);
+            border-radius: 8px; padding: 24px;
+            width: 90%; max-width: 600px; max-height: 80vh;
+            display: flex; flex-direction: column; gap: 16px;
         }
+        .favorites-modal-header { display: flex; align-items: center; justify-content: space-between; }
+        .favorites-modal-header h3 { font-size: 15px; font-weight: 600; }
+        .favorites-modal-close { background: none; border: none; color: var(--muted); font-size: 1.4rem; cursor: pointer; line-height: 1; }
+        .favorites-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); gap: 6px; overflow-y: auto; }
+        .favorites-grid img { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 3px; }
 
-        .favorites-modal-header {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-        }
-
-        .favorites-modal-header h3 {
-            font-size: 14px;
-            font-weight: 600;
-        }
-
-        .favorites-modal-close {
-            background: none;
-            border: none;
-            color: var(--muted);
-            font-size: 1.3rem;
-            cursor: pointer;
-            line-height: 1;
-        }
-
-        .favorites-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
-            gap: 6px;
-            overflow-y: auto;
-        }
-
-        .favorites-grid img {
-            width: 100%;
-            aspect-ratio: 1;
-            object-fit: cover;
-            border-radius: 3px;
-        }
-
-        /* ── PROFILE MODAL ── */
+        /* ═══════════════════════════════
+           PROFILE MODAL
+        ═══════════════════════════════ */
         .profile-modal {
-            position: fixed;
-            inset: 0;
+            position: fixed; inset: 0;
             background: rgba(0,0,0,0.85);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            z-index: 7000;
-            opacity: 0;
-            pointer-events: none;
-            transition: opacity 0.2s;
-            backdrop-filter: blur(6px);
+            display: flex; align-items: center; justify-content: center;
+            z-index: 7000; opacity: 0; pointer-events: none;
+            transition: opacity 0.2s; backdrop-filter: blur(6px);
         }
-
         .profile-modal.active { opacity: 1; pointer-events: auto; }
 
         .profile-modal-card {
-            background: var(--bg2);
-            border: 1px solid var(--border);
-            border-radius: 8px;
-            padding: 24px;
-            width: 90%;
-            max-width: 480px;
-            max-height: 88vh;
-            overflow-y: auto;
+            background: var(--bg2); border: 1px solid var(--border);
+            border-radius: 8px; padding: 24px;
+            width: 90%; max-width: 480px; max-height: 88vh; overflow-y: auto;
         }
-
-        .profile-modal-header {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            margin-bottom: 20px;
-        }
-
-        .profile-modal-header h3 { font-size: 14px; font-weight: 600; }
-
-        .profile-modal-close {
-            background: none;
-            border: none;
-            color: var(--muted);
-            font-size: 1.3rem;
-            cursor: pointer;
-        }
+        .profile-modal-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; }
+        .profile-modal-header h3 { font-size: 15px; font-weight: 600; }
+        .profile-modal-close { background: none; border: none; color: var(--muted); font-size: 1.4rem; cursor: pointer; }
 
         .profile-section-label {
-            font-size: 9px;
-            font-weight: 600;
-            text-transform: uppercase;
-            letter-spacing: 0.1em;
-            color: var(--muted);
-            margin: 16px 0 8px;
+            font-size: 10px; font-weight: 600;
+            text-transform: uppercase; letter-spacing: 0.1em;
+            color: var(--muted); margin: 16px 0 8px;
         }
-
-        .profile-field {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            margin-bottom: 6px;
-        }
-
+        .profile-field { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
         .profile-field-icon { flex-shrink: 0; width: 16px; height: 16px; color: var(--muted); display: flex; }
         .profile-field-icon svg { width: 16px; height: 16px; fill: currentColor; }
 
         .profile-field input {
-            flex: 1;
-            background: var(--bg3);
-            border: 1px solid var(--border2);
-            border-radius: 3px;
-            padding: 0 10px;
-            height: 30px;
-            font-size: 12px;
-            color: var(--text);
-            font-family: inherit;
-            outline: none;
-            transition: border-color 0.2s;
+            flex: 1; height: 32px;
+            background: var(--bg3); border: 1px solid var(--border2);
+            border-radius: 3px; padding: 0 10px;
+            font-size: 13px; color: var(--text); font-family: inherit;
+            outline: none; transition: border-color 0.2s;
         }
-
         .profile-field input:focus { border-color: var(--accent); }
-        .profile-field input::placeholder { color: var(--muted); }
+        .profile-field input::placeholder { color: var(--muted2); }
 
         .profile-save-btn {
-            margin-top: 20px;
-            width: 100%;
-            height: 32px;
-            background: var(--accent);
-            border: none;
-            border-radius: 4px;
-            color: #0a0a0b;
-            font-size: 12px;
-            font-weight: 600;
-            letter-spacing: 0.06em;
-            text-transform: uppercase;
-            cursor: pointer;
-            font-family: inherit;
+            margin-top: 20px; width: 100%; height: 34px;
+            background: var(--accent); border: none; border-radius: 4px;
+            color: #0c0c0e; font-size: 13px; font-weight: 600;
+            letter-spacing: 0.06em; text-transform: uppercase;
+            cursor: pointer; font-family: inherit;
         }
-
         .profile-save-btn:hover { background: var(--accent-h); }
-        .profile-save-feedback { font-size: 11px; color: var(--success); text-align: center; margin-top: 6px; min-height: 16px; }
+        .profile-save-feedback { font-size: 12px; color: var(--success); text-align: center; margin-top: 6px; min-height: 18px; }
 
-        /* ── SITE HEADER ── */
+        /* ═══════════════════════════════
+           SITE HEADER
+        ═══════════════════════════════ */
         .site-header {
             border-bottom: 1px solid var(--border);
-            padding: 12px 24px;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            flex-shrink: 0;
+            padding: 10px 24px;
+            display: flex; align-items: center; justify-content: space-between;
+            flex-shrink: 0; gap: 16px;
         }
 
         .logo-wrap {
-            display: block;
-            text-align: center;
-            cursor: pointer;
-            position: relative;
+            display: block; text-align: center;
+            cursor: pointer; position: relative;
         }
-
         .logo-wrap img {
             display: inline-block;
-            max-height: 48px;
-            max-width: min(240px, 30vw);
-            width: auto;
-            height: auto;
-            object-fit: contain;
+            max-height: 44px; max-width: min(200px, 25vw);
+            width: auto; height: auto; object-fit: contain;
         }
-
         .logo-hint {
-            position: absolute;
-            inset: 0;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            background: rgba(0,0,0,0.6);
-            font-size: 10px;
-            letter-spacing: 0.08em;
-            text-transform: uppercase;
-            color: #fff;
-            opacity: 0;
-            transition: opacity 0.18s;
-            border-radius: 2px;
+            position: absolute; inset: 0;
+            display: flex; align-items: center; justify-content: center;
+            background: rgba(0,0,0,0.55);
+            font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase;
+            color: #fff; opacity: 0; transition: opacity 0.18s; border-radius: 2px;
         }
-
         .logo-wrap:hover .logo-hint { opacity: 1; }
 
         .logo-reset {
-            display: none;
-            font-size: 10px;
-            color: var(--muted);
-            background: none;
-            border: none;
-            cursor: pointer;
-            text-decoration: underline;
-            font-family: inherit;
-            margin-top: 3px;
+            display: none; font-size: 11px; color: var(--muted);
+            background: none; border: none; cursor: pointer;
+            text-decoration: underline; font-family: inherit; margin-top: 2px;
         }
-
         .logo-reset:hover { color: var(--error); }
 
-        .header-nav {
-            display: flex;
-            align-items: center;
-            gap: 16px;
-        }
+        .header-nav { display: flex; align-items: center; gap: 12px; }
 
         .btn-nav {
-            font-size: 11px;
-            color: var(--muted);
-            background: none;
-            border: none;
-            cursor: pointer;
-            font-family: inherit;
-            letter-spacing: 0.04em;
-            display: flex;
-            align-items: center;
-            gap: 5px;
-            transition: color 0.2s;
+            font-size: 12px; color: var(--muted);
+            background: none; border: none; cursor: pointer;
+            font-family: inherit; display: flex; align-items: center; gap: 5px;
+            transition: color 0.2s; padding: 4px 0;
         }
-
         .btn-nav:hover { color: var(--text); }
-        .btn-nav svg { width: 13px; height: 13px; }
+        .btn-nav svg { width: 14px; height: 14px; }
 
-        .btn-nav-accent {
-            font-size: 11px;
-            color: var(--accent);
-            background: none;
-            border: 1px solid var(--border2);
-            border-radius: 3px;
-            padding: 5px 10px;
-            cursor: pointer;
-            font-family: inherit;
-            letter-spacing: 0.04em;
-            transition: border-color 0.2s;
+        .btn-nav-outline {
+            font-size: 12px; color: var(--muted);
+            background: none; border: 1px solid var(--border2);
+            border-radius: 3px; padding: 5px 10px;
+            cursor: pointer; font-family: inherit;
+            transition: border-color 0.2s, color 0.2s;
         }
+        .btn-nav-outline:hover { border-color: var(--muted); color: var(--text); }
 
-        .btn-nav-accent:hover { border-color: var(--accent); }
-
-        /* ── MAIN LAYOUT TWO COLUMNS ── */
+        /* ═══════════════════════════════
+           DASHBOARD — TWO COLUMNS
+        ═══════════════════════════════ */
         .dashboard {
             display: grid;
-            grid-template-columns: 220px 1fr;
+            grid-template-columns: 25% 1fr;
             flex: 1;
             overflow: hidden;
+            min-height: 0;
         }
 
         /* ── LEFT COLUMN ── */
         .left-col {
             border-right: 1px solid var(--border);
             overflow-y: auto;
-            padding: 20px 16px;
-            display: flex;
-            flex-direction: column;
-            gap: 20px;
+            padding: 20px 18px;
+            display: flex; flex-direction: column; gap: 20px;
         }
 
         .form-section-label {
-            font-size: 9px;
-            font-weight: 600;
-            letter-spacing: 0.14em;
-            text-transform: uppercase;
-            color: var(--muted2);
-            margin-bottom: 8px;
+            font-size: 10px; font-weight: 600;
+            letter-spacing: 0.12em; text-transform: uppercase;
+            color: var(--muted2); margin-bottom: 10px;
         }
 
         .form-input {
-            width: 100%;
-            height: 30px;
-            background: var(--bg3);
-            border: 1px solid var(--border2);
-            border-radius: 3px;
-            padding: 0 10px;
-            font-size: 12px;
-            color: var(--text);
-            font-family: inherit;
-            outline: none;
-            transition: border-color 0.2s;
-            display: block;
+            width: 100%; height: 34px;
+            background: var(--bg3); border: 1px solid var(--border2);
+            border-radius: 3px; padding: 0 10px;
+            font-size: 14px; color: var(--text); font-family: inherit;
+            outline: none; transition: border-color 0.2s; display: block;
         }
-
         .form-input:focus { border-color: var(--accent); }
         .form-input::placeholder { color: var(--muted2); }
 
         .drop-zone {
-            background: var(--bg3);
-            border: 1px dashed var(--border2);
-            border-radius: 3px;
-            height: 64px;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            gap: 4px;
-            cursor: pointer;
-            margin-top: 6px;
-            transition: border-color 0.2s;
+            background: var(--bg3); border: 1px dashed var(--border2);
+            border-radius: 3px; height: 70px;
+            display: flex; flex-direction: column;
+            align-items: center; justify-content: center; gap: 5px;
+            cursor: pointer; margin-top: 6px; transition: border-color 0.2s;
         }
-
         .drop-zone:hover { border-color: var(--muted); }
         .drop-zone.dragover { border-color: var(--accent); background: var(--bg2); }
-
-        .drop-zone svg { width: 16px; height: 16px; color: var(--muted2); }
-        .drop-zone p { font-size: 11px; color: var(--muted2); text-align: center; line-height: 1.3; }
+        .drop-zone svg { width: 18px; height: 18px; color: var(--muted2); }
+        .drop-zone p { font-size: 12px; color: var(--muted2); text-align: center; line-height: 1.4; }
 
         .drop-zone-small {
-            background: var(--bg3);
-            border: 1px dashed var(--border2);
-            border-radius: 3px;
-            height: 36px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            cursor: pointer;
-            margin-top: 6px;
-            transition: border-color 0.2s;
-            position: relative;
-            overflow: hidden;
+            background: var(--bg3); border: 1px dashed var(--border2);
+            border-radius: 3px; height: 34px;
+            display: flex; align-items: center; justify-content: center;
+            cursor: pointer; margin-top: 6px; transition: border-color 0.2s;
+            position: relative; overflow: hidden;
         }
-
         .drop-zone-small:hover { border-color: var(--muted); }
-        .drop-zone-small p { font-size: 11px; color: var(--muted2); }
+        .drop-zone-small p { font-size: 12px; color: var(--muted2); }
 
         .bg-preview-small {
-            position: absolute;
-            inset: 0;
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
-            opacity: 0.5;
-            display: none;
+            position: absolute; inset: 0;
+            width: 100%; height: 100%; object-fit: cover;
+            opacity: 0.5; display: none;
         }
 
-        .file-list {
-            font-size: 11px;
-            color: var(--muted);
-            margin-top: 4px;
-            min-height: 16px;
-        }
+        .file-list { font-size: 12px; color: var(--muted); margin-top: 4px; min-height: 16px; }
 
         .progress-container { margin-top: 6px; display: none; }
         .progress-bar { background: var(--bg3); border-radius: 2px; height: 3px; overflow: hidden; }
         .progress-fill { height: 100%; background: var(--accent); width: 0%; transition: width 0.3s; }
-        .progress-text { font-size: 10px; color: var(--muted); margin-top: 4px; }
+        .progress-text { font-size: 11px; color: var(--muted); margin-top: 4px; }
 
         .btn-primary {
-            width: 100%;
-            height: 30px;
-            background: var(--accent);
-            border: none;
-            border-radius: 3px;
-            color: #0a0a0b;
-            font-size: 11px;
-            font-weight: 600;
-            letter-spacing: 0.06em;
-            text-transform: uppercase;
-            cursor: pointer;
-            font-family: inherit;
-            margin-top: 8px;
+            width: 100%; height: 34px;
+            background: var(--accent); border: none; border-radius: 3px;
+            color: #0c0c0e; font-size: 12px; font-weight: 600;
+            letter-spacing: 0.07em; text-transform: uppercase;
+            cursor: pointer; font-family: inherit; margin-top: 8px;
             transition: background 0.2s;
         }
-
         .btn-primary:hover { background: var(--accent-h); }
-        .btn-primary:disabled { opacity: 0.4; cursor: not-allowed; }
+        .btn-primary:disabled { opacity: 0.35; cursor: not-allowed; }
 
         .btn-secondary {
-            width: 100%;
-            height: 30px;
-            background: transparent;
-            border: 1px solid var(--border2);
-            border-radius: 3px;
-            color: var(--muted);
-            font-size: 11px;
-            letter-spacing: 0.06em;
-            text-transform: uppercase;
-            cursor: pointer;
-            font-family: inherit;
-            margin-top: 6px;
+            width: 100%; height: 34px;
+            background: transparent; border: 1px solid var(--border2);
+            border-radius: 3px; color: var(--muted);
+            font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase;
+            cursor: pointer; font-family: inherit; margin-top: 6px;
             transition: border-color 0.2s, color 0.2s;
         }
-
         .btn-secondary:hover { border-color: var(--muted); color: var(--text); }
 
-        .col-divider {
-            height: 1px;
-            background: var(--border);
-            margin: 0 -16px;
-        }
+        .col-divider { height: 1px; background: var(--border); margin: 0 -18px; }
 
         /* ── RIGHT COLUMN ── */
         .right-col {
             overflow-y: auto;
             padding: 20px 24px;
-            display: flex;
-            flex-direction: column;
-            gap: 24px;
+            display: flex; flex-direction: column; gap: 24px;
         }
 
         .section-header {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
+            display: flex; align-items: center; justify-content: space-between;
             margin-bottom: 12px;
         }
-
         .section-label {
-            font-size: 9px;
-            font-weight: 600;
-            letter-spacing: 0.14em;
-            text-transform: uppercase;
-            color: var(--muted2);
+            font-size: 10px; font-weight: 600;
+            letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted2);
         }
 
         /* ── RESULT SECTION ── */
         .result-section {
             display: none;
-            background: var(--bg3);
-            border: 1px solid var(--border2);
-            border-radius: 6px;
-            padding: 16px;
+            background: var(--bg3); border: 1px solid var(--border2);
+            border-radius: 6px; padding: 16px;
         }
-
         .result-section.visible { display: block; }
-
-        .result-section h3 {
-            font-size: 13px;
-            font-weight: 600;
-            color: var(--success);
-            margin-bottom: 8px;
-        }
-
-        .result-section p {
-            font-size: 12px;
-            color: var(--muted);
-            margin-bottom: 12px;
-        }
-
-        .link-row {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-
+        .result-section h3 { font-size: 14px; font-weight: 600; color: var(--success); margin-bottom: 6px; }
+        .result-section p { font-size: 13px; color: var(--muted); margin-bottom: 12px; }
+        .link-row { display: flex; align-items: center; gap: 8px; }
         .link-row input {
-            flex: 1;
-            background: var(--bg2);
-            border: 1px solid var(--border);
-            border-radius: 3px;
-            padding: 0 10px;
-            height: 30px;
-            font-size: 11px;
-            color: var(--muted);
-            font-family: inherit;
-            outline: none;
+            flex: 1; height: 32px;
+            background: var(--bg2); border: 1px solid var(--border);
+            border-radius: 3px; padding: 0 10px; font-size: 12px; color: var(--muted);
+            font-family: inherit; outline: none;
         }
-
         .copy-btn {
-            height: 30px;
-            padding: 0 12px;
-            background: var(--accent);
-            border: none;
-            border-radius: 3px;
-            color: #0a0a0b;
-            font-size: 11px;
-            font-weight: 600;
-            cursor: pointer;
-            font-family: inherit;
-            white-space: nowrap;
+            height: 32px; padding: 0 14px;
+            background: var(--accent); border: none; border-radius: 3px;
+            color: #0c0c0e; font-size: 12px; font-weight: 600;
+            cursor: pointer; font-family: inherit;
         }
-
         .new-upload-btn {
-            margin-top: 10px;
-            font-size: 11px;
-            color: var(--muted);
-            background: none;
-            border: none;
-            cursor: pointer;
-            text-decoration: underline;
-            font-family: inherit;
+            margin-top: 10px; font-size: 12px; color: var(--muted);
+            background: none; border: none; cursor: pointer;
+            text-decoration: underline; font-family: inherit;
         }
 
-        /* ── COLLECTIONS ── */
+        /* ═══════════════════════════════
+           COLLECTION ITEMS
+        ═══════════════════════════════ */
         .collection-item {
             border: 1px solid var(--border);
-            border-radius: 4px;
-            overflow: hidden;
-            margin-bottom: 8px;
+            border-radius: 5px; overflow: hidden; margin-bottom: 10px;
         }
 
         .collection-header {
-            background: var(--bg3);
-            padding: 10px 12px;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
+            background: var(--bg3); padding: 10px 12px;
+            display: flex; align-items: center; gap: 10px;
         }
 
-        .collection-name-wrap { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; }
-
-        .collection-name-input {
-            background: transparent;
-            border: none;
-            font-size: 13px;
-            font-weight: 500;
-            color: var(--text);
-            font-family: inherit;
-            outline: none;
-            flex: 1;
-            min-width: 0;
-        }
-
-        .collection-name-input:focus {
-            background: var(--bg2);
-            border-radius: 2px;
-            padding: 2px 6px;
-        }
-
-        .collection-meta-text { font-size: 10px; color: var(--muted2); white-space: nowrap; }
-
-        .collection-actions { display: flex; gap: 10px; flex-shrink: 0; }
-
-        .btn-action {
-            font-size: 11px;
-            color: var(--muted);
-            background: none;
-            border: none;
-            cursor: pointer;
-            font-family: inherit;
-            transition: color 0.2s;
-        }
-
-        .btn-action:hover { color: var(--text); }
-        .btn-action-danger { color: var(--muted2); }
-        .btn-action-danger:hover { color: var(--error); }
-
-        .collection-cover-zone {
-            padding: 8px 12px;
-            border-top: 1px solid var(--border);
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-
+        /* Cover vignette collection — 44px */
         .collection-cover-thumb {
-            width: 32px;
-            height: 32px;
-            border-radius: 2px;
-            object-fit: cover;
-            background: var(--bg2);
-            border: 1px solid var(--border);
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            flex-shrink: 0;
-            overflow: hidden;
+            width: 44px; height: 44px; border-radius: 3px;
+            background: var(--bg2); border: 1px solid var(--border);
+            flex-shrink: 0; overflow: hidden; cursor: pointer;
+            position: relative; display: flex; align-items: center; justify-content: center;
         }
-
-        .collection-cover-thumb svg { width: 14px; height: 14px; color: var(--muted2); }
         .collection-cover-thumb img { width: 100%; height: 100%; object-fit: cover; }
-
-        .collection-pills {
-            display: flex;
-            gap: 5px;
-            flex-wrap: wrap;
-            align-items: center;
-            flex: 1;
+        .collection-cover-thumb svg { width: 16px; height: 16px; color: var(--muted2); }
+        .collection-cover-overlay {
+            position: absolute; inset: 0;
+            background: rgba(0,0,0,0.55);
+            display: flex; align-items: center; justify-content: center;
+            opacity: 0; transition: opacity 0.15s;
         }
+        .collection-cover-thumb:hover .collection-cover-overlay { opacity: 1; }
+        .collection-cover-overlay svg { width: 16px; height: 16px; color: #fff; }
+
+        .collection-info { flex: 1; min-width: 0; }
+        .collection-name-input {
+            background: transparent; border: none;
+            font-size: 14px; font-weight: 500; color: var(--text);
+            font-family: inherit; outline: none; width: 100%;
+        }
+        .collection-name-input:focus {
+            background: var(--bg2); border-radius: 2px; padding: 1px 6px;
+        }
+        .collection-meta-row { font-size: 11px; color: var(--muted2); margin-top: 1px; }
+
+        .collection-actions { display: flex; gap: 6px; flex-shrink: 0; }
+
+        /* Icon buttons */
+        .btn-icon {
+            width: 28px; height: 28px; border-radius: 4px;
+            background: none; border: 1px solid var(--border2);
+            cursor: pointer; display: flex; align-items: center; justify-content: center;
+            color: var(--muted); transition: color 0.15s, border-color 0.15s, background 0.15s;
+        }
+        .btn-icon svg { width: 14px; height: 14px; }
+        .btn-icon:hover { color: var(--text); border-color: var(--muted); background: var(--bg2); }
+        .btn-icon-danger:hover { color: var(--error); border-color: var(--error); background: var(--bg2); }
+
+        .collection-galleries {
+            padding: 8px 12px;
+            display: flex; gap: 6px; flex-wrap: wrap; align-items: center;
+            border-top: 1px solid var(--border); min-height: 38px;
+        }
+        .collection-galleries.drag-over { background: var(--bg2); }
 
         .gallery-pill {
-            background: var(--bg2);
-            border: 1px solid var(--border2);
-            border-radius: 2px;
-            padding: 3px 8px;
-            font-size: 11px;
-            color: var(--muted);
-            display: flex;
-            align-items: center;
-            gap: 5px;
-            cursor: grab;
-            user-select: none;
+            background: var(--bg2); border: 1px solid var(--border2);
+            border-radius: 2px; padding: 3px 8px; font-size: 12px; color: var(--muted);
+            display: flex; align-items: center; gap: 5px;
+            cursor: grab; user-select: none;
         }
-
         .gallery-pill:active { cursor: grabbing; }
-
         .pill-remove {
-            color: var(--muted2);
-            cursor: pointer;
-            font-size: 12px;
-            line-height: 1;
-            background: none;
-            border: none;
-            font-family: inherit;
-            padding: 0;
+            color: var(--muted2); cursor: pointer; font-size: 12px; line-height: 1;
+            background: none; border: none; font-family: inherit; padding: 0;
         }
-
         .pill-remove:hover { color: var(--error); }
+        .collection-drop-hint { font-size: 12px; color: var(--muted2); font-style: italic; }
 
         .collection-link-row {
-            padding: 8px 12px;
-            border-top: 1px solid var(--border);
-            display: flex;
-            align-items: center;
-            gap: 8px;
+            padding: 8px 12px; border-top: 1px solid var(--border);
+            display: flex; align-items: center; gap: 8px;
         }
-
         .collection-link-row input {
-            flex: 1;
-            background: var(--bg2);
-            border: 1px solid var(--border);
-            border-radius: 2px;
-            padding: 0 8px;
-            height: 26px;
-            font-size: 11px;
-            color: var(--muted);
-            font-family: inherit;
-            outline: none;
+            flex: 1; height: 26px;
+            background: var(--bg2); border: 1px solid var(--border);
+            border-radius: 2px; padding: 0 8px; font-size: 11px; color: var(--muted);
+            font-family: inherit; outline: none;
         }
 
-        .drop-target-active { border-color: var(--accent) !important; background: var(--bg2) !important; }
-
-        /* ── GALLERIES LIST ── */
+        /* ═══════════════════════════════
+           GALLERY ITEMS
+        ═══════════════════════════════ */
         .gallery-item {
-            border: 1px solid var(--border);
-            border-radius: 4px;
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            padding: 10px 12px;
-            margin-bottom: 6px;
-            background: var(--bg2);
-            cursor: grab;
+            border: 1px solid var(--border); border-radius: 5px;
+            display: flex; align-items: center; gap: 12px;
+            padding: 10px 12px; margin-bottom: 8px;
+            background: var(--bg2); cursor: grab;
             transition: border-color 0.15s;
         }
-
         .gallery-item:active { cursor: grabbing; }
         .gallery-item.dragging { opacity: 0.4; }
 
+        /* Cover vignette galerie — 52px */
         .gallery-cover {
-            width: 40px;
-            height: 40px;
-            border-radius: 3px;
-            object-fit: cover;
-            background: var(--bg3);
-            border: 1px solid var(--border);
-            flex-shrink: 0;
-            overflow: hidden;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            cursor: pointer;
+            width: 52px; height: 52px; border-radius: 3px;
+            background: var(--bg3); border: 1px solid var(--border);
+            flex-shrink: 0; overflow: hidden; cursor: pointer;
+            display: flex; align-items: center; justify-content: center;
             position: relative;
         }
-
         .gallery-cover img { width: 100%; height: 100%; object-fit: cover; }
-        .gallery-cover svg { width: 16px; height: 16px; color: var(--muted2); }
+        .gallery-cover svg { width: 18px; height: 18px; color: var(--muted2); }
 
-        .gallery-cover-hint {
-            position: absolute;
-            inset: 0;
-            background: rgba(0,0,0,0.6);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            opacity: 0;
-            transition: opacity 0.15s;
-            font-size: 9px;
-            color: #fff;
-            text-align: center;
-            letter-spacing: 0.06em;
+        .gallery-cover-placeholder {
+            position: absolute; inset: 0;
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            gap: 3px;
         }
-
-        .gallery-cover:hover .gallery-cover-hint { opacity: 1; }
+        .gallery-cover-placeholder span { font-size: 8px; color: var(--muted2); letter-spacing: 0.04em; }
+        .gallery-cover.has-image .gallery-cover-placeholder { display: none; }
+        .gallery-cover-overlay {
+            position: absolute; inset: 0;
+            background: rgba(0,0,0,0.55);
+            display: flex; flex-direction: column;
+            align-items: center; justify-content: center; gap: 2px;
+            opacity: 0; transition: opacity 0.15s;
+        }
+        .gallery-cover:hover .gallery-cover-overlay { opacity: 1; }
+        .gallery-cover-overlay svg { width: 16px; height: 16px; color: #fff; }
+        .gallery-cover-overlay span { font-size: 8px; color: #fff; letter-spacing: 0.04em; }
 
         .gallery-info { flex: 1; min-width: 0; }
 
-        .gallery-name-input {
-            background: transparent;
-            border: none;
-            font-size: 13px;
-            font-weight: 500;
-            color: var(--text);
-            font-family: inherit;
-            outline: none;
-            width: 100%;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
+        .gallery-name {
+            font-size: 14px; font-weight: 500; color: var(--text);
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+            cursor: text; outline: none;
         }
-
-        .gallery-name-input:focus {
-            background: var(--bg3);
-            border-radius: 2px;
-            padding: 1px 6px;
+        .gallery-name:focus {
+            background: var(--bg3); border-radius: 2px; padding: 1px 6px;
+            white-space: normal;
         }
 
         .gallery-meta {
-            font-size: 10px;
-            color: var(--muted2);
-            margin-top: 2px;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
+            font-size: 11px; color: var(--muted2); margin-top: 2px;
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
         }
 
-        .gallery-meta .in-collection { color: var(--accent); }
+        /* Toggle + label sur une ligne */
+        .gallery-bottom {
+            display: flex; align-items: center; gap: 12px; margin-top: 5px; flex-wrap: wrap;
+        }
 
-        .gallery-controls {
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            flex-shrink: 0;
+        .downloads-toggle {
+            display: flex; align-items: center; gap: 6px;
+            font-size: 11px; color: var(--muted); cursor: pointer;
         }
 
         .toggle-switch {
-            position: relative;
-            width: 28px;
-            height: 16px;
-            flex-shrink: 0;
+            position: relative; width: 28px; height: 16px; flex-shrink: 0;
         }
-
         .toggle-switch input { opacity: 0; width: 0; height: 0; position: absolute; }
-
         .toggle-track {
-            position: absolute;
-            inset: 0;
-            background: var(--border2);
-            border-radius: 16px;
-            cursor: pointer;
-            transition: background 0.2s;
+            position: absolute; inset: 0;
+            background: var(--border2); border-radius: 16px;
+            cursor: pointer; transition: background 0.2s;
         }
-
         .toggle-track::after {
-            content: '';
-            position: absolute;
-            top: 2px;
-            left: 2px;
-            width: 12px;
-            height: 12px;
-            background: var(--muted);
-            border-radius: 50%;
+            content: ''; position: absolute;
+            top: 2px; left: 2px; width: 12px; height: 12px;
+            background: var(--muted); border-radius: 50%;
             transition: transform 0.2s, background 0.2s;
         }
-
         .toggle-switch input:checked + .toggle-track { background: var(--success); }
         .toggle-switch input:checked + .toggle-track::after { transform: translateX(12px); background: #fff; }
 
-        .fav-count {
-            font-size: 11px;
-            color: var(--muted);
-            cursor: pointer;
-            white-space: nowrap;
+        .fav-info {
+            font-size: 11px; color: var(--muted); display: flex; align-items: center; gap: 6px;
+        }
+        .btn-fav-action {
+            font-size: 11px; color: var(--muted);
+            background: none; border: none; cursor: pointer;
+            text-decoration: underline; font-family: inherit;
             transition: color 0.2s;
         }
+        .btn-fav-action:hover { color: var(--accent); }
 
-        .fav-count:hover { color: var(--accent); }
+        .gallery-actions { display: flex; gap: 6px; flex-shrink: 0; align-items: center; }
 
-        .empty-state {
-            font-size: 12px;
-            color: var(--muted2);
-            padding: 20px 0;
-            text-align: center;
-        }
+        .empty-state { font-size: 13px; color: var(--muted2); padding: 20px 0; text-align: center; }
 
-        /* ── RESPONSIVE ── */
-        @media (max-width: 768px) {
+        /* ═══════════════════════════════
+           RESPONSIVE
+        ═══════════════════════════════ */
+        @media (max-width: 900px) {
             .dashboard { grid-template-columns: 1fr; grid-template-rows: auto 1fr; }
-            .left-col { border-right: none; border-bottom: 1px solid var(--border); padding: 16px; max-height: 50vh; }
-            .right-col { padding: 16px; }
+            .left-col { border-right: none; border-bottom: 1px solid var(--border); max-height: 55vh; }
         }
     </style>
 </head>
@@ -1001,12 +618,8 @@
     <!-- Upload Toast -->
     <div class="upload-toast" id="uploadToast">
         <div class="upload-toast-spinner" id="toastSpinner"></div>
-        <svg class="upload-toast-icon success" id="toastSuccess" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display:none">
-            <path d="M20 6L9 17l-5-5" stroke-linecap="round" stroke-linejoin="round"/>
-        </svg>
-        <svg class="upload-toast-icon error" id="toastError" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display:none">
-            <path d="M18 6L6 18M6 6l12 12" stroke-linecap="round" stroke-linejoin="round"/>
-        </svg>
+        <svg class="upload-toast-icon success" id="toastSuccess" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display:none"><path d="M20 6L9 17l-5-5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <svg class="upload-toast-icon error" id="toastError" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display:none"><path d="M18 6L6 18M6 6l12 12" stroke-linecap="round" stroke-linejoin="round"/></svg>
         <span id="toastMessage">Uploading...</span>
     </div>
 
@@ -1056,12 +669,15 @@
         <input type="file" id="logoInput" accept="image/*,.svg" style="display:none">
 
         <div class="header-nav">
-            <button class="btn-nav" id="logoResetBtn" onclick="resetLogo()" style="display:none">Reset logo</button>
+            <button class="btn-nav" id="logoResetBtn" onclick="resetLogo()" style="display:none">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
+                Reset logo
+            </button>
             <button class="btn-nav" onclick="openProfileModal()">
                 <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 12c2.7 0 4.8-2.1 4.8-4.8S14.7 2.4 12 2.4 7.2 4.5 7.2 7.2 9.3 12 12 12zm0 2.4c-3.2 0-9.6 1.6-9.6 4.8v2.4h19.2v-2.4c0-3.2-6.4-4.8-9.6-4.8z"/></svg>
                 Profile
             </button>
-            <button class="btn-nav-accent" id="themeToggleBtn" onclick="toggleTheme()">☀️ Light</button>
+            <button class="btn-nav-outline" id="themeToggleBtn" onclick="toggleTheme()">☀️ Light</button>
         </div>
     </header>
 
@@ -1071,15 +687,14 @@
         <!-- LEFT COL -->
         <div class="left-col">
 
-            <!-- New Gallery -->
             <div id="uploadSection">
                 <div class="form-section-label">New gallery</div>
                 <input type="text" class="form-input" id="eventName" placeholder="Event name">
                 <div class="drop-zone" id="dropZone">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 16V4m0 0L8 8m4-4l4 4M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-                    <p>Drop photos here<br>or click to browse</p>
+                    <p>Drop photos here · click to browse</p>
                 </div>
-                <input type="file" class="file-input" id="fileInput" multiple accept="image/*" style="display:none">
+                <input type="file" id="fileInput" multiple accept="image/*" style="display:none">
                 <div class="file-list" id="fileList"></div>
                 <div class="drop-zone-small" id="bgDropZone">
                     <img class="bg-preview-small" id="bgPreview">
@@ -1095,7 +710,6 @@
 
             <div class="col-divider"></div>
 
-            <!-- New Collection -->
             <div>
                 <div class="form-section-label">New collection</div>
                 <input type="text" class="form-input" id="newCollectionName" placeholder="Collection name" maxlength="200">
@@ -1107,7 +721,6 @@
         <!-- RIGHT COL -->
         <div class="right-col">
 
-            <!-- Result -->
             <div class="result-section" id="resultSection">
                 <h3>Gallery created</h3>
                 <p id="resultEventName"></p>
@@ -1118,7 +731,6 @@
                 <button class="new-upload-btn" onclick="resetForm()">Create another gallery</button>
             </div>
 
-            <!-- Collections -->
             <div>
                 <div class="section-header">
                     <span class="section-label">Collections</span>
@@ -1126,20 +738,48 @@
                 <div id="collectionList"><div class="empty-state">No collections yet.</div></div>
             </div>
 
-            <!-- Galleries -->
             <div>
                 <div class="section-header">
                     <span class="section-label">Galleries</span>
                 </div>
-                <div class="gallery-list" id="galleryList">
-                    <div class="empty-state">Loading...</div>
-                </div>
+                <div id="galleryList"><div class="empty-state">Loading...</div></div>
             </div>
 
         </div>
     </div>
 
     <script>
+        // ── THEME ──
+        async function applyTheme() {
+            try {
+                const res = await fetch('/api/settings');
+                if (res.ok) {
+                    const s = await res.json();
+                    document.documentElement.classList.toggle('light', s.theme === 'light');
+                    const btn = document.getElementById('themeToggleBtn');
+                    if (btn) btn.textContent = s.theme === 'light' ? '🌙 Dark' : '☀️ Light';
+                }
+            } catch (e) {}
+        }
+        applyTheme();
+
+        async function toggleTheme() {
+            const isLight = document.documentElement.classList.contains('light');
+            const newTheme = isLight ? 'dark' : 'light';
+            try {
+                const res = await fetch('/api/settings/theme', {
+                    method: 'PATCH',
+                    headers: { 'X-Admin-Password': adminPassword, 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ theme: newTheme })
+                });
+                if (res.ok) {
+                    document.documentElement.classList.toggle('light', newTheme === 'light');
+                    const btn = document.getElementById('themeToggleBtn');
+                    if (btn) btn.textContent = newTheme === 'light' ? '🌙 Dark' : '☀️ Light';
+                }
+            } catch (e) {}
+        }
+
         // Apply site theme from server settings
         async function applyTheme() {
             try {
@@ -1591,41 +1231,46 @@
                              ondragover="handleCoverDragOver(event, '${g.id}')"
                              ondragleave="handleCoverDragLeave(event, '${g.id}')"
                              ondrop="handleCoverDrop(event, '${g.id}')">
-                            ${g.hasBackground
-                                ? `<img src="/api/gallery/${g.id}/background?t=${Date.now()}" alt="Cover">`
-                                : ''}
+                            ${g.hasBackground ? `<img src="/api/gallery/${g.id}/background?t=${Date.now()}" alt="">` : ''}
                             <div class="gallery-cover-placeholder">
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-                                    <rect x="3" y="3" width="18" height="18" rx="2"/>
-                                    <circle cx="8.5" cy="8.5" r="1.5"/>
-                                    <path d="M21 15l-5-5L5 21"/>
-                                </svg>
-                                <span>${g.hasBackground ? 'Change cover' : 'Drop cover'}</span>
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
+                            </div>
+                            <div class="gallery-cover-overlay">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
+                                <span>${g.hasBackground ? 'Change' : 'Add'}</span>
                             </div>
                             <input type="file" id="cover-input-${g.id}" accept="image/*"
                                    onchange="handleCoverSelect(event, '${g.id}')" style="display:none;">
                         </div>
 
                         <div class="gallery-info">
-                            <div class="gallery-name" onclick="startEditGalleryName('${g.id}', this)" title="Click to rename">${escapeHtml(g.eventName)}</div>
-                            <div class="gallery-meta">${g.fileCount} photos • ${new Date(g.created).toLocaleDateString()}${g.collectionId ? ` • <span style="color:var(--accent)">⊕ In collection</span>` : ''}</div>
-                            <label class="downloads-toggle" title="Allow clients to download photos">
-                                <span class="toggle-switch">
-                                    <input type="checkbox" ${g.downloadsEnabled !== false ? 'checked' : ''}
-                                           onchange="toggleDownloads('${g.id}', this.checked, this)">
-                                    <span class="toggle-track"></span>
-                                </span>
-                                Downloads
-                            </label>
-                            <div class="favorites-meta">
-                                ♥ ${g.favoritesCount || 0} fav${g.favoritesCount !== 1 ? 's' : ''}
-                                ${g.favoritesCount > 0 ? `<button class="btn-favorites-view" onclick="viewFavorites('${g.id}')">View</button><button class="btn-favorites-reset" onclick="resetFavorites('${g.id}')">Reset</button>` : ''}
+                            <div class="gallery-name" contenteditable="true" spellcheck="false"
+                                 onblur="renameGalleryInline('${g.id}', this.textContent)"
+                                 onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur();}">${escapeHtml(g.eventName)}</div>
+                            <div class="gallery-meta">${g.fileCount} photos · ${new Date(g.created).toLocaleDateString()}${g.collectionId ? ' · <span class="in-collection">In collection</span>' : ''}</div>
+                            <div class="gallery-bottom">
+                                <label class="downloads-toggle" title="Allow clients to download">
+                                    <span class="toggle-switch">
+                                        <input type="checkbox" ${g.downloadsEnabled !== false ? 'checked' : ''}
+                                               onchange="toggleDownloads('${g.id}', this.checked, this)">
+                                        <span class="toggle-track"></span>
+                                    </span>
+                                    Downloads
+                                </label>
+                                <div class="fav-info">
+                                    ♥ ${g.favoritesCount || 0}
+                                    ${g.favoritesCount > 0 ? `<button class="btn-fav-action" onclick="viewFavorites('${g.id}')">View</button><button class="btn-fav-action" onclick="resetFavorites('${g.id}')">Reset</button>` : ''}
+                                </div>
                             </div>
                         </div>
 
                         <div class="gallery-actions">
-                            <button class="btn-copy" onclick="copyGalleryLink('${g.id}', 'download', this)">Copy Link</button>
-                            <button class="btn-delete" onclick="deleteGallery('${g.id}')">Delete</button>
+                            <button class="btn-icon" onclick="copyGalleryLink('${g.id}', 'download', this)" title="Copy link">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                            </button>
+                            <button class="btn-icon btn-icon-danger" onclick="deleteGallery('${g.id}')" title="Delete">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
+                            </button>
                         </div>
                     </div>
                 `).join('');
@@ -1904,10 +1549,9 @@
         function renderCollections(colls) {
             const container = document.getElementById('collectionList');
             if (colls.length === 0) {
-                container.innerHTML = '<div class="empty-state">No collections yet. Create one above.</div>';
+                container.innerHTML = '<div class="empty-state">No collections yet.</div>';
                 return;
             }
-
             container.innerHTML = colls.map(c => {
                 const pillsHtml = c.galleryIds.length === 0
                     ? `<span class="collection-drop-hint">Drag galleries here</span>`
@@ -1921,32 +1565,37 @@
                                     ondrop="handlePillDrop(event, '${c.id}')"
                                     ondragend="handlePillDragEnd(event)">
                             ${name}
-                            <button onclick="removeFromCollection('${c.id}', '${gid}')" title="Remove">✕</button>
+                            <button class="pill-remove" onclick="removeFromCollection('${c.id}', '${gid}')" title="Remove">✕</button>
                         </span>`;
                     }).join('');
 
+                const coverHtml = c.hasBackground
+                    ? `<img src="/api/collection/${c.id}/background?t=${Date.now()}" alt="">`
+                    : `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>`;
+
                 return `<div class="collection-item">
-                    <div class="collection-cover ${c.hasBackground ? 'has-image' : ''}"
-                         onclick="document.getElementById('col-cover-input-${c.id}').click()">
-                        ${c.hasBackground ? `<img src="/api/collection/${c.id}/background?t=${Date.now()}" alt="Cover">` : ''}
-                        <div class="collection-cover-placeholder">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="width:16px;height:16px;opacity:0.5">
-                                <rect x="3" y="3" width="18" height="18" rx="2"/>
-                                <circle cx="8.5" cy="8.5" r="1.5"/>
-                                <path d="M21 15l-5-5L5 21"/>
-                            </svg>
-                            ${c.hasBackground ? 'Change cover' : 'Add cover'}
-                        </div>
-                        <input type="file" id="col-cover-input-${c.id}" accept="image/*" style="display:none"
-                               onchange="uploadCollectionBackground('${c.id}', this.files[0])">
-                    </div>
-                    <div class="collection-body">
                     <div class="collection-header">
-                        <div class="collection-name" onclick="startEditCollectionName('${c.id}', this)" title="Click to rename">${escapeHtml(c.name)}</div>
-                        <div class="collection-meta">${c.galleryIds.length} ${c.galleryIds.length === 1 ? 'gallery' : 'galleries'}</div>
+                        <div class="collection-cover-thumb" onclick="document.getElementById('col-cover-input-${c.id}').click()" title="Change cover">
+                            ${coverHtml}
+                            <div class="collection-cover-overlay">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
+                            </div>
+                            <input type="file" id="col-cover-input-${c.id}" accept="image/*" style="display:none"
+                                   onchange="uploadCollectionBackground('${c.id}', this.files[0])">
+                        </div>
+                        <div class="collection-info">
+                            <input class="collection-name-input" value="${escapeHtml(c.name)}"
+                                   onblur="renameCollectionInline('${c.id}', this.value)"
+                                   onkeydown="if(event.key==='Enter')this.blur()">
+                            <div class="collection-meta-row">${c.galleryIds.length} ${c.galleryIds.length === 1 ? 'gallery' : 'galleries'}</div>
+                        </div>
                         <div class="collection-actions">
-                            <button class="btn-copy-collection" onclick="copyCollectionLink('${c.id}', this)">Copy Link</button>
-                            <button class="btn-delete-collection" onclick="deleteCollection('${c.id}')">Delete</button>
+                            <button class="btn-icon" onclick="copyCollectionLink('${c.id}', this)" title="Copy link">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                            </button>
+                            <button class="btn-icon btn-icon-danger" onclick="deleteCollection('${c.id}')" title="Delete">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
+                            </button>
                         </div>
                     </div>
                     <div class="collection-galleries"
@@ -1955,7 +1604,6 @@
                          ondragleave="handleColDragLeave(event, '${c.id}')"
                          ondrop="handleColDrop(event, '${c.id}')">
                         ${pillsHtml}
-                    </div>
                     </div>
                 </div>`;
             }).join('');
