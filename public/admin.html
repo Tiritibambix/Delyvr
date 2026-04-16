@@ -297,11 +297,10 @@
 
         .drop-zone {
             background: var(--bg3); border: 1px dashed var(--border2);
-            border-radius: 0 0 3px 3px; height: 90px;
+            border-radius: 3px; height: 90px;
             display: flex; flex-direction: column;
             align-items: center; justify-content: center; gap: 5px;
-            cursor: pointer; margin-top: 0;
-            border-top: none;
+            cursor: pointer; margin-top: 6px;
             transition: border-color 0.2s;
         }
         .drop-zone:hover { border-color: var(--muted); }
@@ -313,7 +312,7 @@
             background: var(--bg3); border: 1px dashed var(--border2);
             border-radius: 3px; height: 34px;
             display: flex; align-items: center; justify-content: center;
-            cursor: pointer; margin-top: 6px; transition: border-color 0.2s;
+            cursor: pointer; margin-top: 2px; transition: border-color 0.2s;
             position: relative; overflow: hidden;
         }
         .drop-zone-small:hover { border-color: var(--muted); }
@@ -325,7 +324,25 @@
             opacity: 0.5; display: none;
         }
 
-        .file-list { font-size: 12px; color: var(--muted); margin-top: 4px; min-height: 16px; }
+        .file-list { font-size: 12px; color: var(--muted); margin-top: 6px; }
+        .file-count { font-size: 11px; color: var(--muted); margin-bottom: 4px; }
+        .file-pills { display: flex; flex-wrap: wrap; gap: 4px; }
+        .file-pill {
+            display: inline-flex; align-items: center; gap: 4px;
+            background: var(--bg3); border: 1px solid var(--border2);
+            border-radius: 3px; padding: 2px 6px;
+            font-size: 11px; color: var(--muted); max-width: 100%;
+        }
+        .file-pill-name {
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+            max-width: 120px;
+        }
+        .file-pill-remove {
+            background: none; border: none; cursor: pointer;
+            color: var(--muted2); font-size: 11px; line-height: 1;
+            padding: 0; flex-shrink: 0; font-family: inherit;
+        }
+        .file-pill-remove:hover { color: var(--error); }
 
         .progress-container { margin-top: 6px; display: none; }
         .progress-bar { background: var(--bg3); border-radius: 2px; height: 3px; overflow: hidden; }
@@ -730,6 +747,11 @@
             <div>
                 <div class="form-section-label">New collection</div>
                 <input type="text" class="form-input" id="newCollectionName" placeholder="Collection name" maxlength="200">
+                <div class="drop-zone-small" id="colBgDropZone">
+                    <img class="bg-preview-small" id="colBgPreview">
+                    <p>Cover image (optional)</p>
+                </div>
+                <input type="file" id="colBgInput" accept="image/*" style="display:none">
                 <button class="btn-secondary" onclick="createCollection()">Create collection</button>
             </div>
 
@@ -947,51 +969,42 @@
                 container.innerHTML = '';
                 return;
             }
-
-            container.innerHTML = '';
-            selectedFiles.forEach((file, i) => {
-                const item = document.createElement('div');
-                item.className = 'file-item';
-
-                const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-                svg.setAttribute('viewBox', '0 0 24 24');
-                svg.setAttribute('fill', 'none');
-                svg.setAttribute('stroke', 'currentColor');
-                svg.setAttribute('stroke-width', '2');
-                const r = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
-                r.setAttribute('x','3'); r.setAttribute('y','3');
-                r.setAttribute('width','18'); r.setAttribute('height','18'); r.setAttribute('rx','2');
-                const c = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-                c.setAttribute('cx','8.5'); c.setAttribute('cy','8.5'); c.setAttribute('r','1.5');
-                const p = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-                p.setAttribute('d','M21 15l-5-5L5 21');
-                svg.appendChild(r); svg.appendChild(c); svg.appendChild(p);
-
-                const nameSpan = document.createElement('span');
-                nameSpan.className = 'file-name';
-                nameSpan.textContent = file.name;
-
-                const sizeSpan = document.createElement('span');
-                sizeSpan.className = 'file-size';
-                sizeSpan.textContent = formatFileSize(file.size);
-
-                const btn = document.createElement('button');
-                btn.className = 'remove-file';
-                btn.textContent = '✕';
-                btn.onclick = () => removeFile(i);
-
-                item.appendChild(svg);
-                item.appendChild(nameSpan);
-                item.appendChild(sizeSpan);
-                item.appendChild(btn);
-                container.appendChild(item);
-            });
+            const n = selectedFiles.length;
+            const pills = selectedFiles.map((file, i) => {
+                const name = file.name.length > 22 ? file.name.slice(0, 20) + '…' : file.name;
+                return `<span class="file-pill"><span class="file-pill-name" title="${file.name}">${name}</span><button class="file-pill-remove" onclick="removeFile(${i})">✕</button></span>`;
+            }).join('');
+            container.innerHTML = `<div class="file-count">${n} photo${n > 1 ? 's' : ''} selected</div><div class="file-pills">${pills}</div>`;
         }
 
         // Background/Cover image drop zone
         const bgDropZone = document.getElementById('bgDropZone');
         const bgInput = document.getElementById('bgInput');
         const bgPreview = document.getElementById('bgPreview');
+
+        // Collection cover drop zone
+        let selectedColBgFile = null;
+        const colBgDropZone = document.getElementById('colBgDropZone');
+        const colBgInput = document.getElementById('colBgInput');
+        const colBgPreview = document.getElementById('colBgPreview');
+
+        colBgDropZone.addEventListener('click', () => colBgInput.click());
+        ['dragenter', 'dragover'].forEach(e => colBgDropZone.addEventListener(e, () => colBgDropZone.classList.add('drag-over'), false));
+        ['dragleave', 'drop'].forEach(e => colBgDropZone.addEventListener(e, () => colBgDropZone.classList.remove('drag-over'), false));
+        colBgDropZone.addEventListener('drop', (e) => {
+            e.preventDefault(); e.stopPropagation();
+            const files = e.dataTransfer.files;
+            if (files.length > 0 && files[0].type.startsWith('image/')) handleColBgFile(files[0]);
+        });
+        colBgInput.addEventListener('change', () => {
+            if (colBgInput.files.length > 0) handleColBgFile(colBgInput.files[0]);
+        });
+        function handleColBgFile(file) {
+            selectedColBgFile = file;
+            const reader = new FileReader();
+            reader.onload = e => { colBgPreview.src = e.target.result; colBgPreview.style.display = 'block'; };
+            reader.readAsDataURL(file);
+        }
 
         bgDropZone.addEventListener('click', () => bgInput.click());
 
@@ -1695,7 +1708,21 @@
                     body: JSON.stringify({ name })
                 });
                 if (!res.ok) throw new Error('Failed');
+                const data = await res.json();
                 input.value = '';
+                if (selectedColBgFile && data.id) {
+                    const fd = new FormData();
+                    fd.append('background', selectedColBgFile);
+                    await fetch(`/api/collection/${data.id}/background`, {
+                        method: 'POST',
+                        headers: { 'X-Admin-Password': adminPassword },
+                        body: fd
+                    });
+                    selectedColBgFile = null;
+                    colBgPreview.style.display = 'none';
+                    colBgPreview.src = '';
+                    colBgInput.value = '';
+                }
                 await loadCollections();
             } catch (err) {
                 alert('Could not create collection: ' + err.message);
