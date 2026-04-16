@@ -42,7 +42,7 @@
 
         .header {
             text-align: center;
-            padding: 64px 24px 48px;
+            padding: 40px 24px 32px;
             border-bottom: 1px solid var(--border);
             position: relative;
             overflow: hidden;
@@ -65,12 +65,15 @@
         }
 
         .logo {
+            display: block;
+            margin-left: auto;
+            margin-right: auto;
             width: auto;
-            max-width: min(480px, 80vw);
-            max-height: 200px;
+            max-width: min(320px, 70vw);
+            max-height: 160px;
             height: auto;
             object-fit: contain;
-            margin-bottom: 32px;
+            margin-bottom: 24px;
             opacity: 0;
             transform: translateY(10px);
             animation: fadeUp 0.6s ease forwards;
