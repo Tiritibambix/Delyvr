@@ -1104,6 +1104,8 @@ app.post('/api/collection/create', requireAuth, (req, res) => {
 // List all collections (admin only)
 app.get('/api/collections', adminLimiter, requireAuth, (req, res) => {
     const baseUrl = `${req.protocol}://${req.get('host')}`;
+    const bgDir = path.join(DATA_DIR, 'backgrounds');
+    const bgFiles = fs.existsSync(bgDir) ? new Set(fs.readdirSync(bgDir)) : new Set();
     const list = Array.from(collections.values())
         .sort((a, b) => new Date(b.created) - new Date(a.created))
         .map(c => ({
@@ -1111,7 +1113,8 @@ app.get('/api/collections', adminLimiter, requireAuth, (req, res) => {
             name: c.name,
             created: c.created,
             galleryIds: c.galleryIds,
-            collectionUrl: `${baseUrl}/collection/${c.id}`
+            collectionUrl: `${baseUrl}/collection/${c.id}`,
+            hasBackground: [...bgFiles].some(f => f.startsWith(`collection-${c.id}`))
         }));
     res.json(list);
 });

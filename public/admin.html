@@ -281,7 +281,7 @@
         .form-section-label {
             font-size: 10px; font-weight: 600;
             letter-spacing: 0.12em; text-transform: uppercase;
-            color: var(--muted2); margin-bottom: 10px;
+            color: var(--muted); margin-bottom: 10px;
         }
 
         .form-input {
@@ -292,19 +292,22 @@
             outline: none; transition: border-color 0.2s; display: block;
         }
         .form-input:focus { border-color: var(--accent); }
-        .form-input::placeholder { color: var(--muted2); }
+        .form-input::placeholder { color: var(--muted); }
+        #eventName { border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
 
         .drop-zone {
             background: var(--bg3); border: 1px dashed var(--border2);
-            border-radius: 3px; height: 70px;
+            border-radius: 0 0 3px 3px; height: 90px;
             display: flex; flex-direction: column;
             align-items: center; justify-content: center; gap: 5px;
-            cursor: pointer; margin-top: 6px; transition: border-color 0.2s;
+            cursor: pointer; margin-top: 0;
+            border-top: none;
+            transition: border-color 0.2s;
         }
         .drop-zone:hover { border-color: var(--muted); }
         .drop-zone.dragover { border-color: var(--accent); background: var(--bg2); }
-        .drop-zone svg { width: 18px; height: 18px; color: var(--muted2); }
-        .drop-zone p { font-size: 12px; color: var(--muted2); text-align: center; line-height: 1.4; }
+        .drop-zone svg { width: 18px; height: 18px; color: var(--muted); }
+        .drop-zone p { font-size: 12px; color: var(--muted); text-align: center; line-height: 1.4; }
 
         .drop-zone-small {
             background: var(--bg3); border: 1px dashed var(--border2);
@@ -314,7 +317,7 @@
             position: relative; overflow: hidden;
         }
         .drop-zone-small:hover { border-color: var(--muted); }
-        .drop-zone-small p { font-size: 12px; color: var(--muted2); }
+        .drop-zone-small p { font-size: 12px; color: var(--muted); }
 
         .bg-preview-small {
             position: absolute; inset: 0;
@@ -365,7 +368,7 @@
         }
         .section-label {
             font-size: 10px; font-weight: 600;
-            letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted2);
+            letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted);
         }
 
         /* ── RESULT SECTION ── */
@@ -436,7 +439,7 @@
         .collection-name-input:focus {
             background: var(--bg2); border-radius: 2px; padding: 1px 6px;
         }
-        .collection-meta-row { font-size: 11px; color: var(--muted2); margin-top: 1px; }
+        .collection-meta-row { font-size: 11px; color: var(--muted); margin-top: 1px; }
 
         .collection-actions { display: flex; gap: 6px; flex-shrink: 0; }
 
@@ -538,7 +541,7 @@
         }
 
         .gallery-meta {
-            font-size: 11px; color: var(--muted2); margin-top: 2px;
+            font-size: 11px; color: var(--muted); margin-top: 2px;
             white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
         }
 
@@ -583,7 +586,21 @@
 
         .gallery-actions { display: flex; gap: 6px; flex-shrink: 0; align-items: center; }
 
-        .empty-state { font-size: 13px; color: var(--muted2); padding: 20px 0; text-align: center; }
+        .empty-state { font-size: 13px; color: var(--muted); padding: 20px 0; text-align: center; }
+
+        .btn-icon.copied {
+            color: var(--success);
+            border-color: var(--success);
+        }
+        .btn-icon.copied svg { display: none; }
+        .btn-icon.copied::after {
+            content: '';
+            display: block;
+            width: 14px; height: 14px;
+            background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 24 24' fill='none' stroke='%2352a878' stroke-width='3' xmlns='http://www.w3.org/2000/svg'%3E%3Cpolyline points='20 6 9 17 4 12'/%3E%3C/svg%3E");
+            background-size: contain;
+            background-repeat: no-repeat;
+        }
 
         /* ═══════════════════════════════
            RESPONSIVE
@@ -1199,8 +1216,10 @@
             const input = document.getElementById(inputId);
             copyToClipboard(input.value);
             const btn = input.nextElementSibling;
-            btn.textContent = 'Copied!';
-            setTimeout(() => btn.textContent = 'Copy', 2000);
+            const orig = btn.textContent;
+            btn.textContent = '✓';
+            btn.style.background = 'var(--success)';
+            setTimeout(() => { btn.textContent = orig; btn.style.background = ''; }, 1800);
         }
 
         async function loadGalleries() {
@@ -1370,8 +1389,8 @@
         function copyGalleryLink(id, type, btn) {
             const url = `${window.location.origin}/${type}/${id}`;
             copyToClipboard(url);
-            btn.textContent = 'Copied!';
-            setTimeout(() => btn.textContent = 'Copy Link', 2000);
+            btn.classList.add('copied');
+            setTimeout(() => btn.classList.remove('copied'), 1800);
         }
 
         function startEditGalleryName(galleryId, element) {
@@ -1707,8 +1726,8 @@
         function copyCollectionLink(collectionId, btn) {
             const url = `${window.location.origin}/collection/${collectionId}`;
             copyToClipboard(url);
-            btn.textContent = 'Copied!';
-            setTimeout(() => btn.textContent = 'Copy Link', 2000);
+            btn.classList.add('copied');
+            setTimeout(() => btn.classList.remove('copied'), 1800);
         }
 
         async function removeFromCollection(collectionId, galleryId) {
