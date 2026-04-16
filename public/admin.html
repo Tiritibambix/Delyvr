@@ -316,6 +316,7 @@
             position: relative; overflow: hidden;
         }
         .drop-zone-small:hover { border-color: var(--muted); }
+        #colBgDropZone { margin-top: 6px; }
         .drop-zone-small p { font-size: 12px; color: var(--muted); }
 
         .bg-preview-small {
@@ -970,11 +971,7 @@
                 return;
             }
             const n = selectedFiles.length;
-            const pills = selectedFiles.map((file, i) => {
-                const name = file.name.length > 22 ? file.name.slice(0, 20) + '…' : file.name;
-                return `<span class="file-pill"><span class="file-pill-name" title="${file.name}">${name}</span><button class="file-pill-remove" onclick="removeFile(${i})">✕</button></span>`;
-            }).join('');
-            container.innerHTML = `<div class="file-count">${n} photo${n > 1 ? 's' : ''} selected</div><div class="file-pills">${pills}</div>`;
+            container.innerHTML = `<span>${n} photo${n > 1 ? 's' : ''} selected</span>`;
         }
 
         // Background/Cover image drop zone
