@@ -1149,9 +1149,11 @@ app.get('/api/collection/:collectionId', publicReadLimiter, validateCollectionId
         })
         .filter(Boolean);
 
+    const collectionHasBg = [...bgFiles].some(f => f.startsWith(`collection-${collectionId}`));
     res.json({
         id: collectionId,
         name: collection.name,
+        background: collectionHasBg ? `/api/collection/${collectionId}/background` : null,
         galleries: galleriesData
     });
 });
