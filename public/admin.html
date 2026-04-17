@@ -17,8 +17,8 @@
             --border:  #252528;
             --border2: #313136;
             --text:    #f2f2f4;
-            --muted:   #72727a;
-            --muted2:  #4a4a52;
+            --muted:   #9898a2;
+            --muted2:  #6b6b72;
             --accent:  #c9a962;
             --accent-h:#dfc07a;
             --error:   #e05252;
@@ -32,8 +32,8 @@
             --border:  #c8c7c0;
             --border2: #b8b7b0;
             --text:    #18181a;
-            --muted:   #6a6a72;
-            --muted2:  #9a9aa2;
+            --muted:   #272728;
+            --muted2:  #3d3d40;
             --accent:  #a07828;
             --accent-h:#c9a962;
             --error:   #c03030;
@@ -264,7 +264,7 @@
         ═══════════════════════════════ */
         .dashboard {
             display: grid;
-            grid-template-columns: 25% 1fr;
+            grid-template-columns: 33% 1fr;
             flex: 1;
             overflow: hidden;
             min-height: 0;
@@ -727,13 +727,13 @@
                 <input type="text" class="form-input" id="eventName" placeholder="Event name">
                 <div class="drop-zone" id="dropZone">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 16V4m0 0L8 8m4-4l4 4M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-                    <p>Drop photos here · click to browse</p>
+                    <p>Drop photos or folders · click to browse</p>
                 </div>
                 <input type="file" id="fileInput" multiple accept="image/*" style="display:none">
                 <div class="file-list" id="fileList"></div>
                 <div class="drop-zone-small" id="bgDropZone">
                     <img class="bg-preview-small" id="bgPreview">
-                    <p>Cover image (optional)</p>
+                    <p>Drop image or click to browse</p>
                 </div>
                 <input type="file" id="bgInput" accept="image/*" style="display:none">
                 <button class="btn-primary" id="createBtn" onclick="createGallery()" disabled>Create & copy link</button>
@@ -750,7 +750,7 @@
                 <input type="text" class="form-input" id="newCollectionName" placeholder="Collection name" maxlength="200">
                 <div class="drop-zone-small" id="colBgDropZone">
                     <img class="bg-preview-small" id="colBgPreview">
-                    <p>Cover image (optional)</p>
+                    <p>Drop image or click to browse</p>
                 </div>
                 <input type="file" id="colBgInput" accept="image/*" style="display:none">
                 <button class="btn-secondary" onclick="createCollection()">Create collection</button>
@@ -909,6 +909,14 @@
                 if (entry) entries.push(entry);
             }
 
+            // If a single folder was dropped, use its name as the gallery name (if field is empty)
+            if (entries.length === 1 && entries[0].isDirectory) {
+                const nameInput = document.getElementById('eventName');
+                if (!nameInput.value.trim()) {
+                    nameInput.value = entries[0].name;
+                }
+            }
+
             const files = [];
             for (const entry of entries) {
                 await traverseFileTree(entry, files);
@@ -1014,6 +1022,7 @@
         });
 
         bgDropZone.addEventListener('drop', (e) => {
+            e.preventDefault();
             const files = e.dataTransfer.files;
             if (files.length > 0 && files[0].type.startsWith('image/')) {
                 handleBgFile(files[0]);
@@ -1266,7 +1275,7 @@
                             </div>
                             <div class="gallery-cover-overlay">
                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
-                                <span>${g.hasBackground ? 'Change' : 'Add'}</span>
+                                <span>${g.hasBackground ? 'Drop or click' : 'Drop or click'}</span>
                             </div>
                             <input type="file" id="cover-input-${g.id}" accept="image/*"
                                    onchange="handleCoverSelect(event, '${g.id}')" style="display:none;">
@@ -1604,7 +1613,7 @@
 
                 return `<div class="collection-item">
                     <div class="collection-header">
-                        <div class="collection-cover-thumb" onclick="document.getElementById('col-cover-input-${c.id}').click()" title="Change cover">
+                        <div class="collection-cover-thumb" onclick="document.getElementById('col-cover-input-${c.id}').click()" title="Drop image or click to change cover">
                             ${coverHtml}
                             <div class="collection-cover-overlay">
                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
