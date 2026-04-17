@@ -155,131 +155,161 @@
 
         /* GALLERIES CONTAINER */
         .galleries-container {
-            max-width: 900px;
+            max-width: 1100px;
             margin: 0 auto;
             padding: 32px 32px 64px;
             position: relative;
             z-index: 10;
         }
 
-        /* GALLERY ROW — liste compacte */
-        .gallery-row {
-            display: flex;
-            align-items: center;
-            gap: 16px;
-            padding: 14px 0;
-            border-bottom: 1px solid var(--border);
-            cursor: pointer;
-            transition: background 0.15s;
-            text-decoration: none;
-            color: inherit;
+        /* GALLERY GRID — cards 3:2 */
+        .galleries-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 20px;
         }
 
-        .gallery-row:first-child { border-top: 1px solid var(--border); }
-
-        .gallery-row:hover .gallery-row-name { color: var(--accent); }
-
-        .gallery-thumb {
-            width: 56px;
-            height: 56px;
-            object-fit: cover;
-            border-radius: 3px;
-            background: var(--bg3);
-            flex-shrink: 0;
+        @media (max-width: 800px) {
+            .galleries-grid { grid-template-columns: repeat(2, 1fr); gap: 14px; }
+        }
+        @media (max-width: 480px) {
+            .galleries-grid { grid-template-columns: 1fr; gap: 12px; }
         }
 
-        .gallery-thumb-placeholder {
-            width: 56px;
-            height: 56px;
-            border-radius: 3px;
-            background: var(--bg3);
+        .gallery-card {
+            background: var(--bg2);
             border: 1px solid var(--border);
-            flex-shrink: 0;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
-
-        .gallery-thumb-placeholder svg {
-            width: 18px;
-            height: 18px;
-            color: var(--muted2);
-        }
-
-        .gallery-row-info {
-            flex: 1;
-            min-width: 0;
-        }
-
-        .gallery-row-name {
-            font-size: 14px;
-            font-weight: 500;
-            color: var(--text);
-            white-space: nowrap;
+            border-radius: 6px;
             overflow: hidden;
-            text-overflow: ellipsis;
-            transition: color 0.2s;
+            display: flex;
+            flex-direction: column;
+            transition: border-color 0.2s;
+        }
+        .gallery-card:hover { border-color: var(--border2); }
+
+        /* Cover 3:2 */
+        .gallery-card-cover {
+            display: block;
+            position: relative;
+            aspect-ratio: 3 / 2;
+            overflow: hidden;
+            cursor: pointer;
+            background: var(--bg3);
+            text-decoration: none;
+            flex-shrink: 0;
+        }
+
+        .gallery-card-cover img {
+            width: 100%; height: 100%;
+            object-fit: cover;
+            transition: transform 0.35s ease;
+        }
+        .gallery-card-cover:hover img { transform: scale(1.03); }
+
+        .gallery-card-cover-placeholder {
+            width: 100%; height: 100%;
+            display: flex; align-items: center; justify-content: center;
+        }
+        .gallery-card-cover-placeholder svg {
+            width: 32px; height: 32px; color: var(--border2);
+        }
+
+        /* Overlay "Parcourir" au survol de la cover */
+        .gallery-card-cover-overlay {
+            position: absolute; inset: 0;
+            background: rgba(10,10,11,0.45);
+            display: flex; align-items: center; justify-content: center;
+            opacity: 0; transition: opacity 0.2s;
+        }
+        .gallery-card-cover:hover .gallery-card-cover-overlay { opacity: 1; }
+        .gallery-card-cover-overlay span {
+            font-size: 12px; font-weight: 600;
+            letter-spacing: 0.1em; text-transform: uppercase;
+            color: #fff;
+        }
+
+        /* Card body */
+        .gallery-card-body {
+            padding: 12px 14px 14px;
+            display: flex; flex-direction: column; gap: 10px;
+            flex: 1;
+        }
+
+        .gallery-card-info { flex: 1; }
+
+        .gallery-card-name {
+            font-size: 14px; font-weight: 500;
+            color: var(--text);
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
             margin-bottom: 3px;
         }
 
-        .gallery-row-meta {
-            font-size: 11px;
-            color: var(--muted);
-            letter-spacing: 0.04em;
+        .gallery-card-meta {
+            font-size: 11px; color: var(--muted);
+            letter-spacing: 0.03em;
         }
 
-        .gallery-row-actions {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            flex-shrink: 0;
+        /* Actions */
+        .gallery-card-actions {
+            display: flex; gap: 7px; align-items: center;
         }
 
-        .btn-browse {
-            font-size: 11px;
+        .btn-card-browse {
+            flex: 1;
+            display: inline-flex; align-items: center; justify-content: center;
+            gap: 6px;
+            font-size: 11px; font-weight: 600;
+            letter-spacing: 0.06em; text-transform: uppercase;
             color: #c9a962;
-            text-decoration: none;
-            letter-spacing: 0.06em;
-            padding: 6px 12px;
             border: 1px solid #c9a962;
             border-radius: 3px;
-            font-weight: 600;
+            padding: 7px 10px;
+            text-decoration: none;
             transition: background 0.2s;
             white-space: nowrap;
         }
+        .btn-card-browse:hover { background: rgba(201,169,98,0.12); }
+        html.light .btn-card-browse { color: #8a6515; border-color: #8a6515; }
+        html.light .btn-card-browse:hover { background: rgba(138,101,21,0.08); }
 
-        .btn-browse:hover { background: rgba(201,169,98,0.12); }
-        html.light .btn-browse { color: #8a6515; border-color: #8a6515; }
-        html.light .btn-browse:hover { background: rgba(138,101,21,0.08); }
+        .btn-card-icon {
+            width: 30px; height: 30px;
+            display: inline-flex; align-items: center; justify-content: center;
+            background: transparent;
+            border: 1px solid var(--border2);
+            border-radius: 3px;
+            cursor: pointer;
+            color: var(--muted);
+            transition: color 0.15s, border-color 0.15s;
+            flex-shrink: 0;
+        }
+        .btn-card-icon svg { width: 13px; height: 13px; }
+        .btn-card-icon:hover { color: var(--text); border-color: var(--muted); }
 
-        .btn-download-row {
-            font-size: 11px;
-            color: #0a0a0b;
-            text-decoration: none;
-            letter-spacing: 0.06em;
-            padding: 6px 12px;
+        .btn-card-dl {
+            width: 30px; height: 30px;
+            display: inline-flex; align-items: center; justify-content: center;
+            background: #c9a962;
             border: none;
             border-radius: 3px;
-            transition: background 0.2s;
-            white-space: nowrap;
-            background: #c9a962;
             cursor: pointer;
-            font-family: inherit;
-            font-weight: 600;
+            color: #0a0a0b;
+            transition: background 0.15s;
+            flex-shrink: 0;
+            text-decoration: none;
         }
+        .btn-card-dl svg { width: 13px; height: 13px; }
+        .btn-card-dl:hover { background: #dfc07a; }
 
-        .btn-download-row:hover { background: #dfc07a; }
-
-        /* COPY FEEDBACK */
-        .copy-feedback {
-            font-size: 11px;
-            color: var(--accent);
-            opacity: 0;
-            transition: opacity 0.3s;
-            pointer-events: none;
+        /* tick vert copy */
+        .btn-card-icon.copied { color: var(--success, #52a878); border-color: var(--success, #52a878); }
+        .btn-card-icon.copied svg { display: none; }
+        .btn-card-icon.copied::after {
+            content: '';
+            display: block; width: 13px; height: 13px;
+            background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 24 24' fill='none' stroke='%2352a878' stroke-width='3' xmlns='http://www.w3.org/2000/svg'%3E%3Cpolyline points='20 6 9 17 4 12'/%3E%3C/svg%3E");
+            background-size: contain; background-repeat: no-repeat;
         }
-
-        .copy-feedback.visible { opacity: 1; }
 
         /* NOT FOUND */
         .not-found {
@@ -326,10 +356,8 @@
 
         @media (max-width: 640px) {
             .site-header { padding: 20px 20px 24px; }
-            .galleries-container { padding: 24px 20px 48px; }
+            .galleries-container { padding: 24px 16px 48px; }
             .download-all-wrap { padding: 16px 20px 0; }
-            .gallery-row-actions { flex-direction: column; gap: 6px; }
-            .btn-browse, .btn-download-row { font-size: 10px; padding: 5px 10px; }
         }
     </style>
 </head>
@@ -360,7 +388,7 @@
         </div>
 
         <div class="galleries-container">
-            <div id="galleriesGrid"></div>
+            <div class="galleries-grid" id="galleriesGrid"></div>
         </div>
 
     </div>
@@ -452,46 +480,63 @@
                 grid.innerHTML = '';
 
                 (data.galleries || []).forEach(gallery => {
-                    const row = document.createElement('div');
-                    row.className = 'gallery-row';
+                    const card = document.createElement('div');
+                    card.className = 'gallery-card';
 
-                    const thumbHtml = gallery.background
-                        ? `<img class="gallery-thumb" src="/api/gallery/${escapeHtml(gallery.id)}/background" alt="" loading="lazy">`
-                        : `<div class="gallery-thumb-placeholder"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg></div>`;
+                    const coverInner = gallery.background
+                        ? `<img src="/api/gallery/${escapeHtml(gallery.id)}/background" alt="" loading="lazy">
+                           <div class="gallery-card-cover-overlay"><span>${t.browse}</span></div>`
+                        : `<div class="gallery-card-cover-placeholder">
+                               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
+                           </div>
+                           <div class="gallery-card-cover-overlay"><span>${t.browse}</span></div>`;
 
                     const count = gallery.fileCount || 0;
                     const photoLabel = count === 1 ? t.photo : t.photos;
 
                     const browseUrl = `/preview/${escapeHtml(gallery.id)}?from=${escapeHtml(collectionId)}`;
+                    const customerUrl = `${window.location.origin}/download/${escapeHtml(gallery.id)}`;
                     const dlUrl = `/api/gallery/${escapeHtml(gallery.id)}/download`;
 
                     const dlBtn = gallery.downloadsEnabled !== false
-                        ? `<button class="btn-download-row" onclick="event.stopPropagation();window.location.href='${dlUrl}'">${t.download}</button>`
+                        ? `<a class="btn-card-dl" href="${dlUrl}" title="${t.download}" onclick="event.stopPropagation()">
+                               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 4v12m0 0l-4-4m4 4l4-4M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                           </a>`
                         : '';
 
-                    row.innerHTML = `
-                        ${thumbHtml}
-                        <div class="gallery-row-info">
-                            <div class="gallery-row-name">${escapeHtml(gallery.eventName || 'Untitled')}</div>
-                            <div class="gallery-row-meta">${count} ${photoLabel}</div>
-                        </div>
-                        <div class="gallery-row-actions">
-                            <a class="btn-browse" href="${browseUrl}">${t.browse}</a>
-                            ${dlBtn}
+                    card.innerHTML = `
+                        <a class="gallery-card-cover" href="${browseUrl}">
+                            ${coverInner}
+                        </a>
+                        <div class="gallery-card-body">
+                            <div class="gallery-card-info">
+                                <div class="gallery-card-name">${escapeHtml(gallery.eventName || 'Untitled')}</div>
+                                <div class="gallery-card-meta">${count} ${photoLabel}</div>
+                            </div>
+                            <div class="gallery-card-actions">
+                                <a class="btn-card-browse" href="${browseUrl}">${t.browse}</a>
+                                <button class="btn-card-icon" title="Copy link" onclick="event.stopPropagation(); copyGalleryCustomerLink(this, '${escapeHtml(gallery.id)}')">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                                </button>
+                                ${dlBtn}
+                            </div>
                         </div>`;
 
-                    row.addEventListener('click', (e) => {
-                        if (e.target.closest('.gallery-row-actions')) return;
-                        window.location.href = browseUrl;
-                    });
-
-                    grid.appendChild(row);
+                    grid.appendChild(card);
                 });
 
             } catch (err) {
                 document.getElementById('loadingState').style.display = 'none';
                 document.getElementById('notFound').classList.add('active');
             }
+        }
+
+        function copyGalleryCustomerLink(btn, galleryId) {
+            const url = `${window.location.origin}/download/${galleryId}`;
+            navigator.clipboard.writeText(url).then(() => {
+                btn.classList.add('copied');
+                setTimeout(() => btn.classList.remove('copied'), 1800);
+            });
         }
 
         loadCollection();
