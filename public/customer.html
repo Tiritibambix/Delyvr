@@ -89,8 +89,8 @@
         .site-header img.logo {
             display: inline-block;
             height: auto;
-            max-height: 64px;
-            max-width: min(320px, 70vw);
+            max-height: 96px;
+            max-width: min(380px, 75vw);
             width: auto;
             object-fit: contain;
         }
@@ -115,8 +115,9 @@
             text-transform: uppercase;
             color: var(--accent);
             margin-bottom: 16px;
-            font-weight: 500;
+            font-weight: 600;
         }
+        html.light .eyebrow { color: #6b4e10; }
 
         h1 {
             font-family: 'Fraunces', serif;
@@ -168,14 +169,26 @@
         .download-btn svg { width: 16px; height: 16px; flex-shrink: 0; }
 
         .preview-link {
-            font-size: 12px;
-            color: var(--muted);
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            background: transparent;
+            border: 1px solid #c9a962;
+            color: #c9a962;
             text-decoration: none;
-            letter-spacing: 0.04em;
-            transition: color 0.2s;
+            border-radius: 4px;
+            padding: 11px 24px;
+            font-size: 13px;
+            font-weight: 600;
+            letter-spacing: 0.06em;
+            text-transform: uppercase;
+            transition: background 0.2s, color 0.2s;
+            white-space: nowrap;
         }
 
-        .preview-link:hover { color: var(--text); }
+        .preview-link:hover { background: rgba(201,169,98,0.12); }
+        html.light .preview-link { border-color: #8a6515; color: #8a6515; }
+        html.light .preview-link:hover { background: rgba(138,101,21,0.08); }
 
         .not-found {
             display: none;

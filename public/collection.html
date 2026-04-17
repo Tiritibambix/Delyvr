@@ -78,7 +78,7 @@
             position: relative;
             z-index: 10;
             border-bottom: 1px solid var(--border);
-            padding: 24px 32px 28px;
+            padding: 20px 32px;
             text-align: center;
             overflow: hidden;
         }
@@ -92,8 +92,8 @@
         .logo {
             display: inline-block;
             height: auto;
-            max-height: 64px;
-            max-width: min(320px, 70vw);
+            max-height: 96px;
+            max-width: min(380px, 75vw);
             width: auto;
             object-fit: contain;
         }
@@ -237,17 +237,20 @@
 
         .btn-browse {
             font-size: 11px;
-            color: var(--muted);
+            color: #c9a962;
             text-decoration: none;
             letter-spacing: 0.06em;
             padding: 6px 12px;
-            border: 1px solid var(--border2);
+            border: 1px solid #c9a962;
             border-radius: 3px;
-            transition: color 0.2s, border-color 0.2s;
+            font-weight: 600;
+            transition: background 0.2s;
             white-space: nowrap;
         }
 
-        .btn-browse:hover { color: var(--text); border-color: var(--muted); }
+        .btn-browse:hover { background: rgba(201,169,98,0.12); }
+        html.light .btn-browse { color: #8a6515; border-color: #8a6515; }
+        html.light .btn-browse:hover { background: rgba(138,101,21,0.08); }
 
         .btn-download-row {
             font-size: 11px;
