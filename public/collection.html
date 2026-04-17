@@ -16,9 +16,9 @@
             --bg3:     #161618;
             --border:  #1e1e21;
             --border2: #2a2a2e;
-            --text:    #f0f0f2;
-            --muted:   #4a4a4e;
-            --muted2:  #3a3a3e;
+            --text:    #f2f2f4;
+            --muted:   #9898a2;
+            --muted2:  #6b6b72;
             --accent:  #c9a962;
             --accent-h:#dfc07a;
         }
@@ -29,11 +29,11 @@
             --bg3:     #e4e2dd;
             --border:  #dddbd6;
             --border2: #ccc9c3;
-            --text:    #111110;
-            --muted:   #888680;
-            --muted2:  #aaa8a3;
-            --accent:  #a07828;
-            --accent-h:#c9a962;
+            --text:    #000000;
+            --muted:   #1c1c1c;
+            --muted2:  #242424;
+            --accent:  #c9a962;
+            --accent-h:#dfc07a;
         }
 
         html, body {
@@ -44,21 +44,36 @@
             line-height: 1.5;
         }
 
-        /* HEADER BG */
-        .header-bg {
-            position: absolute;
+        /* BG IMAGE PLEINE PAGE */
+        .bg-image {
+            position: fixed;
             inset: 0;
             width: 100%;
             height: 100%;
             object-fit: cover;
-            opacity: 0.14;
+            opacity: 0;
+            transition: opacity 1.2s ease;
             z-index: 0;
             pointer-events: none;
+        }
+        .bg-image.loaded { opacity: 0.3; }
+        html.light .bg-image.loaded { opacity: 0.45; }
+
+        .bg-overlay {
+            position: fixed;
+            inset: 0;
+            background: linear-gradient(to bottom, rgba(10,10,11,0.15) 0%, rgba(10,10,11,0.7) 100%);
+            z-index: 1;
+            pointer-events: none;
+        }
+        html.light .bg-overlay {
+            background: rgba(245,244,240,0.35);
         }
 
         /* SITE HEADER */
         .site-header {
             position: relative;
+            z-index: 10;
             border-bottom: 1px solid var(--border);
             padding: 24px 32px 28px;
             text-align: center;
@@ -107,15 +122,17 @@
             padding: 20px 32px 0;
             display: flex;
             justify-content: center;
+            position: relative;
+            z-index: 10;
         }
 
         .download-all-btn {
             display: inline-flex;
             align-items: center;
             gap: 8px;
-            background: transparent;
-            border: 1px solid var(--border2);
-            color: var(--muted);
+            background: #c9a962;
+            border: none;
+            color: #0a0a0b;
             padding: 9px 20px;
             font-size: 12px;
             letter-spacing: 0.08em;
@@ -123,12 +140,12 @@
             border-radius: 4px;
             cursor: pointer;
             font-family: inherit;
-            transition: border-color 0.2s, color 0.2s;
+            font-weight: 600;
+            transition: background 0.2s;
         }
 
         .download-all-btn:hover {
-            border-color: var(--accent);
-            color: var(--accent);
+            background: #dfc07a;
         }
 
         .download-all-btn svg { width: 14px; height: 14px; }
@@ -138,6 +155,8 @@
             max-width: 900px;
             margin: 0 auto;
             padding: 32px 32px 64px;
+            position: relative;
+            z-index: 10;
         }
 
         /* GALLERY ROW — liste compacte */
@@ -229,20 +248,21 @@
 
         .btn-download-row {
             font-size: 11px;
-            color: var(--accent);
+            color: #0a0a0b;
             text-decoration: none;
             letter-spacing: 0.06em;
             padding: 6px 12px;
-            border: 1px solid var(--border2);
+            border: none;
             border-radius: 3px;
             transition: background 0.2s;
             white-space: nowrap;
-            background: transparent;
+            background: #c9a962;
             cursor: pointer;
             font-family: inherit;
+            font-weight: 600;
         }
 
-        .btn-download-row:hover { background: var(--bg3); }
+        .btn-download-row:hover { background: #dfc07a; }
 
         /* COPY FEEDBACK */
         .copy-feedback {
@@ -278,6 +298,8 @@
             border-top: 1px solid var(--border);
             padding: 16px 24px;
             text-align: center;
+            position: relative;
+            z-index: 10;
         }
 
         .social-footer-links {
@@ -307,12 +329,14 @@
 </head>
 <body>
 
+    <img class="bg-image" id="bgImage" alt="">
+    <div class="bg-overlay"></div>
+
     <div class="loading-state" id="loadingState" style="text-align:center;padding:80px 32px;font-size:13px;color:var(--muted)">Loading...</div>
 
     <div id="mainContent" style="display:none;">
 
         <header class="site-header">
-            <img class="header-bg" id="headerBg" style="display:none" alt="">
             <div class="logo-wrap">
                 <img src="/api/logo" alt="Logo" class="logo">
             </div>
@@ -406,9 +430,9 @@
                     `${galleryCount} ${galleryCount === 1 ? 'galerie' : 'galeries'} · ${totalPhotos} ${totalPhotos === 1 ? t.photo : t.photos}`;
 
                 if (data.background) {
-                    const bg = document.getElementById('headerBg');
-                    bg.src = `/api/collection/${collectionId}/background`;
-                    bg.style.display = 'block';
+                    const bgImg = document.getElementById('bgImage');
+                    bgImg.onload = () => bgImg.classList.add('loaded');
+                    bgImg.src = `/api/collection/${collectionId}/background`;
                 }
 
                 const hasDownloadable = (data.galleries || []).some(g => g.downloadsEnabled !== false);
