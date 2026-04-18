@@ -148,11 +148,22 @@
             background: color-mix(in srgb, var(--bg-primary) 90%, transparent);
             backdrop-filter: blur(20px);
             border-bottom: 1px solid var(--border);
-            padding: 16px 24px;
+            padding: 12px 24px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .actions-main-row {
             display: flex;
             align-items: center;
             justify-content: space-between;
             gap: 16px;
+        }
+
+        .actions-photo-count {
+            color: var(--text-secondary);
+            font-size: 0.9rem;
         }
 
         @media (max-width: 768px) {
@@ -161,32 +172,33 @@
             }
         }
 
-        .actions-left {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            color: var(--text-secondary);
-            font-size: 0.9rem;
-        }
+
 
         .back-to-collection {
             display: inline-flex;
             align-items: center;
-            gap: 6px;
-            color: var(--text-secondary);
+            gap: 8px;
+            padding: 9px 20px;
+            background: transparent;
+            border: 1px solid #c9a962;
+            color: #c9a962;
             text-decoration: none;
-            font-size: 0.85rem;
-            transition: color 0.2s;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: 600;
+            letter-spacing: 0.06em;
+            text-transform: uppercase;
+            transition: background 0.2s;
             white-space: nowrap;
         }
 
-        .back-to-collection:hover {
-            color: var(--accent);
-        }
+        .back-to-collection:hover { background: rgba(201,169,98,0.12); }
+        html.light .back-to-collection { border-color: #8a6515; color: #8a6515; }
+        html.light .back-to-collection:hover { background: rgba(138,101,21,0.08); }
 
         .back-to-collection svg {
-            width: 16px;
-            height: 16px;
+            width: 15px;
+            height: 15px;
             flex-shrink: 0;
         }
 
@@ -194,24 +206,27 @@
             display: inline-flex;
             align-items: center;
             gap: 8px;
-            padding: 10px 20px;
-            background: var(--accent);
-            color: var(--bg-primary);
+            padding: 9px 20px;
+            background: transparent;
+            color: #c9a962;
             text-decoration: none;
-            border-radius: 8px;
-            font-size: 0.9rem;
+            border-radius: 4px;
+            font-size: 12px;
             font-weight: 600;
-            transition: all 0.2s;
+            letter-spacing: 0.06em;
+            text-transform: uppercase;
+            border: 1px solid #c9a962;
+            transition: background 0.2s;
+            white-space: nowrap;
         }
 
-        .download-all-btn:hover {
-            background: var(--accent-hover);
-            transform: translateY(-1px);
-        }
+        .download-all-btn:hover { background: rgba(201,169,98,0.12); }
+        html.light .download-all-btn { color: #8a6515; border-color: #8a6515; }
+        html.light .download-all-btn:hover { background: rgba(138,101,21,0.08); }
 
         .download-all-btn svg {
-            width: 18px;
-            height: 18px;
+            width: 15px;
+            height: 15px;
         }
 
         /* Gallery Grid */
@@ -735,21 +750,21 @@
 
     <!-- Actions Bar -->
     <div class="actions-bar" id="actionsBar" style="display: none;">
-        <div class="actions-left">
-            <a class="back-to-collection" id="backToCollection" href="#" style="display:none;">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M19 12H5m0 0l7 7m-7-7l7-7" stroke-linecap="round" stroke-linejoin="round"/>
-                </svg>
-                <span id="backToCollectionText"></span>
-            </a>
-            <span id="photoCount"></span>
-        </div>
-        <a class="download-all-btn" id="downloadAllBtn" href="#">
+        <a class="back-to-collection" id="backToCollection" href="#" style="display:none;">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M12 4v12m0 0l-4-4m4 4l4-4M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2" stroke-linecap="round" stroke-linejoin="round"/>
+                <path d="M19 12H5m0 0l7 7m-7-7l7-7" stroke-linecap="round" stroke-linejoin="round"/>
             </svg>
-            <span id="downloadAllText"></span>
+            <span id="backToCollectionText"></span>
         </a>
+        <div class="actions-main-row">
+            <span class="actions-photo-count" id="photoCount"></span>
+            <a class="download-all-btn" id="downloadAllBtn" href="#">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M12 4v12m0 0l-4-4m4 4l4-4M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+                <span id="downloadAllText"></span>
+            </a>
+        </div>
     </div>
 
     <!-- Gallery Grid -->

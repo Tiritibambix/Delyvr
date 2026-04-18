@@ -1,6 +1,5 @@
 require('dotenv').config();
 
-const net     = require('net');
 const express = require('express');
 const multer = require('multer');
 const path = require('path');
@@ -36,66 +35,6 @@ if (!ADMIN_PASSWORD) {
     process.exit(1);
 }
 
-// IP allowlist for admin routes (optional).
-// Set ADMIN_ALLOWED_IPS in .env as a comma-separated list of IPs or CIDR ranges.
-// Example: ADMIN_ALLOWED_IPS=88.123.45.67,192.168.1.0/24
-// If unset or empty, all IPs are allowed.
-const ADMIN_ALLOWED_IPS_RAW = process.env.ADMIN_ALLOWED_IPS || '';
-const ADMIN_ALLOWED_IPS = ADMIN_ALLOWED_IPS_RAW
-    .split(',')
-    .map(s => s.trim())
-    .filter(Boolean);
-
-// Convert an IPv4 or IPv6 address string to a BigInt for bitwise comparison
-function ipToBigInt(ip) {
-    if (net.isIPv4(ip)) {
-        return ip.split('.').reduce((acc, octet) => (acc << 8n) | BigInt(parseInt(octet, 10)), 0n);
-    }
-    // Expand IPv6 (handle ::)
-    const parts = ip.split(':');
-    const full = [];
-    for (let i = 0; i < parts.length; i++) {
-        if (parts[i] === '') {
-            const fill = 8 - parts.filter(p => p !== '').length;
-            for (let j = 0; j <= fill; j++) full.push('0000');
-        } else {
-            full.push(parts[i].padStart(4, '0'));
-        }
-    }
-    return BigInt('0x' + full.join(''));
-}
-
-// Check whether a given IP is covered by a CIDR range or matches exactly
-function ipMatchesCIDR(ip, cidr) {
-    try {
-        if (!cidr.includes('/')) return ip === cidr;
-        const [rangeIp, prefixStr] = cidr.split('/');
-        const prefix = parseInt(prefixStr, 10);
-        // Normalise IPv4-mapped IPv6 addresses (::ffff:x.x.x.x)
-        const normalise = addr => addr.startsWith('::ffff:') ? addr.slice(7) : addr;
-        const normIp    = normalise(ip);
-        const normRange = normalise(rangeIp);
-        if (net.isIPv4(normIp) !== net.isIPv4(normRange)) return false;
-        const bits = net.isIPv4(normIp) ? 32n : 128n;
-        const shift = bits - BigInt(prefix);
-        const mask  = ((1n << BigInt(prefix)) - 1n) << shift;
-        return (ipToBigInt(normIp) & mask) === (ipToBigInt(normRange) & mask);
-    } catch { return false; }
-}
-
-// Middleware: block requests whose IP is not in the allowlist.
-// No-op when ADMIN_ALLOWED_IPS is empty.
-function requireAllowedIP(req, res, next) {
-    if (ADMIN_ALLOWED_IPS.length === 0) return next();
-    // Express sets req.ip, honouring trust proxy if configured
-    const raw = req.ip || '';
-    const ip  = raw.startsWith('::ffff:') ? raw.slice(7) : raw;
-    const allowed = ADMIN_ALLOWED_IPS.some(cidr => ipMatchesCIDR(ip, cidr));
-    if (allowed) return next();
-    console.warn(`[AUTH] IP blocked: ${ip} — not in ADMIN_ALLOWED_IPS`);
-    res.status(403).json({ error: 'Forbidden' });
-}
-
 // File size limits (from .env, in MB)
 const MAX_PHOTO_BYTES = parseInt(process.env.MAX_UPLOAD_MB || '200') * 1024 * 1024;
 const MAX_BACKGROUND_BYTES = parseInt(process.env.MAX_BACKGROUND_MB || '20') * 1024 * 1024;
@@ -106,7 +45,6 @@ const MAX_BACKGROUND_BYTES = parseInt(process.env.MAX_BACKGROUND_MB || '20') * 1
 const DATA_DIR = process.env.INSTALL_DIR || __dirname;
 
 const THUMBNAILS_DIR = path.join(DATA_DIR, 'thumbnails');
-const PREVIEWS_DIR   = path.join(DATA_DIR, 'previews');
 const OG_CACHE_DIR   = path.join(DATA_DIR, 'og-cache');
 
 // UUID v4 validation regex — used by middleware and reconcileGalleries (must be declared early)
@@ -121,39 +59,6 @@ const GALLERIES_FILE = path.join(DATA_DIR, 'galleries.json');
 // Data store for collections
 const collections = new Map();
 const COLLECTIONS_FILE = path.join(DATA_DIR, 'collections.json');
-
-// Settings file
-const SETTINGS_FILE = path.join(DATA_DIR, 'settings.json');
-
-const SETTINGS_DEFAULTS = {
-    theme: 'dark',
-    website: '',
-    socials: {
-        instagram: '',
-        facebook: '',
-        pinterest: '',
-        tiktok: '',
-        linkedin: '',
-        '500px': '',
-        flickr: '',
-        behance: ''
-    }
-};
-
-function loadSettings() {
-    if (fs.existsSync(SETTINGS_FILE)) {
-        try {
-            return { ...SETTINGS_DEFAULTS, ...JSON.parse(fs.readFileSync(SETTINGS_FILE, 'utf8')) };
-        } catch (e) {
-            return { ...SETTINGS_DEFAULTS };
-        }
-    }
-    return { ...SETTINGS_DEFAULTS };
-}
-
-function saveSettings(data) {
-    fs.writeFileSync(SETTINGS_FILE, JSON.stringify(data, null, 2));
-}
 
 // Load galleries from file on startup
 function loadGalleries() {
@@ -220,7 +125,8 @@ function reconcileGalleries() {
                 eventName: 'Untitled Event',
                 created: fs.statSync(galleryPath).birthtime.toISOString(),
                 files,
-                background: null
+                background: null,
+                downloadCount: 0
             });
             changed = true;
         }
@@ -234,7 +140,7 @@ reconcileGalleries();
 loadCollections();
 
 // Ensure directories exist
-['uploads', 'backgrounds', 'thumbnails', 'previews', 'og-cache'].forEach(dir => {
+['uploads', 'backgrounds', 'thumbnails', 'og-cache'].forEach(dir => {
     const dirPath = path.join(DATA_DIR, dir);
     if (!fs.existsSync(dirPath)) {
         fs.mkdirSync(dirPath, { recursive: true });
@@ -243,25 +149,6 @@ loadCollections();
 if (!fs.existsSync(path.join(__dirname, 'public'))) {
     fs.mkdirSync(path.join(__dirname, 'public'), { recursive: true });
 }
-
-// Generate missing previews for all galleries on startup (background, non-blocking).
-// Runs after reconcileGalleries and directory creation so the galleries map and
-// the previews/ directory are both ready.
-setImmediate(() => {
-    for (const [galleryId, gallery] of galleries.entries()) {
-        const files = Array.isArray(gallery.files) ? gallery.files : [];
-        if (files.length === 0) continue;
-        const missing = files.filter(f => {
-            try {
-                const p = safeResolvePath(safeResolvePath(PREVIEWS_DIR, galleryId), f + '.jpg');
-                return !fs.existsSync(p);
-            } catch { return false; }
-        });
-        if (missing.length > 0) {
-            generateGalleryPreviews(galleryId, missing).catch(() => {});
-        }
-    }
-});
 
 // --- Helper functions ---
 
@@ -304,29 +191,6 @@ async function generateThumbnail(galleryId, filename) {
 // Generate thumbnails for an array of filenames (fire-and-forget safe)
 async function generateGalleryThumbnails(galleryId, files) {
     await Promise.all(files.map(f => generateThumbnail(galleryId, f)));
-}
-
-// Generate a 1920px-wide JPEG preview for lightbox display.
-// Originals are never modified — previews are served in the lightbox,
-// originals are served on download.
-async function generatePreview(galleryId, filename) {
-    const src  = safeResolvePath(safeResolvePath(path.join(DATA_DIR, 'uploads'), galleryId), filename);
-    const dir  = safeResolvePath(PREVIEWS_DIR, galleryId);
-    const dest = safeResolvePath(dir, filename + '.jpg');
-    if (fs.existsSync(dest)) return;
-    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-    try {
-        await sharp(src)
-            .resize(1920, 1920, { fit: 'inside', withoutEnlargement: true })
-            .jpeg({ quality: 85 })
-            .toFile(dest);
-    } catch (e) {
-        // Skip non-image or corrupt files silently
-    }
-}
-
-async function generateGalleryPreviews(galleryId, files) {
-    await Promise.all(files.map(f => generatePreview(galleryId, f)));
 }
 
 // Configure multer for photo uploads
@@ -413,22 +277,10 @@ function validateFilename(req, res, next) {
 
 // Simple password authentication middleware — header only, never query param
 function requireAuth(req, res, next) {
-    // Check IP allowlist first
-    if (ADMIN_ALLOWED_IPS.length > 0) {
-        const raw = req.ip || '';
-        const ip  = raw.startsWith('::ffff:') ? raw.slice(7) : raw;
-        const allowed = ADMIN_ALLOWED_IPS.some(cidr => ipMatchesCIDR(ip, cidr));
-        if (!allowed) {
-            console.warn(`[AUTH] IP blocked: ${ip} — route: ${req.method} ${req.path}`);
-            return res.status(403).json({ error: 'Forbidden' });
-        }
-    }
     const password = req.headers['x-admin-password'];
     if (password === ADMIN_PASSWORD) {
         next();
     } else {
-        const ip = (req.ip || '').replace(/^::ffff:/, '');
-        console.warn(`[AUTH] Failed auth attempt — IP: ${ip} — route: ${req.method} ${req.path}`);
         res.status(401).json({ error: 'Unauthorized' });
     }
 }
@@ -491,14 +343,12 @@ const downloadLimiter = rateLimit({
 // --- Routes ---
 
 // Verify password endpoint
-app.post('/api/auth/verify', authLimiter, requireAllowedIP, (req, res) => {
+app.post('/api/auth/verify', authLimiter, (req, res) => {
     const raw = req.body.password;
     const password = Array.isArray(raw) ? raw[0] : raw;
     if (typeof password === 'string' && password === ADMIN_PASSWORD) {
         res.json({ success: true });
     } else {
-        const ip = (req.ip || '').replace(/^::ffff:/, '');
-        console.warn(`[AUTH] Failed login attempt — IP: ${ip}`);
         res.status(401).json({ error: 'Invalid password' });
     }
 });
@@ -568,7 +418,8 @@ function generateGalleryId(req, res, next) {
         eventName: '',
         created: new Date().toISOString(),
         files: [],
-        background: null
+        background: null,
+        downloadCount: 0
     });
     next();
 }
@@ -591,7 +442,6 @@ app.post('/api/gallery/create', requireAuth, generateGalleryId, upload.array('ph
         gallery.eventName = (String(Array.isArray(req.body.eventName) ? req.body.eventName[0] : (req.body.eventName || 'Untitled Event'))).trim().substring(0, 200);
         saveGalleries();
         generateGalleryThumbnails(galleryId, gallery.files).catch(() => {});
-        generateGalleryPreviews(galleryId, gallery.files).catch(() => {});
     }
 
     const baseUrl = `${req.protocol}://${req.get('host')}`;
@@ -619,7 +469,6 @@ app.post('/api/gallery/:galleryId/upload', requireAuth, validateGalleryId, uploa
         gallery.files.push(...newFiles);
         saveGalleries();
         generateGalleryThumbnails(galleryId, newFiles).catch(() => {});
-        generateGalleryPreviews(galleryId, newFiles).catch(() => {});
     }
 
     res.json({
@@ -751,7 +600,6 @@ app.get('/api/gallery/:galleryId/photos', publicReadLimiter, validateGalleryId, 
     const photos = files.map(filename => ({
         filename,
         url:         `/api/gallery/${galleryId}/photo/${encodeURIComponent(filename)}`,
-        previewUrl:  `/api/gallery/${galleryId}/preview/${encodeURIComponent(filename)}`,
         thumbnailUrl:`/api/gallery/${galleryId}/photo/${encodeURIComponent(filename)}?thumb=1`,
         downloadUrl: `/api/gallery/${galleryId}/download/${encodeURIComponent(filename)}`
     }));
@@ -787,42 +635,6 @@ app.get('/api/gallery/:galleryId/photo/:filename', imageLimiter, validateGallery
         return res.status(404).send('Photo not found');
     }
     res.sendFile(filePath);
-});
-
-// Serve 1920px preview for lightbox.
-// If the preview already exists on disk, serve it immediately.
-// If not, serve the original right away (non-blocking) and generate the preview
-// in the background so subsequent requests hit the cache.
-app.get('/api/gallery/:galleryId/preview/:filename', imageLimiter, validateGalleryId, validateFilename, (req, res) => {
-    const { galleryId, filename } = req.params;
-
-    let previewPath;
-    try {
-        previewPath = safeResolvePath(safeResolvePath(PREVIEWS_DIR, galleryId), filename + '.jpg');
-    } catch {
-        return res.status(400).send('Invalid path');
-    }
-
-    if (fs.existsSync(previewPath)) {
-        return res.sendFile(previewPath);
-    }
-
-    // Preview not ready yet — serve original immediately, generate in background
-    let originalPath;
-    try {
-        originalPath = safeResolvePath(safeResolvePath(path.join(DATA_DIR, 'uploads'), galleryId), filename);
-    } catch {
-        return res.status(400).send('Invalid path');
-    }
-
-    if (!fs.existsSync(originalPath)) {
-        return res.status(404).send('Photo not found');
-    }
-
-    // Kick off background generation (no await — response already sent)
-    generatePreview(galleryId, filename).catch(() => {});
-
-    res.sendFile(originalPath);
 });
 
 // Download a single photo as an attachment
@@ -953,7 +765,8 @@ app.get('/api/gallery/:galleryId/info', publicReadLimiter, validateGalleryId, (r
         eventName,
         background: backgroundFile ? `/api/gallery/${galleryId}/background` : null,
         fileCount,
-        downloadsEnabled: gallery ? gallery.downloadsEnabled !== false : true
+        downloadsEnabled: gallery ? gallery.downloadsEnabled !== false : true,
+        downloadCount: gallery ? (gallery.downloadCount || 0) : 0
     });
 });
 
@@ -969,6 +782,12 @@ app.get('/api/gallery/:galleryId/download', downloadLimiter, validateGalleryId, 
     const gallery = galleries.get(galleryId);
     if (gallery && gallery.downloadsEnabled === false) {
         return res.status(403).json({ error: 'Downloads are disabled for this gallery' });
+    }
+
+    // Track download count
+    if (gallery) {
+        gallery.downloadCount = (gallery.downloadCount || 0) + 1;
+        saveGalleries();
     }
 
     const files = fs.readdirSync(galleryPath).filter(f => !f.startsWith('.'));
@@ -1102,10 +921,10 @@ app.post('/api/collection/create', requireAuth, (req, res) => {
 });
 
 // List all collections (admin only)
-app.get('/api/collections', adminLimiter, requireAuth, (req, res) => {
+app.get('/api/collections', requireAuth, (req, res) => {
     const baseUrl = `${req.protocol}://${req.get('host')}`;
-    const bgDir = path.join(DATA_DIR, 'backgrounds');
-    const bgFiles = fs.existsSync(bgDir) ? new Set(fs.readdirSync(bgDir)) : new Set();
+    const bgDirC = path.join(DATA_DIR, 'backgrounds');
+    const bgFilesC = fs.existsSync(bgDirC) ? new Set(fs.readdirSync(bgDirC)) : new Set();
     const list = Array.from(collections.values())
         .sort((a, b) => new Date(b.created) - new Date(a.created))
         .map(c => ({
@@ -1114,7 +933,7 @@ app.get('/api/collections', adminLimiter, requireAuth, (req, res) => {
             created: c.created,
             galleryIds: c.galleryIds,
             collectionUrl: `${baseUrl}/collection/${c.id}`,
-            hasBackground: [...bgFiles].some(f => f.startsWith(`collection-${c.id}`))
+            hasBackground: [...bgFilesC].some(f => f.startsWith(`collection-${c.id}`))
         }));
     res.json(list);
 });
@@ -1149,11 +968,12 @@ app.get('/api/collection/:collectionId', publicReadLimiter, validateCollectionId
         })
         .filter(Boolean);
 
-    const collectionHasBg = [...bgFiles].some(f => f.startsWith(`collection-${collectionId}`));
+    const collBgFiles = fs.existsSync(backgroundsDir) ? [...new Set(fs.readdirSync(backgroundsDir))] : [];
+    const collHasBg = collBgFiles.some(f => f.startsWith(`collection-${collectionId}`));
     res.json({
         id: collectionId,
         name: collection.name,
-        background: collectionHasBg ? `/api/collection/${collectionId}/background` : null,
+        background: collHasBg ? `/api/collection/${collectionId}/background` : null,
         galleries: galleriesData
     });
 });
@@ -1169,49 +989,6 @@ app.post('/api/collection/:collectionId/rename', requireAuth, validateCollection
 });
 
 // Add a gallery to a collection (admin only)
-
-// Upload/replace collection background image
-app.post('/api/collection/:collectionId/background', adminLimiter, requireAuth, validateCollectionId, uploadBackground.single('background'), async (req, res) => {
-    const { collectionId } = req.params;
-    const collection = collections.get(collectionId);
-
-    if (!collection) return res.status(404).json({ error: 'Collection not found' });
-    if (!req.file) return res.status(400).json({ error: 'No background file provided' });
-
-    try {
-        const backgroundsDir = path.join(DATA_DIR, 'backgrounds');
-        if (!fs.existsSync(backgroundsDir)) fs.mkdirSync(backgroundsDir, { recursive: true });
-
-        // Delete old collection background
-        const existing = fs.readdirSync(backgroundsDir).find(f => f.startsWith(`collection-${collectionId}`));
-        if (existing) fs.unlinkSync(path.join(backgroundsDir, existing));
-
-        const dest = path.join(backgroundsDir, `collection-${collectionId}.jpg`);
-        await sharp(req.file.buffer)
-            .resize(2400, null, { withoutEnlargement: true })
-            .jpeg({ quality: 85 })
-            .toFile(dest);
-
-        collection.background = `collection-${collectionId}.jpg`;
-        saveCollections();
-
-        res.json({ success: true, background: collection.background });
-    } catch (err) {
-        res.status(500).json({ error: 'Failed to process background image' });
-    }
-});
-
-// Serve collection background image
-app.get('/api/collection/:collectionId/background', publicReadLimiter, validateCollectionId, (req, res) => {
-    const { collectionId } = req.params;
-    const backgroundsDir = path.join(DATA_DIR, 'backgrounds');
-    if (fs.existsSync(backgroundsDir)) {
-        const file = fs.readdirSync(backgroundsDir).find(f => f.startsWith(`collection-${collectionId}`));
-        if (file) return res.sendFile(path.join(backgroundsDir, file));
-    }
-    res.status(404).json({ error: 'No background found' });
-});
-
 app.post('/api/collection/:collectionId/galleries', requireAuth, validateCollectionId, (req, res) => {
     const { collectionId } = req.params;
     const { galleryId } = req.body;
@@ -1383,7 +1160,8 @@ app.get('/api/galleries', adminLimiter, requireAuth, (req, res) => {
                     hasBackground,
                     downloadUrl: `${baseUrl}/download/${galleryId}`,
                     favoritesCount: Object.keys(gallery.favorites || {}).length,
-                    collectionId
+                    collectionId,
+                    downloadsEnabled: gallery.downloadsEnabled !== false
                 });
             }
         });
@@ -1413,9 +1191,6 @@ app.delete('/api/gallery/:galleryId', adminLimiter, requireAuth, validateGallery
     // Delete thumbnails
     fs.rmSync(safeResolvePath(THUMBNAILS_DIR, galleryId), { recursive: true, force: true });
 
-    // Delete previews
-    fs.rmSync(safeResolvePath(PREVIEWS_DIR, galleryId), { recursive: true, force: true });
-
     // Delete og-cache
     const ogFile = safeResolvePath(OG_CACHE_DIR, `${galleryId}.jpg`);
     if (fs.existsSync(ogFile)) fs.unlinkSync(ogFile);
@@ -1434,54 +1209,6 @@ app.delete('/api/gallery/:galleryId', adminLimiter, requireAuth, validateGallery
 
     res.json({ success: true });
 });
-
-// --- Settings routes ---
-
-// GET /api/settings — public, used by all pages to apply theme and render socials
-app.get('/api/settings', publicReadLimiter, (_req, res) => {
-    res.json(loadSettings());
-});
-
-// POST /api/settings — admin only, saves theme + socials + website
-app.post('/api/settings', adminLimiter, requireAuth, (req, res) => {
-    const current = loadSettings();
-
-    // theme
-    if (typeof req.body.theme === 'string' && ['dark', 'light'].includes(req.body.theme)) {
-        current.theme = req.body.theme;
-    }
-
-    // website
-    if (typeof req.body.website === 'string') {
-        current.website = req.body.website.trim().slice(0, 500);
-    }
-
-    // socials — only known keys, only strings
-    const SOCIAL_KEYS = ['instagram', 'facebook', 'pinterest', 'tiktok', 'linkedin', '500px', 'flickr', 'behance'];
-    if (req.body.socials && typeof req.body.socials === 'object' && !Array.isArray(req.body.socials)) {
-        current.socials = current.socials || {};
-        for (const key of SOCIAL_KEYS) {
-            if (typeof req.body.socials[key] === 'string') {
-                current.socials[key] = req.body.socials[key].trim().slice(0, 500);
-            }
-        }
-    }
-
-    saveSettings(current);
-    res.json(current);
-});
-
-// Legacy theme-only route — kept for backward compat with older admin.html (POST + PATCH)
-function handleThemeUpdate(req, res) {
-    const current = loadSettings();
-    if (typeof req.body.theme === 'string' && ['dark', 'light'].includes(req.body.theme)) {
-        current.theme = req.body.theme;
-        saveSettings(current);
-    }
-    res.json(current);
-}
-app.post('/api/settings/theme', adminLimiter, requireAuth, handleThemeUpdate);
-app.patch('/api/settings/theme', adminLimiter, requireAuth, handleThemeUpdate);
 
 // Error handling — never expose internal details (file paths, stack traces) to the client
 app.use((err, req, res, next) => {
