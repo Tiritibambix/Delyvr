@@ -690,16 +690,22 @@
 
         @media (max-width: 768px) {
             .lightbox-content {
-                display: none;
-            }
-            .lightbox-img {
                 position: fixed;
                 top: 0; left: 0;
                 width: 100vw;
                 height: 100vh;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                padding: 0;
+                z-index: 1001;
+            }
+            .lightbox-img {
+                width: 100vw;
+                height: 100vh;
                 object-fit: contain;
                 border-radius: 0;
-                z-index: 1001;
+                display: block;
             }
             .lightbox-close,
             .lightbox-nav,
@@ -709,10 +715,15 @@
             }
         }
 
-        .lightbox:fullscreen .lightbox-img,
-        .lightbox:-webkit-full-screen .lightbox-img {
+        .lightbox:fullscreen .lightbox-content,
+        .lightbox:-webkit-full-screen .lightbox-content {
             position: fixed;
             top: 0; left: 0;
+            width: 100vw;
+            height: 100vh;
+        }
+        .lightbox:fullscreen .lightbox-img,
+        .lightbox:-webkit-full-screen .lightbox-img {
             width: 100vw;
             height: 100vh;
             object-fit: contain;
