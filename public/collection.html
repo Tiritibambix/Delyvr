@@ -254,51 +254,43 @@
             display: flex; gap: 7px; align-items: center;
         }
 
-        .btn-card-browse {
+        .btn-card-icon {
             flex: 1;
+            height: 32px;
             display: inline-flex; align-items: center; justify-content: center;
             gap: 6px;
-            font-size: 11px; font-weight: 600;
-            letter-spacing: 0.06em; text-transform: uppercase;
-            color: #c9a962;
-            border: 1px solid #c9a962;
-            border-radius: 3px;
-            padding: 7px 10px;
-            text-decoration: none;
-            transition: background 0.2s;
-            white-space: nowrap;
-        }
-        .btn-card-browse:hover { background: rgba(201,169,98,0.12); }
-        html.light .btn-card-browse { color: #8a6515; border-color: #8a6515; }
-        html.light .btn-card-browse:hover { background: rgba(138,101,21,0.08); }
-
-        .btn-card-icon {
-            width: 30px; height: 30px;
-            display: inline-flex; align-items: center; justify-content: center;
             background: transparent;
             border: 1px solid var(--border2);
             border-radius: 3px;
             cursor: pointer;
             color: var(--muted);
+            font-size: 11px; font-weight: 600;
+            letter-spacing: 0.05em; text-transform: uppercase;
+            font-family: inherit;
             transition: color 0.15s, border-color 0.15s;
-            flex-shrink: 0;
+            white-space: nowrap;
         }
-        .btn-card-icon svg { width: 13px; height: 13px; }
+        .btn-card-icon svg { width: 13px; height: 13px; flex-shrink: 0; }
         .btn-card-icon:hover { color: var(--text); border-color: var(--muted); }
 
         .btn-card-dl {
-            width: 30px; height: 30px;
+            flex: 1;
+            height: 32px;
             display: inline-flex; align-items: center; justify-content: center;
+            gap: 6px;
             background: #c9a962;
             border: none;
             border-radius: 3px;
             cursor: pointer;
             color: #0a0a0b;
+            font-size: 11px; font-weight: 600;
+            letter-spacing: 0.05em; text-transform: uppercase;
+            font-family: inherit;
             transition: background 0.15s;
-            flex-shrink: 0;
             text-decoration: none;
+            white-space: nowrap;
         }
-        .btn-card-dl svg { width: 13px; height: 13px; }
+        .btn-card-dl svg { width: 13px; height: 13px; flex-shrink: 0; }
         .btn-card-dl:hover { background: #dfc07a; }
 
         /* tick vert copy */
@@ -499,8 +491,9 @@
                     const dlUrl = `/api/gallery/${escapeHtml(gallery.id)}/download`;
 
                     const dlBtn = gallery.downloadsEnabled !== false
-                        ? `<a class="btn-card-dl" href="${dlUrl}" title="${t.download}" onclick="event.stopPropagation()">
+                        ? `<a class="btn-card-dl" href="${dlUrl}" onclick="event.stopPropagation()">
                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 4v12m0 0l-4-4m4 4l4-4M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                               <span>${t.download}</span>
                            </a>`
                         : '';
 
@@ -514,9 +507,9 @@
                                 <div class="gallery-card-meta">${count} ${photoLabel}</div>
                             </div>
                             <div class="gallery-card-actions">
-                                <a class="btn-card-browse" href="${browseUrl}">${t.browse}</a>
                                 <button class="btn-card-icon" title="Copy link" onclick="event.stopPropagation(); copyGalleryCustomerLink(this, '${escapeHtml(gallery.id)}')">
                                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                                    <span>${t.copyLink}</span>
                                 </button>
                                 ${dlBtn}
                             </div>

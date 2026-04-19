@@ -264,7 +264,7 @@
         ═══════════════════════════════ */
         .dashboard {
             display: grid;
-            grid-template-columns: 320px 1fr;
+            grid-template-columns: 33% 1fr;
             flex: 1;
             overflow: hidden;
             min-height: 0;
@@ -627,12 +627,14 @@
             .dashboard {
                 grid-template-columns: 1fr;
                 grid-template-rows: 33% 67%;
-                height: 100%;
+                height: calc(100vh - 68px);
+                overflow: hidden;
             }
             .left-col {
                 border-right: none;
                 border-bottom: 1px solid var(--border);
                 overflow-y: auto;
+                max-height: none;
             }
             .right-col {
                 overflow-y: auto;

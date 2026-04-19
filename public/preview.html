@@ -150,20 +150,23 @@
             border-bottom: 1px solid var(--border);
             padding: 12px 24px;
             display: flex;
-            flex-direction: column;
-            gap: 10px;
-        }
-
-        .actions-main-row {
-            display: flex;
+            flex-direction: row;
             align-items: center;
             justify-content: space-between;
             gap: 16px;
         }
 
-        .actions-photo-count {
+        .actions-left-slot {
             color: var(--text-secondary);
             font-size: 0.9rem;
+            flex: 1;
+        }
+
+        .actions-right-slot {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex-shrink: 0;
         }
 
         @media (max-width: 768px) {
@@ -750,14 +753,14 @@
 
     <!-- Actions Bar -->
     <div class="actions-bar" id="actionsBar" style="display: none;">
-        <a class="back-to-collection" id="backToCollection" href="#" style="display:none;">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M19 12H5m0 0l7 7m-7-7l7-7" stroke-linecap="round" stroke-linejoin="round"/>
-            </svg>
-            <span id="backToCollectionText"></span>
-        </a>
-        <div class="actions-main-row">
-            <span class="actions-photo-count" id="photoCount"></span>
+        <span class="actions-left-slot" id="photoCount"></span>
+        <div class="actions-right-slot">
+            <a class="back-to-collection" id="backToCollection" href="#" style="display:none;">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M19 12H5m0 0l7 7m-7-7l7-7" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+                <span id="backToCollectionText"></span>
+            </a>
             <a class="download-all-btn" id="downloadAllBtn" href="#">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <path d="M12 4v12m0 0l-4-4m4 4l4-4M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2" stroke-linecap="round" stroke-linejoin="round"/>
