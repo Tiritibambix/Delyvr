@@ -43,6 +43,7 @@ const MAX_BACKGROUND_BYTES = parseInt(process.env.MAX_BACKGROUND_MB || '20') * 1
 const DATA_DIR = process.env.INSTALL_DIR || __dirname;
 
 const THUMBNAILS_DIR = path.join(DATA_DIR, 'thumbnails');
+const PREVIEWS_DIR   = path.join(DATA_DIR, 'previews');
 const OG_CACHE_DIR   = path.join(DATA_DIR, 'og-cache');
 
 // UUID v4 validation regex — used by middleware and reconcileGalleries (must be declared early)
@@ -138,7 +139,7 @@ reconcileGalleries();
 loadCollections();
 
 // Ensure directories exist
-['uploads', 'backgrounds', 'thumbnails', 'og-cache'].forEach(dir => {
+['uploads', 'backgrounds', 'thumbnails', 'previews', 'og-cache'].forEach(dir => {
     const dirPath = path.join(DATA_DIR, dir);
     if (!fs.existsSync(dirPath)) {
         fs.mkdirSync(dirPath, { recursive: true });
@@ -189,6 +190,25 @@ async function generateThumbnail(galleryId, filename) {
 // Generate thumbnails for an array of filenames (fire-and-forget safe)
 async function generateGalleryThumbnails(galleryId, files) {
     await Promise.all(files.map(f => generateThumbnail(galleryId, f)));
+}
+
+// Generate a 1920px-wide JPEG preview for lightbox display
+async function generatePreview(galleryId, filename) {
+    const src  = safeResolvePath(safeResolvePath(path.join(DATA_DIR, 'uploads'), galleryId), filename);
+    const dir  = safeResolvePath(PREVIEWS_DIR, galleryId);
+    const dest = safeResolvePath(dir, filename + '.jpg');
+    if (fs.existsSync(dest)) return;
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    try {
+        await sharp(src).resize(1920, null, { withoutEnlargement: true }).jpeg({ quality: 85 }).toFile(dest);
+    } catch (e) {
+        // Skip non-image or corrupt files silently
+    }
+}
+
+// Generate 1920px previews for an array of filenames (fire-and-forget safe)
+async function generateGalleryPreviews(galleryId, files) {
+    await Promise.all(files.map(f => generatePreview(galleryId, f)));
 }
 
 // Configure multer for photo uploads
@@ -440,6 +460,7 @@ app.post('/api/gallery/create', requireAuth, generateGalleryId, upload.array('ph
         gallery.eventName = (String(Array.isArray(req.body.eventName) ? req.body.eventName[0] : (req.body.eventName || 'Untitled Event'))).trim().substring(0, 200);
         saveGalleries();
         generateGalleryThumbnails(galleryId, gallery.files).catch(() => {});
+        generateGalleryPreviews(galleryId, gallery.files).catch(() => {});
     }
 
     const baseUrl = `${req.protocol}://${req.get('host')}`;
@@ -467,6 +488,7 @@ app.post('/api/gallery/:galleryId/upload', requireAuth, validateGalleryId, uploa
         gallery.files.push(...newFiles);
         saveGalleries();
         generateGalleryThumbnails(galleryId, newFiles).catch(() => {});
+        generateGalleryPreviews(galleryId, newFiles).catch(() => {});
     }
 
     res.json({
@@ -598,6 +620,7 @@ app.get('/api/gallery/:galleryId/photos', publicReadLimiter, validateGalleryId, 
     const photos = files.map(filename => ({
         filename,
         url:         `/api/gallery/${galleryId}/photo/${encodeURIComponent(filename)}`,
+        previewUrl:  `/api/gallery/${galleryId}/photo/${encodeURIComponent(filename)}?preview=1`,
         thumbnailUrl:`/api/gallery/${galleryId}/photo/${encodeURIComponent(filename)}?thumb=1`,
         downloadUrl: `/api/gallery/${galleryId}/download/${encodeURIComponent(filename)}`
     }));
@@ -626,6 +649,20 @@ app.get('/api/gallery/:galleryId/photo/:filename', imageLimiter, validateGallery
             return res.sendFile(thumbPath);
         }
         // Fall through to original if thumbnail generation failed
+    }
+
+    if (req.query.preview === '1') {
+        const previewPath = safeResolvePath(safeResolvePath(PREVIEWS_DIR, galleryId), filename + '.jpg');
+
+        if (!fs.existsSync(previewPath)) {
+            // Generate on-the-fly if missing
+            await generatePreview(galleryId, filename);
+        }
+
+        if (fs.existsSync(previewPath)) {
+            return res.sendFile(previewPath);
+        }
+        // Fall through to original if preview generation failed
     }
 
     const filePath = safeResolvePath(safeResolvePath(path.join(DATA_DIR, 'uploads'), galleryId), filename);
@@ -1193,6 +1230,7 @@ app.get('/api/galleries', adminLimiter, requireAuth, (req, res) => {
                     hasBackground,
                     downloadUrl: `${baseUrl}/download/${galleryId}`,
                     favoritesCount: Object.keys(gallery.favorites || {}).length,
+                    downloadCount: gallery.downloadCount || 0,
                     collectionId,
                     downloadsEnabled: gallery.downloadsEnabled !== false
                 });
@@ -1256,4 +1294,20 @@ app.use((err, req, res, next) => {
 
 app.listen(PORT, () => {
     console.log(`\n📸 Delyvr is running on port ${PORT}\n`);
+
+    // Generate missing previews in background after server is ready
+    setImmediate(async () => {
+        for (const [galleryId, gallery] of galleries.entries()) {
+            const galleryPath = path.join(DATA_DIR, 'uploads', galleryId);
+            if (!fs.existsSync(galleryPath)) continue;
+            const files = fs.readdirSync(galleryPath).filter(f => !f.startsWith('.'));
+            const missing = files.filter(f => {
+                const p = path.join(PREVIEWS_DIR, galleryId, f + '.jpg');
+                return !fs.existsSync(p);
+            });
+            if (missing.length > 0) {
+                generateGalleryPreviews(galleryId, missing).catch(() => {});
+            }
+        }
+    });
 });
