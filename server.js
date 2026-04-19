@@ -58,6 +58,17 @@ const GALLERIES_FILE = path.join(DATA_DIR, 'galleries.json');
 // Data store for collections
 const collections = new Map();
 const COLLECTIONS_FILE = path.join(DATA_DIR, 'collections.json');
+const SETTINGS_FILE    = path.join(DATA_DIR, 'settings.json');
+
+function loadSettings() {
+    try {
+        if (fs.existsSync(SETTINGS_FILE)) return JSON.parse(fs.readFileSync(SETTINGS_FILE, 'utf8'));
+    } catch (e) {}
+    return { theme: 'dark', website: '', socials: {} };
+}
+function saveSettings(s) {
+    fs.writeFileSync(SETTINGS_FILE, JSON.stringify(s, null, 2));
+}
 
 // Load galleries from file on startup
 function loadGalleries() {
@@ -255,6 +266,37 @@ const uploadBackground = multer({
             cb(new Error('Only JPEG, PNG, GIF, or WebP files are allowed for backgrounds'), false);
         }
     }
+});
+
+// ── SETTINGS ────────────────────────────────────────────────────────────────
+
+app.get('/api/settings', (req, res) => {
+    res.json(loadSettings());
+});
+
+app.post('/api/settings', requireAuth, (req, res) => {
+    const current = loadSettings();
+    const { theme, website, socials } = req.body;
+    if (theme === 'light' || theme === 'dark') current.theme = theme;
+    if (typeof website === 'string') current.website = website.trim().substring(0, 500);
+    if (socials && typeof socials === 'object') {
+        current.socials = current.socials || {};
+        for (const [k, v] of Object.entries(socials)) {
+            if (typeof v === 'string') current.socials[k] = v.trim().substring(0, 500);
+        }
+    }
+    saveSettings(current);
+    res.json(current);
+});
+
+app.patch('/api/settings/theme', requireAuth, (req, res) => {
+    const current = loadSettings();
+    const { theme } = req.body;
+    if (theme === 'light' || theme === 'dark') {
+        current.theme = theme;
+        saveSettings(current);
+    }
+    res.json(current);
 });
 
 // Logo uploads accept raster images and SVG; stored in memory then written to DATA_DIR
