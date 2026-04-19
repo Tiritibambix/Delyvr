@@ -1230,6 +1230,7 @@ app.get('/api/galleries', adminLimiter, requireAuth, (req, res) => {
                     hasBackground,
                     downloadUrl: `${baseUrl}/download/${galleryId}`,
                     favoritesCount: Object.keys(gallery.favorites || {}).length,
+                    downloadCount: gallery.downloadCount || 0,
                     collectionId,
                     downloadsEnabled: gallery.downloadsEnabled !== false
                 });
