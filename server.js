@@ -13,12 +13,10 @@ const escapeHtml = require('escape-html');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Trust reverse-proxy headers (X-Forwarded-For, X-Forwarded-Proto) when TRUST_PROXY=1 in .env.
-// Set to 1 when running behind Nginx/Caddy/Traefik; leave unset for direct exposure.
-const TRUST_PROXY = parseInt(process.env.TRUST_PROXY || '0', 10);
-if (TRUST_PROXY > 0) {
-    app.set('trust proxy', TRUST_PROXY);
-}
+// Trust reverse-proxy headers (X-Forwarded-For, X-Forwarded-Proto).
+// Defaults to 1 for deployments behind Nginx/NPM/Caddy. Set TRUST_PROXY=0 to disable.
+const TRUST_PROXY = parseInt(process.env.TRUST_PROXY || '1', 10);
+app.set('trust proxy', TRUST_PROXY);
 
 // Security headers — applied to every response
 app.use((_req, res, next) => {
@@ -988,6 +986,41 @@ app.post('/api/collection/:collectionId/rename', requireAuth, validateCollection
     res.json({ success: true, name: collection.name });
 });
 
+// Upload/replace collection background image
+app.post('/api/collection/:collectionId/background', adminLimiter, requireAuth, validateCollectionId, uploadBackground.single('background'), async (req, res) => {
+    const { collectionId } = req.params;
+    const collection = collections.get(collectionId);
+    if (!collection) return res.status(404).json({ error: 'Collection not found' });
+    if (!req.file) return res.status(400).json({ error: 'No background file provided' });
+    try {
+        const backgroundsDir = path.join(DATA_DIR, 'backgrounds');
+        if (!fs.existsSync(backgroundsDir)) fs.mkdirSync(backgroundsDir, { recursive: true });
+        const existing = fs.readdirSync(backgroundsDir).find(f => f.startsWith(`collection-${collectionId}`));
+        if (existing) fs.unlinkSync(path.join(backgroundsDir, existing));
+        const dest = path.join(backgroundsDir, `collection-${collectionId}.jpg`);
+        await sharp(req.file.buffer)
+            .resize(2400, null, { withoutEnlargement: true })
+            .jpeg({ quality: 85 })
+            .toFile(dest);
+        collection.background = `collection-${collectionId}.jpg`;
+        saveCollections();
+        res.json({ success: true, background: collection.background });
+    } catch (err) {
+        res.status(500).json({ error: 'Failed to process background image' });
+    }
+});
+
+// Serve collection background image
+app.get('/api/collection/:collectionId/background', publicReadLimiter, validateCollectionId, (req, res) => {
+    const { collectionId } = req.params;
+    const backgroundsDir = path.join(DATA_DIR, 'backgrounds');
+    if (fs.existsSync(backgroundsDir)) {
+        const file = fs.readdirSync(backgroundsDir).find(f => f.startsWith(`collection-${collectionId}`));
+        if (file) return res.sendFile(path.join(backgroundsDir, file));
+    }
+    res.status(404).json({ error: 'No background found' });
+});
+
 // Add a gallery to a collection (admin only)
 app.post('/api/collection/:collectionId/galleries', requireAuth, validateCollectionId, (req, res) => {
     const { collectionId } = req.params;
@@ -1222,5 +1255,5 @@ app.use((err, req, res, next) => {
 });
 
 app.listen(PORT, () => {
-    console.log(`\n📸 MeTransfer is running on port ${PORT}\n`);
+    console.log(`\n📸 Delyvr is running on port ${PORT}\n`);
 });
