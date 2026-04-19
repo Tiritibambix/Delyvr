@@ -688,16 +688,20 @@
             border-radius: 4px;
         }
 
-        /* Mobile : image pleine surface, approche Lychee */
+        /* Mobile : approche exacte Lychee — overlay-container + image absolue */
         @media (max-width: 768px) {
+            /* Le conteneur devient position:absolute width/height 100%
+               exactement comme .overlay-container dans Lychee */
             .lightbox-content {
-                position: relative;
+                position: absolute;
+                top: 0; left: 0;
                 width: 100%;
                 height: 100%;
-                flex: 1;
-                padding: 0;
                 display: block;
+                padding: 0;
             }
+            /* L'image est absolue avec inset:0 margin:auto
+               exactement comme #imageview #image dans Lychee */
             .lightbox-img {
                 position: absolute;
                 top: 0; right: 0; bottom: 0; left: 0;
@@ -717,12 +721,14 @@
             }
         }
 
-        /* Plein écran */
+        /* Plein écran : même pattern */
         .lightbox:fullscreen .lightbox-content,
         .lightbox:-webkit-full-screen .lightbox-content {
-            position: relative;
+            position: absolute;
+            top: 0; left: 0;
             width: 100%;
             height: 100%;
+            display: block;
         }
         .lightbox:fullscreen .lightbox-img,
         .lightbox:-webkit-full-screen .lightbox-img {
