@@ -156,11 +156,7 @@
             gap: 16px;
         }
 
-        .actions-left-slot {
-            color: var(--text-secondary);
-            font-size: 0.9rem;
-            flex: 1;
-        }
+
 
         .actions-right-slot {
             display: flex;
@@ -451,54 +447,119 @@
         }
 
         /* Mobile action bar — visible only on mobile */
-        .lightbox-mobile-bar {
+        /* ── MOBILE LIGHTBOX OVERLAY ── */
+        /* Floating overlay : actions auto-hide après 3s, réapparaissent au tap */
+        .lb-mobile-overlay {
             display: none;
             position: fixed;
-            bottom: 0;
-            left: 0;
-            right: 0;
-            z-index: 1020;
-            background: rgba(10, 10, 11, 0.95);
-            backdrop-filter: blur(12px);
-            border-top: 1px solid var(--border);
-            padding: 12px 8px;
-            padding-bottom: max(12px, env(safe-area-inset-bottom));
+            inset: 0;
+            z-index: 1015;
+            pointer-events: none;
         }
 
         @media (max-width: 768px) {
-            .lightbox-mobile-bar { display: flex; align-items: center; justify-content: space-around; }
+            .lb-mobile-overlay { display: block; }
         }
 
-        .lightbox-mobile-bar button,
-        .lightbox-mobile-bar a {
+        /* Barre du haut : fermer + plein écran */
+        .lb-top-bar {
+            position: absolute;
+            top: 0; left: 0; right: 0;
             display: flex;
-            flex-direction: column;
             align-items: center;
-            gap: 4px;
-            background: none;
-            border: none;
-            color: var(--text-secondary);
+            justify-content: space-between;
+            padding: 12px 16px;
+            padding-top: max(12px, env(safe-area-inset-top));
+            background: linear-gradient(to bottom, rgba(0,0,0,0.7) 0%, transparent 100%);
+            pointer-events: auto;
+            transition: opacity 0.35s;
+        }
+
+        /* Barre du bas : fav + télécharger + compteur */
+        .lb-bottom-bar {
+            position: absolute;
+            bottom: 0; left: 0; right: 0;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 16px 20px;
+            padding-bottom: max(16px, env(safe-area-inset-bottom));
+            background: linear-gradient(to top, rgba(0,0,0,0.7) 0%, transparent 100%);
+            pointer-events: auto;
+            transition: opacity 0.35s;
+        }
+
+        .lb-top-bar.hidden,
+        .lb-bottom-bar.hidden {
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        /* Boutons overlay */
+        .lb-btn {
+            width: 44px; height: 44px;
+            border-radius: 50%;
+            background: rgba(0,0,0,0.45);
+            backdrop-filter: blur(8px);
+            border: 1px solid rgba(255,255,255,0.15);
+            color: #fff;
+            display: flex; align-items: center; justify-content: center;
             cursor: pointer;
-            font-size: 0.62rem;
             font-family: inherit;
             text-decoration: none;
-            padding: 6px 10px;
-            border-radius: 8px;
-            transition: color 0.2s;
-            min-width: 52px;
+            transition: background 0.2s;
+            -webkit-tap-highlight-color: transparent;
+        }
+        .lb-btn:active { background: rgba(201,169,98,0.5); }
+        .lb-btn svg { width: 20px; height: 20px; }
+
+        .lb-btn.fav-active { border-color: #dc3250; }
+        .lb-btn.fav-active svg { fill: #dc3250; stroke: #dc3250; }
+
+        /* Compteur photo */
+        .lb-counter {
+            font-size: 13px;
+            color: rgba(255,255,255,0.8);
+            font-variant-numeric: tabular-nums;
+            text-shadow: 0 1px 3px rgba(0,0,0,0.6);
         }
 
-        .lightbox-mobile-bar button:active,
-        .lightbox-mobile-bar a:active { color: var(--accent); }
-
-        .lightbox-mobile-bar button svg,
-        .lightbox-mobile-bar a svg {
-            width: 22px;
-            height: 22px;
+        /* Indicateur de swipe (points) */
+        .lb-dots {
+            display: flex;
+            gap: 5px;
+            align-items: center;
+        }
+        .lb-dot {
+            width: 5px; height: 5px;
+            border-radius: 50%;
+            background: rgba(255,255,255,0.35);
+            transition: background 0.2s, transform 0.2s;
+        }
+        .lb-dot.active {
+            background: #fff;
+            transform: scale(1.3);
         }
 
-        .lightbox-mobile-bar .mb-fav.favorited { color: #dc3250; }
-        .lightbox-mobile-bar .mb-fav.favorited svg { fill: #dc3250; }
+
+
+        /* Animation slide swipe */
+        .lightbox-img.slide-left {
+            animation: slideLeft 0.22s ease;
+        }
+        .lightbox-img.slide-right {
+            animation: slideRight 0.22s ease;
+        }
+        @keyframes slideLeft {
+            from { opacity: 1; transform: translateX(0); }
+            50%  { opacity: 0; transform: translateX(-40px); }
+            to   { opacity: 1; transform: translateX(0); }
+        }
+        @keyframes slideRight {
+            from { opacity: 1; transform: translateX(0); }
+            50%  { opacity: 0; transform: translateX(40px); }
+            to   { opacity: 1; transform: translateX(0); }
+        }
 
         .photo-download {
             display: flex;
@@ -627,6 +688,55 @@
             border-radius: 4px;
         }
 
+        @media (max-width: 768px) {
+            .lightbox-content {
+                position: fixed;
+                top: 0; left: 0;
+                width: 100vw;
+                height: 100vh;
+                max-width: none;
+                max-height: none;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                padding: 0;
+                z-index: 1001;
+            }
+            .lightbox-img {
+                width: 100vw;
+                height: 100vh;
+                max-width: none;
+                max-height: none;
+                object-fit: contain;
+                border-radius: 0;
+                display: block;
+            }
+            .lightbox-close,
+            .lightbox-nav,
+            .lightbox-download-btn,
+            .lightbox-favorite-btn {
+                display: none !important;
+            }
+        }
+
+        .lightbox:fullscreen .lightbox-content,
+        .lightbox:-webkit-full-screen .lightbox-content {
+            position: fixed;
+            top: 0; left: 0;
+            width: 100vw;
+            height: 100vh;
+            max-width: none;
+            max-height: none;
+        }
+        .lightbox:fullscreen .lightbox-img,
+        .lightbox:-webkit-full-screen .lightbox-img {
+            width: 100vw;
+            height: 100vh;
+            max-width: none;
+            max-height: none;
+            object-fit: contain;
+        }
+
         .lightbox-download-btn {
             position: absolute;
             top: 20px;
@@ -691,18 +801,7 @@
             color: var(--text-secondary);
         }
 
-        /* Responsive */
-        @media (max-width: 768px) {
-            .lightbox-content {
-                max-width: calc(100vw - 20px);
-                max-height: calc(100vh - 80px);
-                padding-bottom: 72px;
-            }
-
-            .lightbox-img {
-                max-height: calc(100vh - 92px);
-            }
-        }
+        /* Responsive — handled by mobile lightbox block above */
 
         /* Social footer */
         .social-footer {
@@ -751,7 +850,7 @@
 
     <!-- Actions Bar -->
     <div class="actions-bar" id="actionsBar" style="display: none;">
-        <span class="actions-left-slot" id="photoCount"></span>
+
         <div class="actions-right-slot">
             <a class="back-to-collection" id="backToCollection" href="#" style="display:none;">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -795,28 +894,28 @@
             <img class="lightbox-img" id="lightboxImg">
         </div>
 
-        <!-- Mobile Action Bar -->
-        <div class="lightbox-mobile-bar">
-            <button onclick="navigateLightbox(-1)">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 18l-6-6 6-6" stroke-linecap="round" stroke-linejoin="round"/></svg>
-                Prev
-            </button>
-            <button class="mb-fav" id="mobileBarFav" onclick="toggleFavoriteFromLightbox()">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" stroke-linecap="round" stroke-linejoin="round"/></svg>
-                Fav
-            </button>
-            <button onclick="closeLightbox()">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12" stroke-linecap="round" stroke-linejoin="round"/></svg>
-                Close
-            </button>
-            <a class="mb-dl" id="mobileBarDownload" href="#" download>
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 4v12m0 0l-4-4m4 4l4-4M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-                Save
-            </a>
-            <button onclick="navigateLightbox(1)">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6" stroke-linecap="round" stroke-linejoin="round"/></svg>
-                Next
-            </button>
+        <!-- Mobile Overlay (portrait + landscape) -->
+        <div class="lb-mobile-overlay" id="lbMobileOverlay">
+            <!-- Barre haute : fermer + plein écran -->
+            <div class="lb-top-bar" id="lbTopBar">
+                <button class="lb-btn" onclick="closeLightbox()" aria-label="Fermer">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                </button>
+                <span class="lb-counter" id="lbCounter"></span>
+                <button class="lb-btn" id="lbFullscreenBtn" onclick="toggleFullscreen()" aria-label="Plein écran">
+                    <svg id="lbFsIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                </button>
+            </div>
+            <!-- Barre basse : fav + dots + télécharger -->
+            <div class="lb-bottom-bar" id="lbBottomBar">
+                <button class="lb-btn" id="lbMobileFav" onclick="toggleFavoriteFromLightbox()" aria-label="Favori">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                </button>
+                <div class="lb-dots" id="lbDots"></div>
+                <a class="lb-btn" id="lbMobileDownload" href="#" download aria-label="Télécharger">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 4v12m0 0l-4-4m4 4l4-4M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                </a>
+            </div>
         </div>
     </div>
 
@@ -967,7 +1066,7 @@
                 favBtn.classList.toggle('favorited', !wasFavorited);
                 favBtn.querySelector('svg').setAttribute('fill', wasFavorited ? 'none' : 'white');
                 // Sync mobile bar fav button
-                const mobileBarFav = document.getElementById('mobileBarFav');
+                const mobileBarFav = document.getElementById('lbMobileFav');
                 if (mobileBarFav) {
                     mobileBarFav.classList.toggle('favorited', !wasFavorited);
                     mobileBarFav.querySelector('svg').setAttribute('fill', wasFavorited ? 'none' : '#dc3250');
@@ -1035,7 +1134,7 @@
                 const count = photos.length;
                 const photoWord = count === 1 ? t.photo : t.photos;
                 document.getElementById('heroMeta').textContent = `${count} ${photoWord} • ${t.clickToPreview}`;
-                document.getElementById('photoCount').textContent = `${count} ${photoWord}`;
+
 
                 // Set download all button
                 document.getElementById('downloadAllBtn').href = `/api/gallery/${galleryId}/download`;
@@ -1045,7 +1144,7 @@
                 if (!downloadsEnabled) {
                     document.getElementById('downloadAllBtn').style.display = 'none';
                     document.getElementById('lightboxDownload').style.display = 'none';
-                    const mobileBarDl = document.getElementById('mobileBarDownload');
+                    const mobileBarDl = document.getElementById('lbMobileDownload');
                     if (mobileBarDl) mobileBarDl.style.display = 'none';
                 }
 
@@ -1167,18 +1266,42 @@
             updateLightbox();
             document.getElementById('lightbox').classList.add('active');
             document.body.style.overflow = 'hidden';
+            // Mobile : initialiser les dots et afficher l'overlay
+            if (window.innerWidth <= 768) {
+                buildDots();
+                showLbBars();
+                scheduleLbHide();
+            }
         }
 
         function closeLightbox() {
             document.getElementById('lightbox').classList.remove('active');
             document.body.style.overflow = '';
+            // Quitter le plein écran si actif
+            if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+            clearTimeout(_lbHideTimer);
         }
 
         function navigateLightbox(direction) {
             currentPhotoIndex += direction;
             if (currentPhotoIndex < 0) currentPhotoIndex = photos.length - 1;
             if (currentPhotoIndex >= photos.length) currentPhotoIndex = 0;
+            // Animation slide sur mobile
+            if (window.innerWidth <= 768) {
+                const img = document.getElementById('lightboxImg');
+                const cls = direction > 0 ? 'slide-left' : 'slide-right';
+                img.classList.remove('slide-left', 'slide-right');
+                void img.offsetWidth; // reflow
+                img.classList.add(cls);
+                setTimeout(() => img.classList.remove(cls), 250);
+                updateDots();
+            }
             updateLightbox();
+            // Réafficher les barres brièvement après navigation
+            if (window.innerWidth <= 768) {
+                showLbBars();
+                scheduleLbHide();
+            }
         }
 
         // Preload adjacent previews so navigation feels instant
@@ -1202,12 +1325,17 @@
             // Preload neighbours in background
             preloadAdjacentPreviews(currentPhotoIndex);
 
+            // Sync mobile overlay elements
+
+            const lbMobileDl = document.getElementById('lbMobileDownload');
+            if (lbMobileDl) lbMobileDl.href = `/api/gallery/${galleryId}/download/${encodeURIComponent(photo.filename)}`;
+
             // Desktop download button
             document.getElementById('lightboxDownload').href = downloadUrl;
             document.getElementById('lightboxDownload').setAttribute('download', photo.filename);
 
             // Mobile bar download link
-            const mobileBarDl = document.getElementById('mobileBarDownload');
+            const mobileBarDl = document.getElementById('lbMobileDownload');
             if (mobileBarDl) {
                 mobileBarDl.href = downloadUrl;
                 mobileBarDl.setAttribute('download', photo.filename);
@@ -1220,7 +1348,7 @@
             favBtn.querySelector('svg').setAttribute('fill', isFav ? 'white' : 'none');
 
             // Fav state — mobile bar button
-            const mobileBarFav = document.getElementById('mobileBarFav');
+            const mobileBarFav = document.getElementById('lbMobileFav');
             if (mobileBarFav) {
                 mobileBarFav.classList.toggle('favorited', isFav);
                 mobileBarFav.querySelector('svg').setAttribute('fill', isFav ? '#dc3250' : 'none');
@@ -1244,41 +1372,104 @@
             }
         });
 
-        // Touch swipe support for mobile
-        let touchStartX = 0;
-        let touchStartY = 0;
-        let touchEndX = 0;
-        let touchEndY = 0;
-
+        // ── MOBILE LIGHTBOX — swipe, auto-hide, fullscreen, dots ──
         const lightbox = document.getElementById('lightbox');
+        let touchStartX = 0, touchStartY = 0;
+        let _lbHideTimer = null;
+        let _lbBarsVisible = true;
 
+        function showLbBars() {
+            const top = document.getElementById('lbTopBar');
+            const bot = document.getElementById('lbBottomBar');
+            if (top) top.classList.remove('hidden');
+            if (bot) bot.classList.remove('hidden');
+            _lbBarsVisible = true;
+        }
+
+        function hideLbBars() {
+            const top = document.getElementById('lbTopBar');
+            const bot = document.getElementById('lbBottomBar');
+            if (top) top.classList.add('hidden');
+            if (bot) bot.classList.add('hidden');
+            _lbBarsVisible = false;
+        }
+
+        function scheduleLbHide() {
+            clearTimeout(_lbHideTimer);
+            _lbHideTimer = setTimeout(hideLbBars, 3000);
+        }
+
+        // Tap sur la zone image : toggle visibilité barres
+        lightbox.addEventListener('click', (e) => {
+            if (window.innerWidth > 768) return;
+            // Ignorer les clics sur les boutons de l'overlay
+            if (e.target.closest('.lb-top-bar') || e.target.closest('.lb-bottom-bar')) return;
+            if (_lbBarsVisible) {
+                hideLbBars();
+                clearTimeout(_lbHideTimer);
+            } else {
+                showLbBars();
+                scheduleLbHide();
+            }
+        });
+
+        // Swipe horizontal
         lightbox.addEventListener('touchstart', (e) => {
             touchStartX = e.changedTouches[0].screenX;
             touchStartY = e.changedTouches[0].screenY;
         }, { passive: true });
 
         lightbox.addEventListener('touchend', (e) => {
-            touchEndX = e.changedTouches[0].screenX;
-            touchEndY = e.changedTouches[0].screenY;
-            handleSwipe();
+            const dx = e.changedTouches[0].screenX - touchStartX;
+            const dy = e.changedTouches[0].screenY - touchStartY;
+            if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 45) {
+                navigateLightbox(dx > 0 ? -1 : 1);
+            }
         }, { passive: true });
 
-        function handleSwipe() {
-            const deltaX = touchEndX - touchStartX;
-            const deltaY = touchEndY - touchStartY;
-            const minSwipeDistance = 50;
-
-            // Only handle horizontal swipes (ignore vertical scrolling)
-            if (Math.abs(deltaX) > Math.abs(deltaY) && Math.abs(deltaX) > minSwipeDistance) {
-                if (deltaX > 0) {
-                    // Swiped right - go to previous
-                    navigateLightbox(-1);
-                } else {
-                    // Swiped left - go to next
-                    navigateLightbox(1);
-                }
+        // Dots indicateur
+        function buildDots() {
+            const container = document.getElementById('lbDots');
+            if (!container || !photos.length) return;
+            const max = Math.min(photos.length, 9);
+            container.innerHTML = '';
+            for (let i = 0; i < max; i++) {
+                const d = document.createElement('div');
+                d.className = 'lb-dot' + (i === currentPhotoIndex ? ' active' : '');
+                container.appendChild(d);
             }
         }
+
+        function updateDots() {
+            const container = document.getElementById('lbDots');
+            if (!container) return;
+            const dots = container.querySelectorAll('.lb-dot');
+            dots.forEach((d, i) => d.classList.toggle('active', i === currentPhotoIndex));
+        }
+
+        // Plein écran (Option A)
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                lightbox.requestFullscreen().catch(() => {});
+            } else {
+                document.exitFullscreen().catch(() => {});
+            }
+        }
+
+        // Changer l'icône fullscreen selon l'état
+        document.addEventListener('fullscreenchange', () => {
+            const icon = document.getElementById('lbFsIcon');
+            if (!icon) return;
+            if (document.fullscreenElement) {
+                // Icône "réduire"
+                icon.innerHTML = '<path d="M8 3v3a2 2 0 0 1-2 2H3m18 0h-3a2 2 0 0 1-2-2V3m0 18v-3a2 2 0 0 0 2-2h3M3 16h3a2 2 0 0 0 2 2v3" stroke-linecap="round" stroke-linejoin="round"/>';
+            } else {
+                // Icône "agrandir"
+                icon.innerHTML = '<path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3" stroke-linecap="round" stroke-linejoin="round"/>';
+            }
+        });
+
+
 
         // Load gallery on page load
         loadGallery();
