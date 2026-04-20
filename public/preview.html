@@ -246,33 +246,30 @@
         }
 
         .gallery-grid {
-            columns: 4;
-            column-gap: 10px;
-        }
-
-        @media (max-width: 1400px) {
-            .gallery-grid { columns: 3; }
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
         }
 
         @media (max-width: 900px) {
-            .gallery-grid { columns: 2; column-gap: 4px; }
-        }
-
-        @media (max-width: 560px) {
-            .gallery-grid { columns: 1; }
-        }
-
-        .masonry-col {
-            break-inside: avoid;
-            margin-bottom: 10px;
-        }
-
-        @media (max-width: 768px) {
-            .masonry-col { margin-bottom: 4px; }
+            .gallery-grid { gap: 4px; }
         }
 
         @media (max-width: 480px) {
-            .masonry-col { margin-bottom: 2px; }
+            .gallery-grid { gap: 2px; }
+        }
+
+        .gallery-row {
+            display: flex;
+            gap: 10px;
+        }
+
+        @media (max-width: 900px) {
+            .gallery-row { gap: 4px; }
+        }
+
+        @media (max-width: 480px) {
+            .gallery-row { gap: 2px; }
         }
 
         .photo-card {
@@ -281,16 +278,7 @@
             background: var(--bg-secondary);
             cursor: pointer;
             transition: transform 0.3s ease, box-shadow 0.3s ease;
-            break-inside: avoid;
-            margin-bottom: 10px;
-        }
-
-        @media (max-width: 768px) {
-            .photo-card { margin-bottom: 4px; }
-        }
-
-        @media (max-width: 480px) {
-            .photo-card { margin-bottom: 2px; }
+            flex-shrink: 0;
         }
 
         .photo-card:hover {
@@ -300,8 +288,9 @@
 
         .photo-card img {
             width: 100%;
-            height: auto;
+            height: 100%;
             display: block;
+            object-fit: cover;
             opacity: 0;
             transition: opacity 0.5s ease;
         }
@@ -316,7 +305,6 @@
             display: flex;
             align-items: center;
             justify-content: center;
-            min-height: 120px;
         }
 
         .photo-card .loading::after {
@@ -1188,63 +1176,144 @@
             return 1;
         }
 
+        function getTargetRowHeight() {
+            const w = window.innerWidth;
+            if (w <= 480) return 140;
+            if (w <= 900) return 180;
+            if (w <= 1400) return 240;
+            return 280;
+        }
+
+        function getRowGap() {
+            const w = window.innerWidth;
+            if (w <= 480) return 2;
+            if (w <= 900) return 4;
+            return 10;
+        }
+
+        // Build rows: greedily add photos until summed aspect ratio exceeds
+        // what fits at target height, then scale the row height so the total
+        // width matches the container (minus the internal gaps).
+        function buildRows(photoList, containerWidth, targetHeight, gap) {
+            const rows = [];
+            let current = [];
+            let sumRatio = 0;
+
+            for (const p of photoList) {
+                const w = p.width || 4;
+                const h = p.height || 3;
+                const ratio = w / h;
+                current.push({ photo: p, ratio });
+                sumRatio += ratio;
+
+                const gapsWidth = gap * (current.length - 1);
+                const rowWidthAtTarget = sumRatio * targetHeight + gapsWidth;
+
+                if (rowWidthAtTarget >= containerWidth) {
+                    // Scale to fit container exactly
+                    const scaledHeight = (containerWidth - gapsWidth) / sumRatio;
+                    rows.push({ items: current, height: scaledHeight });
+                    current = [];
+                    sumRatio = 0;
+                }
+            }
+
+            // Last partial row: keep target height (don't stretch widows)
+            if (current.length > 0) {
+                rows.push({ items: current, height: targetHeight });
+            }
+
+            return rows;
+        }
+
         function renderGallery(downloadsEnabled = true) {
             _lastDownloadsEnabled = downloadsEnabled;
             const grid = document.getElementById('galleryGrid');
-
-            // CSS columns handles layout — no JS column distribution needed
             grid.innerHTML = '';
-            photos.forEach((photo, index) => {
-                const isFav = localFavorites.has(photo.filename);
 
-                const card = document.createElement('div');
-                card.className = 'photo-card';
-                card.onclick = () => openLightbox(index);
+            const container = document.getElementById('galleryContainer');
+            // Use the container's client width (accounts for its padding)
+            const style = getComputedStyle(container);
+            const padL = parseFloat(style.paddingLeft) || 0;
+            const padR = parseFloat(style.paddingRight) || 0;
+            const containerWidth = container.clientWidth - padL - padR;
 
-                const favFill = isFav ? 'white' : 'none';
-                const favClass = isFav ? 'favorited' : '';
-                const downloadBtn = downloadsEnabled ? `
-                        <a class="photo-download" href="/api/gallery/${galleryId}/download/${encodeURIComponent(photo.filename)}" onclick="event.stopPropagation();" download>
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                <path d="M12 4v12m0 0l-4-4m4 4l4-4" stroke-linecap="round" stroke-linejoin="round"/>
-                            </svg>
-                        </a>` : '';
+            const targetHeight = getTargetRowHeight();
+            const gap = getRowGap();
+            const rows = buildRows(photos, containerWidth, targetHeight, gap);
 
-                card.innerHTML = `
-                    <div class="loading"></div>
-                    <img data-src="${photo.thumbnailUrl}" alt="">
-                    <div class="photo-overlay">
-                        <span class="photo-name"></span>
-                        <button class="photo-favorite ${favClass}" data-filename="" data-index="${index}">
-                            <svg viewBox="0 0 24 24" fill="${favFill}" stroke="currentColor" stroke-width="2">
-                                <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" stroke-linecap="round" stroke-linejoin="round"/>
-                            </svg>
-                        </button>
-                        ${downloadBtn}
-                    </div>`;
+            let photoIndex = 0;
+            rows.forEach(row => {
+                const rowEl = document.createElement('div');
+                rowEl.className = 'gallery-row';
+                rowEl.style.height = row.height + 'px';
 
-                // Set text content safely via DOM (never via innerHTML)
-                card.querySelector('.photo-name').textContent = photo.filename;
-                const favBtn = card.querySelector('.photo-favorite');
-                favBtn.dataset.filename = photo.filename;
-                favBtn.addEventListener('click', (e) => {
-                    e.stopPropagation();
-                    toggleFavorite(favBtn.dataset.filename);
+                row.items.forEach(({ photo, ratio }) => {
+                    const index = photoIndex++;
+                    const isFav = localFavorites.has(photo.filename);
+
+                    const card = document.createElement('div');
+                    card.className = 'photo-card';
+                    card.style.width = (row.height * ratio) + 'px';
+                    card.style.height = row.height + 'px';
+                    card.onclick = () => openLightbox(index);
+
+                    const favFill = isFav ? 'white' : 'none';
+                    const favClass = isFav ? 'favorited' : '';
+                    const downloadBtn = downloadsEnabled ? `
+                            <a class="photo-download" href="/api/gallery/${galleryId}/download/${encodeURIComponent(photo.filename)}" onclick="event.stopPropagation();" download>
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M12 4v12m0 0l-4-4m4 4l4-4" stroke-linecap="round" stroke-linejoin="round"/>
+                                </svg>
+                            </a>` : '';
+
+                    card.innerHTML = `
+                        <div class="loading"></div>
+                        <img data-src="${photo.thumbnailUrl}" alt="">
+                        <div class="photo-overlay">
+                            <span class="photo-name"></span>
+                            <button class="photo-favorite ${favClass}" data-filename="" data-index="${index}">
+                                <svg viewBox="0 0 24 24" fill="${favFill}" stroke="currentColor" stroke-width="2">
+                                    <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" stroke-linecap="round" stroke-linejoin="round"/>
+                                </svg>
+                            </button>
+                            ${downloadBtn}
+                        </div>`;
+
+                    card.querySelector('.photo-name').textContent = photo.filename;
+                    const favBtn = card.querySelector('.photo-favorite');
+                    favBtn.dataset.filename = photo.filename;
+                    favBtn.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        toggleFavorite(favBtn.dataset.filename);
+                    });
+
+                    const img = card.querySelector('img');
+                    img.onload = function() {
+                        this.classList.add('loaded');
+                        const loader = this.previousElementSibling;
+                        if (loader) loader.style.display = 'none';
+                    };
+
+                    rowEl.appendChild(card);
                 });
 
-                const img = card.querySelector('img');
-                img.onload = function() {
-                    this.classList.add('loaded');
-                    this.previousElementSibling.style.display = 'none';
-                };
-
-                grid.appendChild(card);
+                grid.appendChild(rowEl);
             });
 
             lazyLoadImages();
         }
 
-        // CSS columns handles responsive layout — no resize re-render needed
+        // Re-layout on resize (debounced)
+        let _resizeTimer = null;
+        window.addEventListener('resize', () => {
+            clearTimeout(_resizeTimer);
+            _resizeTimer = setTimeout(() => {
+                if (photos && photos.length > 0) {
+                    renderGallery(_lastDownloadsEnabled);
+                }
+            }, 150);
+        });
 
         function lazyLoadImages() {
             const images = document.querySelectorAll('.photo-card img[data-src]');

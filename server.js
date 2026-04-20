@@ -137,18 +137,60 @@ function reconcileGalleries() {
                 created: fs.statSync(galleryPath).birthtime.toISOString(),
                 files,
                 background: null,
-                downloadCount: 0
+                downloadCount: 0,
+                dimensions: {}
             });
             changed = true;
         }
     }
 
     if (changed) saveGalleries();
+
+    // Case 3: clean orphan files/folders in thumbnails, previews, backgrounds, og-cache
+    // whose galleryId no longer exists in the registry
+    const knownIds = new Set(galleries.keys());
+
+    // thumbnails/ and previews/ are per-gallery folders
+    for (const dirName of ['thumbnails', 'previews']) {
+        const base = path.join(DATA_DIR, dirName);
+        if (!fs.existsSync(base)) continue;
+        for (const entry of fs.readdirSync(base)) {
+            if (!UUID_V4_REGEX.test(entry)) continue;
+            if (knownIds.has(entry)) continue;
+            try { fs.rmSync(path.join(base, entry), { recursive: true, force: true }); } catch (_) {}
+        }
+    }
+
+    // backgrounds/ contains {galleryId}.{ext} and collection-{collectionId}.{ext}
+    const bgDir = path.join(DATA_DIR, 'backgrounds');
+    if (fs.existsSync(bgDir)) {
+        const knownCollectionIds = new Set(collections.keys());
+        for (const entry of fs.readdirSync(bgDir)) {
+            const base = entry.replace(/\.[^.]+$/, '');
+            if (base.startsWith('collection-')) {
+                const cid = base.slice('collection-'.length);
+                if (knownCollectionIds.has(cid)) continue;
+            } else if (knownIds.has(base)) {
+                continue;
+            }
+            try { fs.unlinkSync(path.join(bgDir, entry)); } catch (_) {}
+        }
+    }
+
+    // og-cache/ contains {galleryId}.jpg
+    const ogDir = path.join(DATA_DIR, 'og-cache');
+    if (fs.existsSync(ogDir)) {
+        for (const entry of fs.readdirSync(ogDir)) {
+            const base = entry.replace(/\.[^.]+$/, '');
+            if (knownIds.has(base)) continue;
+            try { fs.unlinkSync(path.join(ogDir, entry)); } catch (_) {}
+        }
+    }
 }
 
 loadGalleries();
-reconcileGalleries();
 loadCollections();
+reconcileGalleries();
 
 // Ensure directories exist
 ['uploads', 'backgrounds', 'thumbnails', 'previews', 'og-cache'].forEach(dir => {
@@ -185,11 +227,48 @@ function safeResolvePath(base, ...segments) {
 
 
 
+// Store photo dimensions on the gallery object so the justified layout
+// can render immediately without waiting for images to load.
+// Format: gallery.dimensions = { [filename]: { w, h } }
+function setPhotoDimensions(galleryId, filename, w, h) {
+    const gallery = galleries.get(galleryId);
+    if (!gallery) return;
+    if (!gallery.dimensions) gallery.dimensions = {};
+    if (!w || !h) return;
+    const prev = gallery.dimensions[filename];
+    if (prev && prev.w === w && prev.h === h) return;
+    gallery.dimensions[filename] = { w, h };
+    saveGalleries();
+}
+
+// Read dimensions from sharp metadata (handles EXIF orientation).
+async function readDimensions(srcPath) {
+    try {
+        const meta = await sharp(srcPath).metadata();
+        const orientation = meta.orientation || 1;
+        // Orientations 5-8 swap width and height
+        const swap = orientation >= 5 && orientation <= 8;
+        const w = swap ? meta.height : meta.width;
+        const h = swap ? meta.width : meta.height;
+        return { w, h };
+    } catch (_) {
+        return null;
+    }
+}
+
 // Generate a 400px-wide JPEG thumbnail for a single photo
 async function generateThumbnail(galleryId, filename) {
     const src  = safeResolvePath(safeResolvePath(path.join(DATA_DIR, 'uploads'), galleryId), filename);
     const dir  = safeResolvePath(THUMBNAILS_DIR, galleryId);
     const dest = safeResolvePath(dir, filename + '.jpg');
+
+    // Opportunistically capture dimensions (cheap: sharp opens the file anyway)
+    const gallery = galleries.get(galleryId);
+    if (gallery && (!gallery.dimensions || !gallery.dimensions[filename])) {
+        const dims = await readDimensions(src);
+        if (dims) setPhotoDimensions(galleryId, filename, dims.w, dims.h);
+    }
+
     if (fs.existsSync(dest)) return;
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
     try {
@@ -209,6 +288,14 @@ async function generatePreview(galleryId, filename) {
     const src  = safeResolvePath(safeResolvePath(path.join(DATA_DIR, 'uploads'), galleryId), filename);
     const dir  = safeResolvePath(PREVIEWS_DIR, galleryId);
     const dest = safeResolvePath(dir, filename + '.jpg');
+
+    // Opportunistically capture dimensions
+    const gallery = galleries.get(galleryId);
+    if (gallery && (!gallery.dimensions || !gallery.dimensions[filename])) {
+        const dims = await readDimensions(src);
+        if (dims) setPhotoDimensions(galleryId, filename, dims.w, dims.h);
+    }
+
     if (fs.existsSync(dest)) return;
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
     try {
@@ -483,7 +570,8 @@ function generateGalleryId(req, res, next) {
         created: new Date().toISOString(),
         files: [],
         background: null,
-        downloadCount: 0
+        downloadCount: 0,
+        dimensions: {}
     });
     next();
 }
@@ -651,7 +739,7 @@ app.post('/api/gallery/:galleryId/rename', requireAuth, validateGalleryId, (req,
 });
 
 // List photos in a gallery (used by preview.html)
-app.get('/api/gallery/:galleryId/photos', publicReadLimiter, validateGalleryId, (req, res) => {
+app.get('/api/gallery/:galleryId/photos', publicReadLimiter, validateGalleryId, async (req, res) => {
     const { galleryId } = req.params;
     const galleryPath = safeResolvePath(path.join(DATA_DIR, 'uploads'), galleryId);
 
@@ -659,17 +747,42 @@ app.get('/api/gallery/:galleryId/photos', publicReadLimiter, validateGalleryId, 
         return res.status(404).json({ error: 'Gallery not found' });
     }
 
-    const files = fs.readdirSync(galleryPath).filter(f => !f.startsWith('.'));
+    const files = fs.readdirSync(galleryPath)
+        .filter(f => !f.startsWith('.'))
+        .sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }));
 
     const gallery = galleries.get(galleryId);
+    if (gallery && !gallery.dimensions) gallery.dimensions = {};
 
-    const photos = files.map(filename => ({
-        filename,
-        url:         `/api/gallery/${galleryId}/photo/${encodeURIComponent(filename)}`,
-        previewUrl:  `/api/gallery/${galleryId}/photo/${encodeURIComponent(filename)}?preview=1`,
-        thumbnailUrl:`/api/gallery/${galleryId}/photo/${encodeURIComponent(filename)}?thumb=1`,
-        downloadUrl: `/api/gallery/${galleryId}/download/${encodeURIComponent(filename)}`
-    }));
+    // Fill in missing dimensions for legacy galleries (one-time cost per photo).
+    // Subsequent requests hit the in-memory cache.
+    const missing = gallery
+        ? files.filter(f => !gallery.dimensions[f])
+        : [];
+
+    if (missing.length > 0) {
+        await Promise.all(missing.map(async filename => {
+            const src = safeResolvePath(galleryPath, filename);
+            const dims = await readDimensions(src);
+            if (dims) {
+                gallery.dimensions[filename] = { w: dims.w, h: dims.h };
+            }
+        }));
+        saveGalleries();
+    }
+
+    const photos = files.map(filename => {
+        const dims = gallery && gallery.dimensions ? gallery.dimensions[filename] : null;
+        return {
+            filename,
+            url:         `/api/gallery/${galleryId}/photo/${encodeURIComponent(filename)}`,
+            previewUrl:  `/api/gallery/${galleryId}/photo/${encodeURIComponent(filename)}?preview=1`,
+            thumbnailUrl:`/api/gallery/${galleryId}/photo/${encodeURIComponent(filename)}?thumb=1`,
+            downloadUrl: `/api/gallery/${galleryId}/download/${encodeURIComponent(filename)}`,
+            width:  dims ? dims.w : null,
+            height: dims ? dims.h : null
+        };
+    });
 
     // Return shape matches what preview.html expects: { id, eventName, photos: [...] }
     res.json({
@@ -1203,6 +1316,16 @@ app.get('/api/collection/:collectionId/download', downloadLimiter, validateColle
 app.delete('/api/collection/:collectionId', requireAuth, validateCollectionId, (req, res) => {
     const { collectionId } = req.params;
     if (!collections.has(collectionId)) return res.status(404).json({ error: 'Collection not found' });
+
+    // Delete collection background (any extension)
+    const backgroundsDir = path.join(DATA_DIR, 'backgrounds');
+    if (fs.existsSync(backgroundsDir)) {
+        const bgFile = fs.readdirSync(backgroundsDir).find(f => f.startsWith(`collection-${collectionId}`));
+        if (bgFile) {
+            try { fs.unlinkSync(path.join(backgroundsDir, bgFile)); } catch (_) {}
+        }
+    }
+
     collections.delete(collectionId);
     saveCollections();
     res.json({ success: true });
@@ -1307,6 +1430,9 @@ app.delete('/api/gallery/:galleryId', adminLimiter, requireAuth, validateGallery
 
     // Delete thumbnails
     fs.rmSync(safeResolvePath(THUMBNAILS_DIR, galleryId), { recursive: true, force: true });
+
+    // Delete previews
+    fs.rmSync(safeResolvePath(PREVIEWS_DIR, galleryId), { recursive: true, force: true });
 
     // Delete og-cache
     const ogFile = safeResolvePath(OG_CACHE_DIR, `${galleryId}.jpg`);
