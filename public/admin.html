@@ -297,20 +297,20 @@
 
         .drop-zone {
             background: var(--bg3); border: 1px dashed var(--border2);
-            border-radius: 3px; height: 90px;
+            border-radius: 3px; height: 150px;
             display: flex; flex-direction: column;
-            align-items: center; justify-content: center; gap: 5px;
+            align-items: center; justify-content: center; gap: 10px;
             cursor: pointer; margin-top: 6px;
             transition: border-color 0.2s;
         }
         .drop-zone:hover { border-color: var(--muted); }
         .drop-zone.dragover { border-color: var(--accent); background: var(--bg2); }
-        .drop-zone svg { width: 18px; height: 18px; color: var(--muted); }
+        .drop-zone svg { width: 26px; height: 26px; color: var(--muted); }
         .drop-zone p { font-size: 12px; color: var(--muted); text-align: center; line-height: 1.4; }
 
         .drop-zone-small {
             background: var(--bg3); border: 1px dashed var(--border2);
-            border-radius: 3px; height: 34px;
+            border-radius: 3px; height: 70px;
             display: flex; align-items: center; justify-content: center;
             cursor: pointer; margin-top: 2px; transition: border-color 0.2s;
             position: relative; overflow: hidden;
@@ -325,7 +325,14 @@
             opacity: 0.5; display: none;
         }
 
-        .file-list { font-size: 12px; color: var(--muted); margin-top: 6px; }
+        .file-list { font-size: 12px; color: var(--muted); margin-top: 10px; }
+        .file-list:empty { margin-top: 0; }
+        .file-list .file-count-pill {
+            display: inline-flex; align-items: center; gap: 6px;
+            background: var(--accent); color: #0c0c0e;
+            border-radius: 999px; padding: 4px 12px;
+            font-size: 12px; font-weight: 600; letter-spacing: 0.04em;
+        }
         .file-count { font-size: 11px; color: var(--muted); margin-bottom: 4px; }
         .file-pills { display: flex; flex-wrap: wrap; gap: 4px; }
         .file-pill {
@@ -345,9 +352,9 @@
         }
         .file-pill-remove:hover { color: var(--error); }
 
-        .progress-container { margin-top: 6px; display: none; }
+        .progress-container { margin-top: 10px; display: none; }
         .progress-container.visible { display: block; }
-        .progress-bar { background: var(--bg3); border-radius: 2px; height: 3px; overflow: hidden; }
+        .progress-bar { background: var(--bg3); border-radius: 4px; height: 8px; overflow: hidden; }
         .progress-fill { height: 100%; background: var(--accent); width: 0%; transition: width 0.3s; }
         .progress-text { font-size: 11px; color: var(--muted); margin-top: 4px; }
 
@@ -474,9 +481,9 @@
         .btn-icon-danger:hover { color: var(--error); border-color: var(--error); background: var(--bg2); }
 
         .collection-galleries {
-            padding: 8px 12px;
+            padding: 12px;
             display: flex; gap: 6px; flex-wrap: wrap; align-items: center;
-            border-top: 1px solid var(--border); min-height: 38px;
+            border-top: 1px solid var(--border); min-height: 64px;
         }
         .collection-galleries.drag-over { background: var(--bg2); }
 
@@ -782,7 +789,7 @@
                     <input type="text" id="downloadLinkInput" readonly>
                     <button class="copy-btn" onclick="copyLink('downloadLinkInput')">Copy</button>
                 </div>
-                <button class="new-upload-btn" onclick="resetForm()">Create another gallery</button>
+                <button class="new-upload-btn" onclick="document.getElementById('resultSection').classList.remove('visible')">Dismiss</button>
             </div>
 
             <div>
@@ -993,7 +1000,7 @@
                 return;
             }
             const n = selectedFiles.length;
-            container.innerHTML = `<span>${n} photo${n > 1 ? 's' : ''} selected</span>`;
+            container.innerHTML = `<span class="file-count-pill">${n} photo${n > 1 ? 's' : ''} selected</span>`;
         }
 
         // Background/Cover image drop zone
@@ -1115,8 +1122,8 @@
                 document.getElementById('downloadLinkInput').value = `${baseUrl}/download/${result.galleryId}`;
                 document.getElementById('resultEventName').textContent = `${eventName} • ${result.fileCount} photos`;
                 
-                document.getElementById('uploadSection').style.display = 'none';
                 document.getElementById('resultSection').classList.add('visible');
+                resetForm();
                 
                 loadGalleries();
                 
@@ -1137,8 +1144,6 @@
             document.getElementById('bgDropZone').classList.remove('has-image');
             document.getElementById('createBtn').disabled = true;
             document.getElementById('progressFill').style.width = '0%';
-            document.getElementById('resultSection').classList.remove('visible');
-            document.getElementById('uploadSection').style.display = 'block';
         }
 
         async function toggleTheme() {

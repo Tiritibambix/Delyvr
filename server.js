@@ -1002,7 +1002,7 @@ app.post('/api/collection/create', requireAuth, (req, res) => {
 });
 
 // List all collections (admin only)
-app.get('/api/collections', requireAuth, (req, res) => {
+app.get('/api/collections', adminLimiter, requireAuth, (req, res) => {
     const baseUrl = `${req.protocol}://${req.get('host')}`;
     const bgDirC = path.join(DATA_DIR, 'backgrounds');
     const bgFilesC = fs.existsSync(bgDirC) ? new Set(fs.readdirSync(bgDirC)) : new Set();
