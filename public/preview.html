@@ -698,6 +698,9 @@
                 border-radius: 0;
                 display: block;
                 touch-action: none;
+                will-change: transform;
+                transform-origin: center center;
+                backface-visibility: hidden;
             }
             .lightbox-close,
             .lightbox-nav,
@@ -1468,7 +1471,7 @@
                 img.style.transform = '';
                 _zoomScale = 1; _zoomTx = 0; _zoomTy = 0;
             } else {
-                img.style.transform = `translate(${_zoomTx}px, ${_zoomTy}px) scale(${_zoomScale})`;
+                img.style.transform = `translate3d(${_zoomTx}px, ${_zoomTy}px, 0) scale(${_zoomScale})`;
             }
         }
 
