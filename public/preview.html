@@ -640,7 +640,7 @@
             z-index: 1010;
         }
 
-        @media (max-width: 768px) {
+        @media (max-width: 768px), (max-height: 500px) {
             .lightbox-nav {
                 display: none;
             }
@@ -676,7 +676,7 @@
             border-radius: 4px;
         }
 
-        @media (max-width: 768px) {
+        @media (max-width: 768px), (max-height: 500px) {
             .lightbox-content {
                 position: fixed;
                 top: 0; left: 0;
@@ -1456,6 +1456,11 @@
         let _panStartX = 0, _panStartY = 0, _panStartTx = 0, _panStartTy = 0;
         let _isPinching = false, _isPanning = false, _wasGesture = false;
 
+        // Phone detection — portrait OR landscape (landscape phones exceed 768px wide)
+        function _isMobileLB() {
+            return window.matchMedia('(max-width: 768px), (max-height: 500px)').matches;
+        }
+
         function applyZoomTransform() {
             const img = document.getElementById('lightboxImg');
             if (!img) return;
@@ -1518,7 +1523,7 @@
 
         // Tap sur la zone image : toggle visibilité barres (sauf après un geste pinch/pan)
         lightbox.addEventListener('click', (e) => {
-            if (window.innerWidth > 768) return;
+            if (!_isMobileLB()) return;
             if (_wasGesture) { _wasGesture = false; return; }
             // Ignorer les clics sur les boutons de l'overlay
             if (e.target.closest('.lb-top-bar') || e.target.closest('.lb-bottom-bar')) return;
@@ -1533,7 +1538,7 @@
 
         // Swipe horizontal + pinch-to-zoom + pan
         lightbox.addEventListener('touchstart', (e) => {
-            if (window.innerWidth > 768) return;
+            if (!_isMobileLB()) return;
             _wasGesture = false;
             if (e.touches.length === 2) {
                 _isPinching = true; _isPanning = false; _wasGesture = true;
@@ -1552,7 +1557,7 @@
         }, { passive: false });
 
         lightbox.addEventListener('touchmove', (e) => {
-            if (window.innerWidth > 768) return;
+            if (!_isMobileLB()) return;
             if (_isPinching && e.touches.length === 2) {
                 e.preventDefault();
                 const d = _touchDist(e.touches[0], e.touches[1]);
@@ -1572,7 +1577,7 @@
         }, { passive: false });
 
         lightbox.addEventListener('touchend', (e) => {
-            if (window.innerWidth > 768) return;
+            if (!_isMobileLB()) return;
             // Swipe navigation — only when not zoomed and no pinch/pan occurred
             if (!_wasGesture && _zoomScale <= 1 && e.touches.length === 0 && e.changedTouches.length === 1) {
                 const dx = e.changedTouches[0].clientX - touchStartX;
