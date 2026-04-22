@@ -23,12 +23,15 @@ This application has been coded with the help of AI and is provided as-is. While
 - **Photo Preview Page** — masonry grid with full-screen lightbox, keyboard/touch navigation, and individual photo download. Photos display at their natural aspect ratio.
 - **Fast Lightbox** — 1920px previews generated automatically at upload time and served in the lightbox; originals are only transferred on explicit download. Adjacent photos are preloaded in the background for instant navigation.
 - **Clean Lightbox** — download and favorite buttons on desktop; a persistent bottom action bar (Prev / Fav / Close / Save / Next) on mobile with swipe support.
+- **Pinch-to-Zoom on Mobile** — in the mobile lightbox, pinch with two fingers to zoom into a photo (up to 5×) and drag with one finger to pan. Releasing the pinch at 1× resets to the normal view; swipe-navigation and the tap-to-toggle-bars behaviour are preserved when not zoomed.
 - **ZIP Downloads** — all photos packaged into a single named download
 - **Download Toggle** — enable or disable downloads per gallery from the dashboard
 - **Client Favorites** — clients can heart photos from the grid or the lightbox; each visitor is tracked anonymously so multiple people can vote independently; the admin sees vote counts sorted descending with a reset option
 - **Collections** — group multiple galleries under a single shareable link. Each collection can have its own cover image. Clients can browse and download each gallery individually or download the entire collection as a ZIP with one sub-folder per gallery.
 - **Back to Collection** — when a client reaches a gallery via a collection link, a back button appears in the navigation bar. Direct gallery links show nothing.
-- **Gallery Grid View** — the admin dashboard displays galleries as a visual card grid with 16/9 cover images
+- **Gallery Grid View** — the admin dashboard displays galleries as a visual card grid with 16/9 cover images, sorted alphabetically by event name
+- **Justified Gallery Layout** — on the client preview page, photos are laid out in a justified/mosaic layout that fills rows evenly, preserving each photo's aspect ratio without cropping
+- **Download Count Tracking** — the admin dashboard shows how many ZIP downloads each gallery has received
 - **Light / Dark Mode** — toggle from the admin dashboard; applies site-wide to all visitors immediately and persists across restarts
 - **Social Links & Website** — set your website URL and social network links from the admin dashboard (Profile modal); displayed as icons in the footer of all client pages
 - **Right-Click Protection** — browser context menu disabled on images across all client pages

@@ -698,6 +698,9 @@
                 object-fit: contain;
                 border-radius: 0;
                 display: block;
+                touch-action: none;
+                transform-origin: center center;
+                will-change: transform;
             }
             .lightbox-close,
             .lightbox-nav,
@@ -1332,6 +1335,7 @@
 
         function openLightbox(index) {
             currentPhotoIndex = index;
+            if (typeof resetZoom === 'function') resetZoom();
             updateLightbox();
             document.getElementById('lightbox').classList.add('active');
             document.body.style.overflow = 'hidden';
@@ -1346,6 +1350,7 @@
         function closeLightbox() {
             document.getElementById('lightbox').classList.remove('active');
             document.body.style.overflow = '';
+            if (typeof resetZoom === 'function') resetZoom();
             // Quitter le plein écran si actif
             if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
             clearTimeout(_lbHideTimer);
@@ -1355,6 +1360,7 @@
             currentPhotoIndex += direction;
             if (currentPhotoIndex < 0) currentPhotoIndex = photos.length - 1;
             if (currentPhotoIndex >= photos.length) currentPhotoIndex = 0;
+            if (typeof resetZoom === 'function') resetZoom();
             // Animation slide sur mobile
             if (window.innerWidth <= 768) {
                 const img = document.getElementById('lightboxImg');
@@ -1441,11 +1447,56 @@
             }
         });
 
-        // ── MOBILE LIGHTBOX — swipe, auto-hide, fullscreen, dots ──
+        // ── MOBILE LIGHTBOX — swipe, pinch zoom, pan, auto-hide, fullscreen, dots ──
         const lightbox = document.getElementById('lightbox');
         let touchStartX = 0, touchStartY = 0;
         let _lbHideTimer = null;
         let _lbBarsVisible = true;
+
+        // Zoom state
+        let _zoomScale = 1, _zoomTx = 0, _zoomTy = 0;
+        let _pinchStartDist = 0, _pinchStartScale = 1;
+        let _panStartX = 0, _panStartY = 0, _panStartTx = 0, _panStartTy = 0;
+        let _isPinching = false, _isPanning = false, _wasGesture = false;
+
+        function applyZoomTransform() {
+            const img = document.getElementById('lightboxImg');
+            if (!img) return;
+            if (_zoomScale <= 1.001) {
+                img.style.transform = '';
+                _zoomScale = 1; _zoomTx = 0; _zoomTy = 0;
+            } else {
+                img.style.transform = `translate(${_zoomTx}px, ${_zoomTy}px) scale(${_zoomScale})`;
+            }
+        }
+
+        function resetZoom() {
+            _zoomScale = 1; _zoomTx = 0; _zoomTy = 0;
+            applyZoomTransform();
+        }
+
+        function _getRenderedSize(img) {
+            const nW = img.naturalWidth, nH = img.naturalHeight;
+            const eW = img.offsetWidth, eH = img.offsetHeight;
+            if (!nW || !nH) return { w: eW, h: eH };
+            const nAR = nW / nH, eAR = eW / eH;
+            return nAR > eAR ? { w: eW, h: eW / nAR } : { w: eH * nAR, h: eH };
+        }
+
+        function _clampPan() {
+            const img = document.getElementById('lightboxImg');
+            if (!img || _zoomScale <= 1) return;
+            const { w, h } = _getRenderedSize(img);
+            const maxX = Math.max(0, (w * _zoomScale - window.innerWidth) / 2);
+            const maxY = Math.max(0, (h * _zoomScale - window.innerHeight) / 2);
+            _zoomTx = Math.min(maxX, Math.max(-maxX, _zoomTx));
+            _zoomTy = Math.min(maxY, Math.max(-maxY, _zoomTy));
+        }
+
+        function _touchDist(a, b) {
+            const dx = a.clientX - b.clientX, dy = a.clientY - b.clientY;
+            return Math.sqrt(dx * dx + dy * dy);
+        }
 
         function showLbBars() {
             const top = document.getElementById('lbTopBar');
@@ -1468,9 +1519,10 @@
             _lbHideTimer = setTimeout(hideLbBars, 3000);
         }
 
-        // Tap sur la zone image : toggle visibilité barres
+        // Tap sur la zone image : toggle visibilité barres (sauf après un geste pinch/pan)
         lightbox.addEventListener('click', (e) => {
             if (window.innerWidth > 768) return;
+            if (_wasGesture) { _wasGesture = false; return; }
             // Ignorer les clics sur les boutons de l'overlay
             if (e.target.closest('.lb-top-bar') || e.target.closest('.lb-bottom-bar')) return;
             if (_lbBarsVisible) {
@@ -1482,19 +1534,71 @@
             }
         });
 
-        // Swipe horizontal
+        // Swipe horizontal + pinch-to-zoom + pan
         lightbox.addEventListener('touchstart', (e) => {
-            touchStartX = e.changedTouches[0].screenX;
-            touchStartY = e.changedTouches[0].screenY;
-        }, { passive: true });
+            if (window.innerWidth > 768) return;
+            _wasGesture = false;
+            if (e.touches.length === 2) {
+                _isPinching = true; _isPanning = false; _wasGesture = true;
+                _pinchStartDist = _touchDist(e.touches[0], e.touches[1]);
+                _pinchStartScale = _zoomScale;
+            } else if (e.touches.length === 1) {
+                touchStartX = e.touches[0].clientX;
+                touchStartY = e.touches[0].clientY;
+                if (_zoomScale > 1) {
+                    _isPanning = true; _isPinching = false;
+                    _panStartX = e.touches[0].clientX;
+                    _panStartY = e.touches[0].clientY;
+                    _panStartTx = _zoomTx; _panStartTy = _zoomTy;
+                }
+            }
+        }, { passive: false });
+
+        lightbox.addEventListener('touchmove', (e) => {
+            if (window.innerWidth > 768) return;
+            if (_isPinching && e.touches.length === 2) {
+                e.preventDefault();
+                const d = _touchDist(e.touches[0], e.touches[1]);
+                let s = _pinchStartScale * (d / _pinchStartDist);
+                s = Math.max(1, Math.min(5, s));
+                _zoomScale = s;
+                _clampPan();
+                applyZoomTransform();
+            } else if (_isPanning && e.touches.length === 1 && _zoomScale > 1) {
+                e.preventDefault();
+                _wasGesture = true;
+                _zoomTx = _panStartTx + (e.touches[0].clientX - _panStartX);
+                _zoomTy = _panStartTy + (e.touches[0].clientY - _panStartY);
+                _clampPan();
+                applyZoomTransform();
+            }
+        }, { passive: false });
 
         lightbox.addEventListener('touchend', (e) => {
-            const dx = e.changedTouches[0].screenX - touchStartX;
-            const dy = e.changedTouches[0].screenY - touchStartY;
-            if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 45) {
-                navigateLightbox(dx > 0 ? -1 : 1);
+            if (window.innerWidth > 768) return;
+            // Swipe navigation — only when not zoomed and no pinch/pan occurred
+            if (!_wasGesture && _zoomScale <= 1 && e.touches.length === 0 && e.changedTouches.length === 1) {
+                const dx = e.changedTouches[0].clientX - touchStartX;
+                const dy = e.changedTouches[0].clientY - touchStartY;
+                if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 45) {
+                    navigateLightbox(dx > 0 ? -1 : 1);
+                }
             }
-        }, { passive: true });
+            if (e.touches.length === 0) {
+                _isPinching = false;
+                _isPanning = false;
+                if (_zoomScale <= 1.05) resetZoom();
+            } else if (e.touches.length === 1 && _isPinching) {
+                // Pinch ended but one finger still down — switch to pan if zoomed
+                _isPinching = false;
+                if (_zoomScale > 1) {
+                    _isPanning = true;
+                    _panStartX = e.touches[0].clientX;
+                    _panStartY = e.touches[0].clientY;
+                    _panStartTx = _zoomTx; _panStartTy = _zoomTy;
+                }
+            }
+        }, { passive: false });
 
         // Dots indicateur
         function buildDots() {

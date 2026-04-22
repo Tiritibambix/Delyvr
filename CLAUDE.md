@@ -6,7 +6,7 @@ This file describes the architecture, conventions, and key decisions in Delyvr s
 
 ## What is Delyvr?
 
-Delyvr is a **self-hosted photo delivery platform** for photographers. A photographer logs into a private dashboard, creates named galleries by uploading photos, groups them into collections, then shares links with clients. Clients browse photos in a masonry lightbox, mark favorites, and download photos or full collections as ZIP files.
+Delyvr is a **self-hosted photo delivery platform** for photographers. A photographer logs into a private dashboard, creates named galleries by uploading photos, groups them into collections, then shares links with clients. Clients browse photos in a justified gallery, open them in a pinch-zoomable lightbox, mark favorites, and download photos or full collections as ZIP files.
 
 There is no public registration. The entire admin side is protected by a single shared password.
 
@@ -48,7 +48,7 @@ delyvr/
 ├── public/
 │   ├── admin.html      # Photographer dashboard
 │   ├── customer.html   # Client download page (single gallery)
-│   ├── preview.html    # Client photo browser (masonry grid + lightbox + favorites)
+│   ├── preview.html    # Client photo browser (justified grid + lightbox + favorites + pinch zoom)
 │   └── collection.html # Client collection page (multiple galleries)
 └── data/               # Runtime data root (Docker volume mount at /data)
     ├── uploads/        # Gallery photos, organised as uploads/{galleryId}/
@@ -92,6 +92,7 @@ delyvr/
   files: string[],          // filenames inside uploads/{id}/
   background: string|null,
   downloadsEnabled: boolean, // default true (missing = true)
+  downloadCount: number,    // incremented on every ZIP download (default 0)
   favorites: {              // filename → [visitorId, ...]
     [filename: string]: string[]
   }
@@ -179,9 +180,19 @@ All filesystem paths incorporating user-controlled values go through `safeResolv
 
 The lightbox uses `previewUrl`. Originals are only served on explicit download via `downloadUrl`.
 
-### Masonry layout
+### Justified gallery layout
 
-`preview.html` uses native CSS `columns` for the photo grid — no JS column distribution. `break-inside: avoid` on `.photo-card` prevents images from being split across columns. Column count is controlled by CSS media queries (4/3/2/1). No resize re-render needed.
+`preview.html` uses a JS-built justified/row-based layout: photos are grouped into `.gallery-row` flex rows whose children preserve the photo's aspect ratio and together fill the row width. Each row is recomputed on resize. This replaces the previous CSS `columns` masonry so photos are never split and rows always justify edge-to-edge. Photos in the preview page are sorted alphabetically by filename.
+
+### Mobile lightbox — swipe, pinch-to-zoom, pan
+
+On mobile (`≤ 768px`), the lightbox image has `touch-action: none` and a unified set of touch handlers on `.lightbox`:
+- **1-finger tap** toggles the top/bottom action bars.
+- **1-finger swipe** (horizontal, > 45px) navigates to the next/previous photo — only when not zoomed.
+- **2-finger pinch** zooms from 1× to 5× around the image centre. Below 1.05× the transform is cleared and swipe-nav re-enables.
+- **1-finger drag while zoomed** pans. Translation is clamped using `naturalWidth`/`naturalHeight` with an `object-fit: contain` calculation so the user cannot drag the image past its visible edges.
+- Zoom state is always reset on `openLightbox`, `closeLightbox`, and `navigateLightbox`.
+- A `_wasGesture` flag suppresses the tap-to-toggle-bars behaviour after a pinch/pan, so ending a gesture does not accidentally toggle the overlay.
 
 ### Social footer
 
@@ -269,8 +280,10 @@ All HTML files are standalone — no bundler, no imports, all JS inline.
 
 ### `public/preview.html`
 
-- Masonry uses CSS `columns` (4/3/2/1 via media queries). `break-inside: avoid` on `.photo-card`. No JS column distribution, no resize re-render.
+- Justified/row-based gallery: photos are grouped into `.gallery-row` flex rows built in JS that preserve each photo's aspect ratio and fill the row width. Rows are recomputed on resize.
+- Photos are sorted alphabetically by filename (server-side in `GET /api/gallery/:id/photos`).
 - Lightbox preloads N-1 and N+1 previews via `new Image()` on each navigation step (`preloadAdjacentPreviews`).
+- Mobile lightbox supports pinch-to-zoom (up to 5×), one-finger pan while zoomed, and swipe navigation only when not zoomed — see "Mobile lightbox" section above. `touch-action: none` on `.lightbox-img` (mobile) disables native browser zoom.
 - `applyTheme()` and `renderSocialFooter()` called on load.
 
 ### `public/collection.html`
@@ -291,7 +304,8 @@ All HTML files are standalone — no bundler, no imports, all JS inline.
 - **`[AUTH]` log prefix** — all auth failures and IP blocks are logged with this prefix for easy filtering: `docker logs delyvr | grep '\[AUTH\]'`.
 - **Settings defaults** — `loadSettings()` merges file content with `SETTINGS_DEFAULTS`. Missing keys are filled in without overwriting existing values.
 - **Social footer** hidden entirely when no links are configured — `container.style.display = 'none'` if `links.length === 0`.
-- **CSS columns masonry** — no JS needed for layout. Do not reintroduce JS column distribution.
+- **Justified gallery layout is JS-driven.** Rows in `.gallery-grid` are built in `buildJustifiedRows()` and recomputed on resize. Do not reintroduce CSS `columns` masonry here.
+- **Mobile pinch-zoom uses `transform: translate(...) scale(...)`** on `.lightbox-img`, clamped to the real rendered image bounds (via `naturalWidth`/`naturalHeight` + `object-fit: contain` math). Always call `resetZoom()` from `openLightbox` / `closeLightbox` / `navigateLightbox`.
 - **Preview generation is non-blocking on request** — if a preview is missing, the original is served immediately and generation runs in the background. Never `await generatePreview` on a request path.
 - **Password never stored in sessionStorage.** Kept in `adminPassword` JS variable only.
 - **`?password` query param removed.** `requireAuth` only checks `X-Admin-Password` header.
