@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "WebSearch",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:unpkg.com)",
+      "Bash(curl -fsSL https://unpkg.com/pinch-zoom-element/dist/pinch-zoom.js -o public/vendor/pinch-zoom.js)"
+    ]
+  }
+}

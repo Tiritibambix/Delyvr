@@ -7,6 +7,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600&family=Fraunces:wght@400;600&display=swap" rel="stylesheet">
+    <script src="/vendor/pinch-zoom.js"></script>
     <style>
         * {
             margin: 0;
@@ -677,10 +678,6 @@
         }
 
         @media (max-width: 768px), (max-height: 500px) {
-            .lightbox,
-            .lightbox * {
-                touch-action: none;
-            }
             .lightbox {
                 overscroll-behavior: contain;
             }
@@ -691,23 +688,27 @@
                 height: 100dvh;
                 max-width: none;
                 max-height: none;
+                padding: 0;
+                z-index: 1001;
+                display: block;
+            }
+            pinch-zoom#lightboxPinchZoom {
+                width: 100vw;
+                height: 100dvh;
                 display: flex;
                 align-items: center;
                 justify-content: center;
-                padding: 0;
-                z-index: 1001;
+                touch-action: none;
+                overflow: hidden;
             }
             .lightbox-img {
-                width: auto;
-                height: auto;
                 max-width: 100vw;
                 max-height: 100dvh;
+                width: auto;
+                height: auto;
                 border-radius: 0;
                 display: block;
-                touch-action: none;
                 will-change: transform;
-                transform-origin: center center;
-                backface-visibility: hidden;
             }
             .lightbox-close,
             .lightbox-nav,
@@ -889,7 +890,9 @@
 
         <!-- Photo -->
         <div class="lightbox-content">
-            <img class="lightbox-img" id="lightboxImg">
+            <pinch-zoom id="lightboxPinchZoom" min-scale="1">
+                <img class="lightbox-img" id="lightboxImg">
+            </pinch-zoom>
         </div>
 
         <!-- Mobile Overlay (portrait + landscape) -->
@@ -1453,62 +1456,26 @@
             }
         });
 
-        // ── MOBILE LIGHTBOX — swipe, pinch zoom, pan, auto-hide, fullscreen, dots ──
+        // ── MOBILE LIGHTBOX — pinch-zoom-element (Google Chrome Labs), swipe nav, bars, fullscreen ──
         const lightbox = document.getElementById('lightbox');
+        const pinchZoom = document.getElementById('lightboxPinchZoom');
         let touchStartX = 0, touchStartY = 0;
         let _lbHideTimer = null;
         let _lbBarsVisible = true;
+        let _wasGesture = false;
 
-        // Zoom state
-        let _zoomScale = 1, _zoomTx = 0, _zoomTy = 0;
-        let _pinchStartDist = 0, _pinchStartScale = 1;
-        let _pinchStartTx = 0, _pinchStartTy = 0;
-        let _pinchStartMidX = 0, _pinchStartMidY = 0;
-        let _panStartX = 0, _panStartY = 0, _panStartTx = 0, _panStartTy = 0;
-        let _isPinching = false, _isPanning = false, _wasGesture = false;
-
-        // Phone detection — portrait OR landscape (landscape phones exceed 768px wide)
         function _isMobileLB() {
             return window.matchMedia('(max-width: 768px), (max-height: 500px)').matches;
         }
 
-        function applyZoomTransform() {
-            const img = document.getElementById('lightboxImg');
-            if (!img) return;
-            if (_zoomScale <= 1.001) {
-                img.style.transform = '';
-                _zoomScale = 1; _zoomTx = 0; _zoomTy = 0;
-            } else {
-                img.style.transform = `translate3d(${_zoomTx}px, ${_zoomTy}px, 0) scale(${_zoomScale})`;
-            }
+        function _currentScale() {
+            return pinchZoom && typeof pinchZoom.scale === 'number' ? pinchZoom.scale : 1;
         }
 
         function resetZoom() {
-            _zoomScale = 1; _zoomTx = 0; _zoomTy = 0;
-            applyZoomTransform();
-        }
-
-        function _getRenderedSize(img) {
-            const nW = img.naturalWidth, nH = img.naturalHeight;
-            const eW = img.offsetWidth, eH = img.offsetHeight;
-            if (!nW || !nH) return { w: eW, h: eH };
-            const nAR = nW / nH, eAR = eW / eH;
-            return nAR > eAR ? { w: eW, h: eW / nAR } : { w: eH * nAR, h: eH };
-        }
-
-        function _clampPan() {
-            const img = document.getElementById('lightboxImg');
-            if (!img || _zoomScale <= 1) return;
-            const { w, h } = _getRenderedSize(img);
-            const maxX = Math.max(0, (w * _zoomScale - window.innerWidth) / 2);
-            const maxY = Math.max(0, (h * _zoomScale - window.innerHeight) / 2);
-            _zoomTx = Math.min(maxX, Math.max(-maxX, _zoomTx));
-            _zoomTy = Math.min(maxY, Math.max(-maxY, _zoomTy));
-        }
-
-        function _touchDist(a, b) {
-            const dx = a.clientX - b.clientX, dy = a.clientY - b.clientY;
-            return Math.sqrt(dx * dx + dy * dy);
+            if (pinchZoom && typeof pinchZoom.setTransform === 'function') {
+                pinchZoom.setTransform({ scale: 1, x: 0, y: 0, allowChangeEvent: true });
+            }
         }
 
         function showLbBars() {
@@ -1536,7 +1503,6 @@
         lightbox.addEventListener('click', (e) => {
             if (!_isMobileLB()) return;
             if (_wasGesture) { _wasGesture = false; return; }
-            // Ignorer les clics sur les boutons de l'overlay
             if (e.target.closest('.lb-top-bar') || e.target.closest('.lb-bottom-bar')) return;
             if (_lbBarsVisible) {
                 hideLbBars();
@@ -1547,117 +1513,45 @@
             }
         });
 
-        // Pointer Events (more reliable than Touch Events for multi-touch on Android,
-        // especially in landscape where touchstart/touchmove can drop or arrive out of order)
-        const _activePointers = new Map();
-
-        function _ptrPair() {
-            const arr = [..._activePointers.values()];
-            return arr.length >= 2 ? [arr[0], arr[1]] : null;
-        }
-        function _ptrDist(p) {
-            const dx = p[0].x - p[1].x, dy = p[0].y - p[1].y;
-            return Math.sqrt(dx * dx + dy * dy);
-        }
-        function _ptrMid(p) {
-            return { x: (p[0].x + p[1].x) / 2, y: (p[0].y + p[1].y) / 2 };
-        }
-
-        lightbox.addEventListener('pointerdown', (e) => {
+        // Swipe navigation — single-finger horizontal swipe at scale 1.
+        // pinch-zoom-element handles all zoom/pan via Pointer Events; we use Touch Events
+        // here so the two systems don't fight. Touch events still fire alongside pointer events.
+        lightbox.addEventListener('touchstart', (e) => {
             if (!_isMobileLB()) return;
-            if (e.pointerType === 'mouse') return;
-            try { lightbox.setPointerCapture(e.pointerId); } catch (_) {}
-            _activePointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
-
-            if (_activePointers.size === 1) {
-                _wasGesture = false;
-                touchStartX = e.clientX;
-                touchStartY = e.clientY;
-                if (_zoomScale > 1) {
-                    _isPanning = true; _isPinching = false;
-                    _panStartX = e.clientX;
-                    _panStartY = e.clientY;
-                    _panStartTx = _zoomTx; _panStartTy = _zoomTy;
-                }
-            } else if (_activePointers.size === 2) {
-                e.preventDefault();
-                _isPinching = true; _isPanning = false; _wasGesture = true;
-                const p = _ptrPair();
-                _pinchStartDist = _ptrDist(p);
-                _pinchStartScale = _zoomScale;
-                _pinchStartTx = _zoomTx;
-                _pinchStartTy = _zoomTy;
-                const mid = _ptrMid(p);
-                _pinchStartMidX = mid.x;
-                _pinchStartMidY = mid.y;
-            }
-        });
-
-        lightbox.addEventListener('pointermove', (e) => {
-            if (!_isMobileLB()) return;
-            if (!_activePointers.has(e.pointerId)) return;
-            _activePointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
-
-            if (_isPinching && _activePointers.size >= 2) {
-                e.preventDefault();
-                const p = _ptrPair();
-                const d = _ptrDist(p);
-                if (_pinchStartDist <= 0) return;
-                let s = _pinchStartScale * (d / _pinchStartDist);
-                s = Math.max(1, Math.min(5, s));
-                const mid = _ptrMid(p);
-                const vpCx = window.innerWidth / 2;
-                const vpCy = window.innerHeight / 2;
-                const r = s / _pinchStartScale;
-                _zoomScale = s;
-                _zoomTx = mid.x - vpCx - r * (_pinchStartMidX - vpCx - _pinchStartTx);
-                _zoomTy = mid.y - vpCy - r * (_pinchStartMidY - vpCy - _pinchStartTy);
-                _clampPan();
-                applyZoomTransform();
-            } else if (_isPanning && _activePointers.size === 1 && _zoomScale > 1) {
-                e.preventDefault();
+            if (e.touches.length !== 1) {
                 _wasGesture = true;
-                _zoomTx = _panStartTx + (e.clientX - _panStartX);
-                _zoomTy = _panStartTy + (e.clientY - _panStartY);
-                _clampPan();
-                applyZoomTransform();
+                return;
             }
-        });
+            touchStartX = e.touches[0].clientX;
+            touchStartY = e.touches[0].clientY;
+        }, { passive: true });
 
-        function _onPointerEnd(e) {
+        lightbox.addEventListener('touchend', (e) => {
             if (!_isMobileLB()) return;
-            if (!_activePointers.has(e.pointerId)) return;
-            const wasOnlyOne = _activePointers.size === 1;
-            const wasZoomed = _zoomScale > 1;
-            _activePointers.delete(e.pointerId);
-
-            // Swipe navigation — only when not zoomed and no gesture occurred
-            if (!_wasGesture && !wasZoomed && wasOnlyOne) {
-                const dx = e.clientX - touchStartX;
-                const dy = e.clientY - touchStartY;
-                if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 45) {
-                    navigateLightbox(dx > 0 ? -1 : 1);
-                }
+            if (e.changedTouches.length !== 1 || e.touches.length !== 0) return;
+            // Only navigate if not zoomed
+            if (_currentScale() > 1.01) {
+                _wasGesture = true;
+                return;
             }
-
-            if (_activePointers.size === 0) {
-                _isPinching = false;
-                _isPanning = false;
-                if (_zoomScale <= 1.05) resetZoom();
-            } else if (_activePointers.size === 1 && _isPinching) {
-                // Pinch ended but one finger remains — switch to pan
-                _isPinching = false;
-                if (_zoomScale > 1) {
-                    const [p] = [..._activePointers.values()];
-                    _isPanning = true;
-                    _panStartX = p.x;
-                    _panStartY = p.y;
-                    _panStartTx = _zoomTx; _panStartTy = _zoomTy;
-                }
+            const dx = e.changedTouches[0].clientX - touchStartX;
+            const dy = e.changedTouches[0].clientY - touchStartY;
+            if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 45) {
+                _wasGesture = true;
+                navigateLightbox(dx > 0 ? -1 : 1);
+            } else if (Math.abs(dx) > 8 || Math.abs(dy) > 8) {
+                // Movement happened but didn't trigger nav — pinch-zoom may have shifted
+                // the image at scale 1. Snap back to centered.
+                resetZoom();
             }
+        }, { passive: true });
+
+        // After pinch/zoom ends and we're back near scale 1, snap fully to (1, 0, 0)
+        if (pinchZoom) {
+            pinchZoom.addEventListener('change', () => {
+                if (_currentScale() > 1.01) _wasGesture = true;
+            });
         }
-        lightbox.addEventListener('pointerup', _onPointerEnd);
-        lightbox.addEventListener('pointercancel', _onPointerEnd);
 
         // Dots indicateur
         function buildDots() {
