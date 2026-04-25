@@ -677,6 +677,10 @@
         }
 
         @media (max-width: 768px), (max-height: 500px) {
+            .lightbox {
+                touch-action: none;
+                overscroll-behavior: contain;
+            }
             .lightbox-content {
                 position: fixed;
                 top: 0; left: 0;
@@ -689,6 +693,7 @@
                 justify-content: center;
                 padding: 0;
                 z-index: 1001;
+                touch-action: none;
             }
             .lightbox-img {
                 width: auto;
@@ -1545,6 +1550,7 @@
             if (!_isMobileLB()) return;
             _wasGesture = false;
             if (e.touches.length === 2) {
+                e.preventDefault();
                 _isPinching = true; _isPanning = false; _wasGesture = true;
                 _pinchStartDist = _touchDist(e.touches[0], e.touches[1]);
                 _pinchStartScale = _zoomScale;
