@@ -696,7 +696,16 @@ app.get('/api/gallery/:galleryId/background', publicReadLimiter, validateGallery
     if (fs.existsSync(backgroundsDir)) {
         const backgroundFile = fs.readdirSync(backgroundsDir).find(f => f.startsWith(galleryId));
         if (backgroundFile) {
-            return res.sendFile(path.join(backgroundsDir, backgroundFile));
+            const fullPath = path.join(backgroundsDir, backgroundFile);
+            if (req.query.thumb === '1') {
+                res.setHeader('Content-Type', 'image/jpeg');
+                res.setHeader('Cache-Control', 'public, max-age=86400');
+                return sharp(fullPath)
+                    .resize(200, 200, { fit: 'cover' })
+                    .jpeg({ quality: 75 })
+                    .pipe(res);
+            }
+            return res.sendFile(fullPath);
         }
     }
 
@@ -1212,7 +1221,18 @@ app.get('/api/collection/:collectionId/background', publicReadLimiter, validateC
     const backgroundsDir = path.join(DATA_DIR, 'backgrounds');
     if (fs.existsSync(backgroundsDir)) {
         const file = fs.readdirSync(backgroundsDir).find(f => f.startsWith(`collection-${collectionId}`));
-        if (file) return res.sendFile(path.join(backgroundsDir, file));
+        if (file) {
+            const fullPath = path.join(backgroundsDir, file);
+            if (req.query.thumb === '1') {
+                res.setHeader('Content-Type', 'image/jpeg');
+                res.setHeader('Cache-Control', 'public, max-age=86400');
+                return sharp(fullPath)
+                    .resize(200, 200, { fit: 'cover' })
+                    .jpeg({ quality: 75 })
+                    .pipe(res);
+            }
+            return res.sendFile(fullPath);
+        }
     }
     res.status(404).json({ error: 'No background found' });
 });
@@ -1313,7 +1333,7 @@ app.get('/api/collection/:collectionId/download', downloadLimiter, validateColle
 });
 
 // Delete a collection (admin only — does NOT delete the galleries)
-app.delete('/api/collection/:collectionId', requireAuth, validateCollectionId, (req, res) => {
+app.delete('/api/collection/:collectionId', adminLimiter, requireAuth, validateCollectionId, (req, res) => {
     const { collectionId } = req.params;
     if (!collections.has(collectionId)) return res.status(404).json({ error: 'Collection not found' });
 

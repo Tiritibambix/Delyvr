@@ -1545,84 +1545,117 @@
             }
         });
 
-        // Swipe horizontal + pinch-to-zoom + pan
-        lightbox.addEventListener('touchstart', (e) => {
+        // Pointer Events (more reliable than Touch Events for multi-touch on Android,
+        // especially in landscape where touchstart/touchmove can drop or arrive out of order)
+        const _activePointers = new Map();
+
+        function _ptrPair() {
+            const arr = [..._activePointers.values()];
+            return arr.length >= 2 ? [arr[0], arr[1]] : null;
+        }
+        function _ptrDist(p) {
+            const dx = p[0].x - p[1].x, dy = p[0].y - p[1].y;
+            return Math.sqrt(dx * dx + dy * dy);
+        }
+        function _ptrMid(p) {
+            return { x: (p[0].x + p[1].x) / 2, y: (p[0].y + p[1].y) / 2 };
+        }
+
+        lightbox.addEventListener('pointerdown', (e) => {
             if (!_isMobileLB()) return;
-            _wasGesture = false;
-            if (e.touches.length === 2) {
+            if (e.pointerType === 'mouse') return;
+            try { lightbox.setPointerCapture(e.pointerId); } catch (_) {}
+            _activePointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+
+            if (_activePointers.size === 1) {
+                _wasGesture = false;
+                touchStartX = e.clientX;
+                touchStartY = e.clientY;
+                if (_zoomScale > 1) {
+                    _isPanning = true; _isPinching = false;
+                    _panStartX = e.clientX;
+                    _panStartY = e.clientY;
+                    _panStartTx = _zoomTx; _panStartTy = _zoomTy;
+                }
+            } else if (_activePointers.size === 2) {
                 e.preventDefault();
                 _isPinching = true; _isPanning = false; _wasGesture = true;
-                _pinchStartDist = _touchDist(e.touches[0], e.touches[1]);
+                const p = _ptrPair();
+                _pinchStartDist = _ptrDist(p);
                 _pinchStartScale = _zoomScale;
                 _pinchStartTx = _zoomTx;
                 _pinchStartTy = _zoomTy;
-                _pinchStartMidX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
-                _pinchStartMidY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
-            } else if (e.touches.length === 1) {
-                touchStartX = e.touches[0].clientX;
-                touchStartY = e.touches[0].clientY;
-                if (_zoomScale > 1) {
-                    _isPanning = true; _isPinching = false;
-                    _panStartX = e.touches[0].clientX;
-                    _panStartY = e.touches[0].clientY;
-                    _panStartTx = _zoomTx; _panStartTy = _zoomTy;
-                }
+                const mid = _ptrMid(p);
+                _pinchStartMidX = mid.x;
+                _pinchStartMidY = mid.y;
             }
-        }, { passive: false });
+        });
 
-        lightbox.addEventListener('touchmove', (e) => {
+        lightbox.addEventListener('pointermove', (e) => {
             if (!_isMobileLB()) return;
-            if (_isPinching && e.touches.length === 2) {
+            if (!_activePointers.has(e.pointerId)) return;
+            _activePointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+
+            if (_isPinching && _activePointers.size >= 2) {
                 e.preventDefault();
-                const d = _touchDist(e.touches[0], e.touches[1]);
+                const p = _ptrPair();
+                const d = _ptrDist(p);
+                if (_pinchStartDist <= 0) return;
                 let s = _pinchStartScale * (d / _pinchStartDist);
                 s = Math.max(1, Math.min(5, s));
-                // Pivot autour du midpoint des doigts (et non du centre de l'image)
-                const midX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
-                const midY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+                const mid = _ptrMid(p);
                 const vpCx = window.innerWidth / 2;
                 const vpCy = window.innerHeight / 2;
                 const r = s / _pinchStartScale;
                 _zoomScale = s;
-                _zoomTx = midX - vpCx - r * (_pinchStartMidX - vpCx - _pinchStartTx);
-                _zoomTy = midY - vpCy - r * (_pinchStartMidY - vpCy - _pinchStartTy);
+                _zoomTx = mid.x - vpCx - r * (_pinchStartMidX - vpCx - _pinchStartTx);
+                _zoomTy = mid.y - vpCy - r * (_pinchStartMidY - vpCy - _pinchStartTy);
                 _clampPan();
                 applyZoomTransform();
-            } else if (_isPanning && e.touches.length === 1 && _zoomScale > 1) {
+            } else if (_isPanning && _activePointers.size === 1 && _zoomScale > 1) {
                 e.preventDefault();
                 _wasGesture = true;
-                _zoomTx = _panStartTx + (e.touches[0].clientX - _panStartX);
-                _zoomTy = _panStartTy + (e.touches[0].clientY - _panStartY);
+                _zoomTx = _panStartTx + (e.clientX - _panStartX);
+                _zoomTy = _panStartTy + (e.clientY - _panStartY);
                 _clampPan();
                 applyZoomTransform();
             }
-        }, { passive: false });
+        });
 
-        lightbox.addEventListener('touchend', (e) => {
+        function _onPointerEnd(e) {
             if (!_isMobileLB()) return;
-            // Swipe navigation — only when not zoomed and no pinch/pan occurred
-            if (!_wasGesture && _zoomScale <= 1 && e.touches.length === 0 && e.changedTouches.length === 1) {
-                const dx = e.changedTouches[0].clientX - touchStartX;
-                const dy = e.changedTouches[0].clientY - touchStartY;
+            if (!_activePointers.has(e.pointerId)) return;
+            const wasOnlyOne = _activePointers.size === 1;
+            const wasZoomed = _zoomScale > 1;
+            _activePointers.delete(e.pointerId);
+
+            // Swipe navigation — only when not zoomed and no gesture occurred
+            if (!_wasGesture && !wasZoomed && wasOnlyOne) {
+                const dx = e.clientX - touchStartX;
+                const dy = e.clientY - touchStartY;
                 if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 45) {
                     navigateLightbox(dx > 0 ? -1 : 1);
                 }
             }
-            if (e.touches.length === 0) {
+
+            if (_activePointers.size === 0) {
                 _isPinching = false;
                 _isPanning = false;
                 if (_zoomScale <= 1.05) resetZoom();
-            } else if (e.touches.length === 1 && _isPinching) {
-                // Pinch ended but one finger still down — switch to pan if zoomed
+            } else if (_activePointers.size === 1 && _isPinching) {
+                // Pinch ended but one finger remains — switch to pan
                 _isPinching = false;
                 if (_zoomScale > 1) {
+                    const [p] = [..._activePointers.values()];
                     _isPanning = true;
-                    _panStartX = e.touches[0].clientX;
-                    _panStartY = e.touches[0].clientY;
+                    _panStartX = p.x;
+                    _panStartY = p.y;
                     _panStartTx = _zoomTx; _panStartTy = _zoomTy;
                 }
             }
-        }, { passive: false });
+        }
+        lightbox.addEventListener('pointerup', _onPointerEnd);
+        lightbox.addEventListener('pointercancel', _onPointerEnd);
 
         // Dots indicateur
         function buildDots() {

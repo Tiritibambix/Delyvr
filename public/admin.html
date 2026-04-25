@@ -1340,7 +1340,7 @@
                              ondragover="handleCoverDragOver(event, '${g.id}')"
                              ondragleave="handleCoverDragLeave(event, '${g.id}')"
                              ondrop="handleCoverDrop(event, '${g.id}')">
-                            ${g.hasBackground ? `<img src="/api/gallery/${g.id}/background?t=${Date.now()}" alt="">` : ''}
+                            ${g.hasBackground ? `<img src="/api/gallery/${g.id}/background?thumb=1&t=${Date.now()}" alt="">` : ''}
                             <div class="gallery-cover-placeholder">
                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
                             </div>
@@ -1680,7 +1680,7 @@
                     }).join('') + `<button class="add-gallery-pill" onclick="openGalleryPicker('${c.id}')">+ Add gallery</button>`;
 
                 const coverHtml = c.hasBackground
-                    ? `<img src="/api/collection/${c.id}/background?t=${Date.now()}" alt="">`
+                    ? `<img src="/api/collection/${c.id}/background?thumb=1&t=${Date.now()}" alt="">`
                     : `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>`;
 
                 return `<div class="collection-item">
