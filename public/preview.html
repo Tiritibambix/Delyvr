@@ -897,12 +897,11 @@
                     <svg id="lbFsIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3" stroke-linecap="round" stroke-linejoin="round"/></svg>
                 </button>
             </div>
-            <!-- Barre basse : fav + dots + télécharger -->
+            <!-- Barre basse : fav + télécharger -->
             <div class="lb-bottom-bar" id="lbBottomBar">
                 <button class="lb-btn" id="lbMobileFav" onclick="toggleFavoriteFromLightbox()" aria-label="Favori">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" stroke-linecap="round" stroke-linejoin="round"/></svg>
                 </button>
-                <div class="lb-dots" id="lbDots"></div>
                 <a class="lb-btn" id="lbMobileDownload" href="#" download aria-label="Télécharger">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 4v12m0 0l-4-4m4 4l4-4M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2" stroke-linecap="round" stroke-linejoin="round"/></svg>
                 </a>
@@ -1456,6 +1455,8 @@
         // Zoom state
         let _zoomScale = 1, _zoomTx = 0, _zoomTy = 0;
         let _pinchStartDist = 0, _pinchStartScale = 1;
+        let _pinchStartTx = 0, _pinchStartTy = 0;
+        let _pinchStartMidX = 0, _pinchStartMidY = 0;
         let _panStartX = 0, _panStartY = 0, _panStartTx = 0, _panStartTy = 0;
         let _isPinching = false, _isPanning = false, _wasGesture = false;
 
@@ -1547,6 +1548,10 @@
                 _isPinching = true; _isPanning = false; _wasGesture = true;
                 _pinchStartDist = _touchDist(e.touches[0], e.touches[1]);
                 _pinchStartScale = _zoomScale;
+                _pinchStartTx = _zoomTx;
+                _pinchStartTy = _zoomTy;
+                _pinchStartMidX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+                _pinchStartMidY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
             } else if (e.touches.length === 1) {
                 touchStartX = e.touches[0].clientX;
                 touchStartY = e.touches[0].clientY;
@@ -1566,7 +1571,15 @@
                 const d = _touchDist(e.touches[0], e.touches[1]);
                 let s = _pinchStartScale * (d / _pinchStartDist);
                 s = Math.max(1, Math.min(5, s));
+                // Pivot autour du midpoint des doigts (et non du centre de l'image)
+                const midX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+                const midY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+                const vpCx = window.innerWidth / 2;
+                const vpCy = window.innerHeight / 2;
+                const r = s / _pinchStartScale;
                 _zoomScale = s;
+                _zoomTx = midX - vpCx - r * (_pinchStartMidX - vpCx - _pinchStartTx);
+                _zoomTy = midY - vpCy - r * (_pinchStartMidY - vpCy - _pinchStartTy);
                 _clampPan();
                 applyZoomTransform();
             } else if (_isPanning && e.touches.length === 1 && _zoomScale > 1) {

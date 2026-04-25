@@ -503,6 +503,45 @@
         .pill-remove:hover { color: var(--error); }
         .collection-drop-hint { font-size: 12px; color: var(--muted2); font-style: italic; }
 
+        .add-gallery-pill {
+            background: transparent; border: 1px dashed var(--border2);
+            border-radius: 2px; padding: 3px 10px; font-size: 12px;
+            color: var(--muted); cursor: pointer; font-family: inherit;
+            display: inline-flex; align-items: center; gap: 4px;
+        }
+        .add-gallery-pill:hover { color: var(--text); border-color: var(--muted); background: var(--bg2); }
+
+        /* ═══════════════════════════════
+           GALLERY PICKER MODAL
+        ═══════════════════════════════ */
+        .gallery-picker-modal {
+            position: fixed; inset: 0;
+            background: rgba(0,0,0,0.85);
+            display: flex; align-items: center; justify-content: center;
+            z-index: 7000; opacity: 0; pointer-events: none;
+            transition: opacity 0.2s; backdrop-filter: blur(6px);
+        }
+        .gallery-picker-modal.active { opacity: 1; pointer-events: auto; }
+        .gallery-picker-card {
+            background: var(--bg2); border: 1px solid var(--border);
+            border-radius: 8px; padding: 24px;
+            width: 90%; max-width: 480px; max-height: 80vh;
+            display: flex; flex-direction: column; gap: 12px;
+        }
+        .gallery-picker-header { display: flex; align-items: center; justify-content: space-between; }
+        .gallery-picker-header h3 { font-size: 15px; font-weight: 600; }
+        .gallery-picker-close { background: none; border: none; color: var(--muted); font-size: 1.4rem; cursor: pointer; line-height: 1; }
+        .gallery-picker-list { display: flex; flex-direction: column; gap: 4px; overflow-y: auto; max-height: 60vh; }
+        .gallery-picker-item {
+            display: flex; align-items: center; gap: 10px;
+            padding: 8px 10px; border-radius: 4px;
+            background: var(--bg3); border: 1px solid var(--border);
+            cursor: pointer; color: var(--text); font-size: 13px;
+            text-align: left; font-family: inherit;
+        }
+        .gallery-picker-item:hover { background: var(--bg); border-color: var(--muted); }
+        .gallery-picker-empty { color: var(--muted2); font-size: 13px; font-style: italic; padding: 8px 0; }
+
         .collection-link-row {
             padding: 8px 12px; border-top: 1px solid var(--border);
             display: flex; align-items: center; gap: 8px;
@@ -715,6 +754,17 @@
             <div class="profile-field"><span class="profile-field-icon"><svg viewBox="0 0 24 24"><path d="M6.938 4.503c.702 0 1.34.06 1.92.188.577.13 1.07.33 1.485.61.41.28.733.65.96 1.12.225.47.34 1.05.34 1.73 0 .74-.17 1.36-.507 1.86-.338.5-.837.9-1.502 1.22.906.26 1.576.72 2.022 1.37.448.66.665 1.45.665 2.36 0 .75-.13 1.39-.41 1.93-.28.55-.67 1-1.16 1.35-.48.348-1.05.6-1.69.747-.64.152-1.31.227-2.02.227H0V4.51h6.938v-.007zM16.94 16.665c.44.428 1.073.643 1.894.643.59 0 1.1-.148 1.53-.447.424-.29.68-.604.77-.93h2.717c-.434 1.348-1.1 2.31-1.997 2.884-.9.576-1.983.864-3.254.864-1.08 0-2.07-.166-2.96-.5a6.17 6.17 0 0 1-2.19-1.42 6.11 6.11 0 0 1-1.35-2.19c-.31-.853-.462-1.79-.462-2.806 0-.985.16-1.9.48-2.74a6.16 6.16 0 0 1 1.37-2.17 6.35 6.35 0 0 1 2.19-1.42c.86-.35 1.82-.52 2.88-.52 1.17 0 2.19.225 3.04.67a5.9 5.9 0 0 1 2.09 1.79 7.27 7.27 0 0 1 1.17 2.58c.22.96.295 1.96.23 3.01h-8.13c.048 1.01.344 1.74.78 2.17zm-10.24-.05c.574 0 1.05-.15 1.44-.46.39-.31.583-.79.583-1.44 0-.66-.192-1.14-.583-1.45-.39-.31-.866-.46-1.44-.46H3.24v3.81h3.46zm14.348-5.96c-.36-.4-.92-.6-1.67-.6-.488 0-.895.08-1.22.26-.324.17-.586.38-.78.63-.19.25-.32.51-.39.78-.07.27-.11.52-.12.74h4.96c-.09-.75-.38-1.41-.78-1.81zM6.39 10.4c.55 0 .993-.13 1.33-.39.34-.26.505-.67.505-1.22 0-.3-.053-.55-.16-.75a1.2 1.2 0 0 0-.44-.49 1.86 1.86 0 0 0-.63-.27 3.38 3.38 0 0 0-.77-.08H3.24v3.2H6.39zm9.87-4.49h5.49v1.42h-5.49V5.91z"/></svg></span><input type="url" id="profileBehance" placeholder="https://behance.net/yourprofile"></div>
             <button class="profile-save-btn" onclick="saveProfile()">Save</button>
             <div class="profile-save-feedback" id="profileFeedback"></div>
+        </div>
+    </div>
+
+    <!-- Gallery Picker Modal -->
+    <div class="gallery-picker-modal" id="galleryPickerModal" onclick="if(event.target===this) closeGalleryPicker()">
+        <div class="gallery-picker-card">
+            <div class="gallery-picker-header">
+                <h3>Add gallery to collection</h3>
+                <button class="gallery-picker-close" onclick="closeGalleryPicker()">&#x2715;</button>
+            </div>
+            <div class="gallery-picker-list" id="galleryPickerList"></div>
         </div>
     </div>
 
@@ -1615,9 +1665,7 @@
                 return;
             }
             container.innerHTML = colls.map(c => {
-                const pillsHtml = c.galleryIds.length === 0
-                    ? `<span class="collection-drop-hint">Drag galleries here</span>`
-                    : c.galleryIds.map(gid => {
+                const pillsHtml = c.galleryIds.map(gid => {
                         const g = _galleriesData ? _galleriesData.find(x => x.id === gid) : null;
                         const name = g ? escapeHtml(g.eventName) : gid.slice(0, 8) + '…';
                         return `<span class="gallery-pill" draggable="true"
@@ -1629,7 +1677,7 @@
                             ${name}
                             <button class="pill-remove" onclick="removeFromCollection('${c.id}', '${gid}')" title="Remove">✕</button>
                         </span>`;
-                    }).join('');
+                    }).join('') + `<button class="add-gallery-pill" onclick="openGalleryPicker('${c.id}')">+ Add gallery</button>`;
 
                 const coverHtml = c.hasBackground
                     ? `<img src="/api/collection/${c.id}/background?t=${Date.now()}" alt="">`
@@ -1817,6 +1865,35 @@
             } catch (err) {
                 alert('Could not add gallery to collection: ' + err.message);
             }
+        }
+
+        // Gallery picker modal — mobile-friendly alternative to drag-and-drop
+        let _pickerCollectionId = null;
+        function openGalleryPicker(collectionId) {
+            _pickerCollectionId = collectionId;
+            const collection = (_collectionsData || []).find(c => c.id === collectionId);
+            const inCollection = new Set(collection ? collection.galleryIds : []);
+            const available = (_galleriesData || []).filter(g => !inCollection.has(g.id));
+            const list = document.getElementById('galleryPickerList');
+            if (available.length === 0) {
+                list.innerHTML = '<div class="gallery-picker-empty">No galleries available to add.</div>';
+            } else {
+                list.innerHTML = available.map(g => `
+                    <button class="gallery-picker-item" onclick="pickGallery('${g.id}')">
+                        ${escapeHtml(g.eventName)}
+                    </button>
+                `).join('');
+            }
+            document.getElementById('galleryPickerModal').classList.add('active');
+        }
+        function closeGalleryPicker() {
+            document.getElementById('galleryPickerModal').classList.remove('active');
+            _pickerCollectionId = null;
+        }
+        async function pickGallery(galleryId) {
+            const cid = _pickerCollectionId;
+            closeGalleryPicker();
+            if (cid) await addToCollection(cid, galleryId);
         }
 
         function startEditCollectionName(collectionId, element) {
