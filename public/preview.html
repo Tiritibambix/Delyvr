@@ -692,23 +692,22 @@
                 z-index: 1001;
                 display: block;
             }
+            /* pinch-zoom-element injects: display:block; overflow:hidden; touch-action:none.
+               It applies transform-origin:0 0 to its first child and clamps bounds via
+               getBoundingClientRect of the child relative to itself — the child MUST
+               start at (0,0) of the container, so do NOT use flex centering here. */
             pinch-zoom#lightboxPinchZoom {
                 width: 100vw;
                 height: 100dvh;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                touch-action: none;
-                overflow: hidden;
             }
             .lightbox-img {
-                max-width: 100vw;
-                max-height: 100dvh;
-                width: auto;
-                height: auto;
+                width: 100%;
+                height: 100%;
+                max-width: none;
+                max-height: none;
+                object-fit: contain;
                 border-radius: 0;
                 display: block;
-                will-change: transform;
             }
             .lightbox-close,
             .lightbox-nav,
