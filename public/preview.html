@@ -708,6 +708,7 @@
                 object-fit: contain;
                 border-radius: 0;
                 display: block;
+                touch-action: none;
             }
             .lightbox-close,
             .lightbox-nav,
@@ -726,13 +727,19 @@
             max-width: none;
             max-height: none;
         }
-        .lightbox:fullscreen .lightbox-img,
-        .lightbox:-webkit-full-screen .lightbox-img {
+        .lightbox:fullscreen pinch-zoom#lightboxPinchZoom,
+        .lightbox:-webkit-full-screen pinch-zoom#lightboxPinchZoom {
             width: 100vw;
             height: 100vh;
+        }
+        .lightbox:fullscreen .lightbox-img,
+        .lightbox:-webkit-full-screen .lightbox-img {
+            width: 100%;
+            height: 100%;
             max-width: none;
             max-height: none;
             object-fit: contain;
+            touch-action: none;
         }
 
         .lightbox-download-btn {
