@@ -7,7 +7,6 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600&family=Fraunces:wght@400;600&display=swap" rel="stylesheet">
-    <script src="/vendor/pinch-zoom.js"></script>
     <style>
         * {
             margin: 0;
@@ -678,9 +677,6 @@
         }
 
         @media (max-width: 768px), (max-height: 500px) {
-            .lightbox {
-                overscroll-behavior: contain;
-            }
             .lightbox-content {
                 position: fixed;
                 top: 0; left: 0;
@@ -688,24 +684,17 @@
                 height: 100dvh;
                 max-width: none;
                 max-height: none;
+                display: flex;
+                align-items: center;
+                justify-content: center;
                 padding: 0;
                 z-index: 1001;
-                display: block;
-            }
-            /* pinch-zoom-element injects: display:block; overflow:hidden; touch-action:none.
-               It applies transform-origin:0 0 to its first child and clamps bounds via
-               getBoundingClientRect of the child relative to itself — the child MUST
-               start at (0,0) of the container, so do NOT use flex centering here. */
-            pinch-zoom#lightboxPinchZoom {
-                width: 100vw;
-                height: 100dvh;
             }
             .lightbox-img {
-                width: 100%;
-                height: 100%;
-                max-width: none;
-                max-height: none;
-                object-fit: contain;
+                width: auto;
+                height: auto;
+                max-width: 100vw;
+                max-height: 100dvh;
                 border-radius: 0;
                 display: block;
             }
@@ -896,9 +885,7 @@
 
         <!-- Photo -->
         <div class="lightbox-content">
-            <pinch-zoom id="lightboxPinchZoom" min-scale="1">
-                <img class="lightbox-img" id="lightboxImg">
-            </pinch-zoom>
+            <img class="lightbox-img" id="lightboxImg">
         </div>
 
         <!-- Mobile Overlay (portrait + landscape) -->
@@ -1462,9 +1449,20 @@
             }
         });
 
-        // ── MOBILE LIGHTBOX — pinch-zoom-element (Google Chrome Labs), swipe nav, bars, fullscreen ──
+        // ── MOBILE LIGHTBOX — native browser pinch-zoom, swipe nav, bars, fullscreen ──
+        // Strategy: let the browser's built-in pinch zoom handle scaling and panning.
+        // It works in every browser and orientation, including fullscreen mode, because
+        // it's a browser feature — not a JS handler that can race with fullscreen
+        // transitions or be intercepted by the OS. We only need to:
+        //   1) detect when the user is zoomed (visualViewport.scale > 1) and skip our
+        //      swipe-nav so it doesn't fight native pan;
+        //   2) reset the zoom on lightbox close / photo navigation by briefly swapping
+        //      the viewport meta to maximum-scale=1, which forces the browser back to
+        //      scale 1 (the only cross-browser way to programmatically reset visual
+        //      viewport zoom).
         const lightbox = document.getElementById('lightbox');
-        const pinchZoom = document.getElementById('lightboxPinchZoom');
+        const viewportMeta = document.querySelector('meta[name="viewport"]');
+        const VIEWPORT_DEFAULT = viewportMeta ? viewportMeta.content : 'width=device-width, initial-scale=1.0';
         let touchStartX = 0, touchStartY = 0;
         let _lbHideTimer = null;
         let _lbBarsVisible = true;
@@ -1475,13 +1473,18 @@
         }
 
         function _currentScale() {
-            return pinchZoom && typeof pinchZoom.scale === 'number' ? pinchZoom.scale : 1;
+            return window.visualViewport ? window.visualViewport.scale : 1;
         }
 
         function resetZoom() {
-            if (pinchZoom && typeof pinchZoom.setTransform === 'function') {
-                pinchZoom.setTransform({ scale: 1, x: 0, y: 0, allowChangeEvent: true });
-            }
+            if (!viewportMeta) return;
+            // Force browser to reset visual viewport zoom by briefly clamping max-scale.
+            viewportMeta.content = 'width=device-width, initial-scale=1.0, maximum-scale=1.0';
+            requestAnimationFrame(() => {
+                requestAnimationFrame(() => {
+                    viewportMeta.content = VIEWPORT_DEFAULT;
+                });
+            });
         }
 
         function showLbBars() {
@@ -1505,7 +1508,7 @@
             _lbHideTimer = setTimeout(hideLbBars, 3000);
         }
 
-        // Tap sur la zone image : toggle visibilité barres (sauf après un geste pinch/pan)
+        // Tap sur la zone image : toggle visibilité barres
         lightbox.addEventListener('click', (e) => {
             if (!_isMobileLB()) return;
             if (_wasGesture) { _wasGesture = false; return; }
@@ -1519,15 +1522,12 @@
             }
         });
 
-        // Swipe navigation — single-finger horizontal swipe at scale 1.
-        // pinch-zoom-element handles all zoom/pan via Pointer Events; we use Touch Events
-        // here so the two systems don't fight. Touch events still fire alongside pointer events.
+        // Swipe nav — only fires when the user is NOT pinch-zoomed. When zoomed,
+        // single-finger drag is consumed by the browser to pan the visual viewport.
         lightbox.addEventListener('touchstart', (e) => {
             if (!_isMobileLB()) return;
-            if (e.touches.length !== 1) {
-                _wasGesture = true;
-                return;
-            }
+            if (e.touches.length !== 1) { _wasGesture = true; return; }
+            if (_currentScale() > 1.05) return;
             touchStartX = e.touches[0].clientX;
             touchStartY = e.touches[0].clientY;
         }, { passive: true });
@@ -1535,29 +1535,14 @@
         lightbox.addEventListener('touchend', (e) => {
             if (!_isMobileLB()) return;
             if (e.changedTouches.length !== 1 || e.touches.length !== 0) return;
-            // Only navigate if not zoomed
-            if (_currentScale() > 1.01) {
-                _wasGesture = true;
-                return;
-            }
+            if (_currentScale() > 1.05) return;
             const dx = e.changedTouches[0].clientX - touchStartX;
             const dy = e.changedTouches[0].clientY - touchStartY;
             if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 45) {
                 _wasGesture = true;
                 navigateLightbox(dx > 0 ? -1 : 1);
-            } else if (Math.abs(dx) > 8 || Math.abs(dy) > 8) {
-                // Movement happened but didn't trigger nav — pinch-zoom may have shifted
-                // the image at scale 1. Snap back to centered.
-                resetZoom();
             }
         }, { passive: true });
-
-        // After pinch/zoom ends and we're back near scale 1, snap fully to (1, 0, 0)
-        if (pinchZoom) {
-            pinchZoom.addEventListener('change', () => {
-                if (_currentScale() > 1.01) _wasGesture = true;
-            });
-        }
 
         // Dots indicateur
         function buildDots() {
@@ -1579,21 +1564,11 @@
             dots.forEach((d, i) => d.classList.toggle('active', i === currentPhotoIndex));
         }
 
-        // Plein écran : sur mobile, on fullscreen <html> au lieu de .lightbox.
-        // Pourquoi : fullscreen sur .lightbox déclenche la pseudo-classe :fullscreen
-        // (avec ses styles UA + nos règles), ce qui change la taille du conteneur
-        // pinch-zoom au moment exact où le navigateur transitionne — la lib
-        // pinch-zoom-element fait un getBoundingClientRect pendant cette
-        // transition et son bound-check rejette les transforms. En fullscreenant
-        // <html>, .lightbox reste avec son CSS mobile stable (100vw × 100dvh, où
-        // dvh grandit naturellement quand l'URL bar se cache), pinch-zoom reste
-        // synchrone, et les barres absolues restent à leur place.
         function toggleFullscreen() {
             const fsEl = document.fullscreenElement || document.webkitFullscreenElement;
             if (!fsEl) {
-                const target = _isMobileLB() ? document.documentElement : lightbox;
-                const req = target.requestFullscreen || target.webkitRequestFullscreen;
-                if (req) req.call(target).catch(() => {});
+                const req = lightbox.requestFullscreen || lightbox.webkitRequestFullscreen;
+                if (req) req.call(lightbox).catch(() => {});
             } else {
                 const exit = document.exitFullscreen || document.webkitExitFullscreen;
                 if (exit) exit.call(document).catch(() => {});
