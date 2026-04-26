@@ -1579,12 +1579,24 @@
             dots.forEach((d, i) => d.classList.toggle('active', i === currentPhotoIndex));
         }
 
-        // Plein écran (Option A)
+        // Plein écran : sur mobile, on fullscreen <html> au lieu de .lightbox.
+        // Pourquoi : fullscreen sur .lightbox déclenche la pseudo-classe :fullscreen
+        // (avec ses styles UA + nos règles), ce qui change la taille du conteneur
+        // pinch-zoom au moment exact où le navigateur transitionne — la lib
+        // pinch-zoom-element fait un getBoundingClientRect pendant cette
+        // transition et son bound-check rejette les transforms. En fullscreenant
+        // <html>, .lightbox reste avec son CSS mobile stable (100vw × 100dvh, où
+        // dvh grandit naturellement quand l'URL bar se cache), pinch-zoom reste
+        // synchrone, et les barres absolues restent à leur place.
         function toggleFullscreen() {
-            if (!document.fullscreenElement) {
-                lightbox.requestFullscreen().catch(() => {});
+            const fsEl = document.fullscreenElement || document.webkitFullscreenElement;
+            if (!fsEl) {
+                const target = _isMobileLB() ? document.documentElement : lightbox;
+                const req = target.requestFullscreen || target.webkitRequestFullscreen;
+                if (req) req.call(target).catch(() => {});
             } else {
-                document.exitFullscreen().catch(() => {});
+                const exit = document.exitFullscreen || document.webkitExitFullscreen;
+                if (exit) exit.call(document).catch(() => {});
             }
         }
 
