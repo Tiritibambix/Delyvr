@@ -189,10 +189,14 @@ The lightbox uses `previewUrl`. Originals are only served on explicit download v
 On mobile (`≤ 768px`), the lightbox image has `touch-action: none` and a unified set of touch handlers on `.lightbox`:
 - **1-finger tap** toggles the top/bottom action bars.
 - **1-finger swipe** (horizontal, > 45px) navigates to the next/previous photo — only when not zoomed.
-- **2-finger pinch** zooms from 1× to 5× around the image centre. Below 1.05× the transform is cleared and swipe-nav re-enables.
+- **2-finger pinch** zooms from 1× to 5× **toward the pinch midpoint** (not the image centre). Below 1.05× the transform is cleared and swipe-nav re-enables.
 - **1-finger drag while zoomed** pans. Translation is clamped using `naturalWidth`/`naturalHeight` with an `object-fit: contain` calculation so the user cannot drag the image past its visible edges.
 - Zoom state is always reset on `openLightbox`, `closeLightbox`, and `navigateLightbox`.
 - A `_wasGesture` flag suppresses the tap-to-toggle-bars behaviour after a pinch/pan, so ending a gesture does not accidentally toggle the overlay.
+
+**Implementation detail — zoom toward midpoint:** The pinch midpoint is captured in `touchstart` relative to the image centre (`_pinchMidX/Y = midClientX - innerWidth/2`). On each `touchmove`, pan is updated with the formula `panNew = mid + (panBase - mid) * s1 / s0` so the point under the fingers stays fixed as scale changes. `_applyZoomTransform()` writes `transform: translate(${_panX}px, ${_panY}px) scale(${_zoomScale})` on `.lightbox-img` with `transform-origin: center center`.
+
+**Why not native browser zoom:** `requestFullscreen()` disables native visual-viewport zoom on mobile. All zoom is therefore done via CSS `transform` — works identically in fullscreen and normal mode. Do not reintroduce `visualViewport` scaling or viewport meta manipulation.
 
 ### Social footer
 
@@ -305,7 +309,9 @@ All HTML files are standalone — no bundler, no imports, all JS inline.
 - **Settings defaults** — `loadSettings()` merges file content with `SETTINGS_DEFAULTS`. Missing keys are filled in without overwriting existing values.
 - **Social footer** hidden entirely when no links are configured — `container.style.display = 'none'` if `links.length === 0`.
 - **Justified gallery layout is JS-driven.** Rows in `.gallery-grid` are built in `buildJustifiedRows()` and recomputed on resize. Do not reintroduce CSS `columns` masonry here.
-- **Mobile pinch-zoom uses `transform: translate(...) scale(...)`** on `.lightbox-img`, clamped to the real rendered image bounds (via `naturalWidth`/`naturalHeight` + `object-fit: contain` math). Always call `resetZoom()` from `openLightbox` / `closeLightbox` / `navigateLightbox`.
+- **Mobile pinch-zoom uses `transform: translate(...) scale(...)`** on `.lightbox-img`, clamped to the real rendered image bounds (via `naturalWidth`/`naturalHeight` + `object-fit: contain` math). Always call `resetZoom()` from `openLightbox` / `closeLightbox` / `navigateLightbox`. See "Mobile lightbox" section for the zoom-toward-midpoint formula.
+- **`express.json()` must be registered before all routes in `server.js`.** It is placed immediately after `app.set('trust proxy', ...)` at the top of the setup block. If you add routes above it, `req.body` will be `undefined` and any body destructuring will throw a TypeError → 500 response.
+- **Theme toggle (`toggleTheme`) uses optimistic update.** It applies the CSS class change immediately on click, then reverts if the server returns non-ok. Do not make the UI update conditional on `res.ok` — the fetch to `PATCH /api/settings/theme` would need to fail silently for the user to see no response.
 - **Preview generation is non-blocking on request** — if a preview is missing, the original is served immediately and generation runs in the background. Never `await generatePreview` on a request path.
 - **Password never stored in sessionStorage.** Kept in `adminPassword` JS variable only.
 - **`?password` query param removed.** `requireAuth` only checks `X-Admin-Password` header.
