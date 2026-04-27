@@ -1468,6 +1468,7 @@
         let _t0StartX = 0, _t0StartY = 0;
         let _panBaseX = 0, _panBaseY = 0;
         let _pinchStartDist = 0, _pinchStartScale = 1;
+        let _pinchMidX = 0, _pinchMidY = 0;
         let _isPinching = false, _isPanning = false;
         const MAX_ZOOM = 5;
 
@@ -1559,6 +1560,11 @@
                 _pinchStartScale = _zoomScale;
                 _panBaseX = _panX;
                 _panBaseY = _panY;
+                // Midpoint of the two fingers, relative to the image natural center.
+                // The lightbox fills the full viewport, so the image center is at
+                // (innerWidth/2, innerHeight/2) before any pan is applied.
+                _pinchMidX = (e.touches[0].clientX + e.touches[1].clientX) / 2 - window.innerWidth / 2;
+                _pinchMidY = (e.touches[0].clientY + e.touches[1].clientY) / 2 - window.innerHeight / 2;
                 return;
             }
 
@@ -1583,7 +1589,12 @@
                     e.touches[1].clientX - e.touches[0].clientX,
                     e.touches[1].clientY - e.touches[0].clientY
                 );
-                _zoomScale = Math.max(1, Math.min(MAX_ZOOM, _pinchStartScale * (dist / _pinchStartDist)));
+                const s1 = Math.max(1, Math.min(MAX_ZOOM, _pinchStartScale * (dist / _pinchStartDist)));
+                // Zoom toward the pinch midpoint: keep the point under the fingers fixed.
+                // Formula: panNew = mid + (panBase - mid) * s1/s0
+                _panX = _pinchMidX + (_panBaseX - _pinchMidX) * s1 / _pinchStartScale;
+                _panY = _pinchMidY + (_panBaseY - _pinchMidY) * s1 / _pinchStartScale;
+                _zoomScale = s1;
                 _clampPan();
                 _applyZoomTransform();
                 e.preventDefault();
