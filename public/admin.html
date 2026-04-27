@@ -1142,6 +1142,12 @@
                         document.getElementById('progressText').textContent = `Uploading... ${pct}%`;
                     }
                 };
+
+                // Data sent to server — now wait for server-side processing
+                xhr.upload.onload = () => {
+                    document.getElementById('progressFill').style.width = '100%';
+                    document.getElementById('progressText').textContent = 'Processing photos…';
+                };
                 
                 const result = await new Promise((resolve, reject) => {
                     xhr.onload = () => {
@@ -1574,6 +1580,11 @@
             }
         }
 
+        async function renameGalleryInline(galleryId, rawName) {
+            const newName = (rawName || '').trim() || 'Untitled Event';
+            await renameGallery(galleryId, newName);
+        }
+
         async function toggleDownloads(galleryId, enabled, checkbox) {
             checkbox.disabled = true;
             try {
@@ -1812,6 +1823,18 @@
                 if (e.key === 'Enter') createCollection();
             });
         });
+
+        async function renameCollectionInline(collectionId, rawName) {
+            const newName = (rawName || '').trim() || 'Untitled Collection';
+            try {
+                await fetch(`/api/collection/${collectionId}/rename`, {
+                    method: 'POST',
+                    headers: { 'X-Admin-Password': adminPassword, 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name: newName })
+                });
+                await loadCollections();
+            } catch (_) {}
+        }
 
         async function deleteCollection(collectionId) {
             if (!confirm('Delete this collection? The galleries inside will not be deleted.')) return;
