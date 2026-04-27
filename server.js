@@ -18,6 +18,8 @@ const PORT = process.env.PORT || 3000;
 const TRUST_PROXY = parseInt(process.env.TRUST_PROXY || '1', 10);
 app.set('trust proxy', TRUST_PROXY);
 
+app.use(express.json());
+
 // Security headers — applied to every response
 app.use((_req, res, next) => {
     res.setHeader('X-Content-Type-Options', 'nosniff');
@@ -407,7 +409,6 @@ const uploadLogo = multer({
 
 // Serve static files
 app.use(express.static(path.join(__dirname, 'public')));
-app.use(express.json());
 
 function validateGalleryId(req, res, next) {
     if (!UUID_V4_REGEX.test(req.params.galleryId)) {
