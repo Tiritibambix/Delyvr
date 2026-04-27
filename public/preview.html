@@ -591,6 +591,10 @@
             opacity: 1;
         }
 
+        @media (max-width: 768px), (max-height: 500px) {
+            .lightbox.active { touch-action: none; }
+        }
+
         .lightbox-close {
             position: absolute;
             top: 20px;
@@ -1449,21 +1453,25 @@
             }
         });
 
-        // ── MOBILE LIGHTBOX — native browser pinch-zoom, swipe nav, bars, fullscreen ──
-        // Strategy: let the browser's built-in pinch zoom handle scaling and panning.
-        // It works in every browser and orientation, including fullscreen mode, because
-        // it's a browser feature — not a JS handler that can race with fullscreen
-        // transitions or be intercepted by the OS. We only need to:
-        //   1) detect when the user is zoomed (visualViewport.scale > 1) and skip our
-        //      swipe-nav so it doesn't fight native pan;
-        //   2) reset the zoom on lightbox close / photo navigation by briefly swapping
-        //      the viewport meta to maximum-scale=1, which forces the browser back to
-        //      scale 1 (the only cross-browser way to programmatically reset visual
-        //      viewport zoom).
+        // ── MOBILE LIGHTBOX — JS pinch-zoom via CSS transform, swipe nav, bars, fullscreen ──
+        // Strategy: handle all touch gestures ourselves using CSS transforms on the image.
+        // Native visual-viewport zoom is disabled by browsers inside requestFullscreen(),
+        // so relying on it breaks pinch-zoom in fullscreen. JS transforms work identically
+        // in normal and fullscreen modes.
         const lightbox = document.getElementById('lightbox');
-        const viewportMeta = document.querySelector('meta[name="viewport"]');
-        const VIEWPORT_DEFAULT = viewportMeta ? viewportMeta.content : 'width=device-width, initial-scale=1.0';
-        let touchStartX = 0, touchStartY = 0;
+
+        // Zoom & pan state
+        let _zoomScale = 1;
+        let _panX = 0, _panY = 0;
+
+        // Touch-gesture tracking
+        let _t0StartX = 0, _t0StartY = 0;
+        let _panBaseX = 0, _panBaseY = 0;
+        let _pinchStartDist = 0, _pinchStartScale = 1;
+        let _isPinching = false, _isPanning = false;
+        const MAX_ZOOM = 5;
+
+        // Bar state
         let _lbHideTimer = null;
         let _lbBarsVisible = true;
         let _wasGesture = false;
@@ -1472,19 +1480,34 @@
             return window.matchMedia('(max-width: 768px), (max-height: 500px)').matches;
         }
 
-        function _currentScale() {
-            return window.visualViewport ? window.visualViewport.scale : 1;
+        function _isZoomed() { return _zoomScale > 1.05; }
+
+        function _applyZoomTransform() {
+            const img = document.getElementById('lightboxImg');
+            if (!img) return;
+            img.style.transform = _isZoomed()
+                ? `translate(${_panX}px, ${_panY}px) scale(${_zoomScale})`
+                : '';
+        }
+
+        function _clampPan() {
+            const img = document.getElementById('lightboxImg');
+            if (!img) return;
+            const cw = img.clientWidth, ch = img.clientHeight;
+            const nw = img.naturalWidth || cw, nh = img.naturalHeight || ch;
+            const imgAsp = nw / nh, conAsp = cw / ch;
+            const rw = imgAsp > conAsp ? cw : ch * imgAsp;
+            const rh = imgAsp > conAsp ? cw / imgAsp : ch;
+            const maxX = Math.max(0, (rw * _zoomScale - cw) / 2);
+            const maxY = Math.max(0, (rh * _zoomScale - ch) / 2);
+            _panX = Math.max(-maxX, Math.min(maxX, _panX));
+            _panY = Math.max(-maxY, Math.min(maxY, _panY));
         }
 
         function resetZoom() {
-            if (!viewportMeta) return;
-            // Force browser to reset visual viewport zoom by briefly clamping max-scale.
-            viewportMeta.content = 'width=device-width, initial-scale=1.0, maximum-scale=1.0';
-            requestAnimationFrame(() => {
-                requestAnimationFrame(() => {
-                    viewportMeta.content = VIEWPORT_DEFAULT;
-                });
-            });
+            _zoomScale = 1; _panX = 0; _panY = 0;
+            _isPinching = false; _isPanning = false;
+            _applyZoomTransform();
         }
 
         function showLbBars() {
@@ -1522,25 +1545,93 @@
             }
         });
 
-        // Swipe nav — only fires when the user is NOT pinch-zoomed. When zoomed,
-        // single-finger drag is consumed by the browser to pan the visual viewport.
         lightbox.addEventListener('touchstart', (e) => {
             if (!_isMobileLB()) return;
-            if (e.touches.length !== 1) { _wasGesture = true; return; }
-            if (_currentScale() > 1.05) return;
-            touchStartX = e.touches[0].clientX;
-            touchStartY = e.touches[0].clientY;
+
+            if (e.touches.length === 2) {
+                _wasGesture = true;
+                _isPinching = true;
+                _isPanning = false;
+                _pinchStartDist = Math.hypot(
+                    e.touches[1].clientX - e.touches[0].clientX,
+                    e.touches[1].clientY - e.touches[0].clientY
+                );
+                _pinchStartScale = _zoomScale;
+                _panBaseX = _panX;
+                _panBaseY = _panY;
+                return;
+            }
+
+            if (e.touches.length !== 1) return;
+            _isPinching = false;
+            _t0StartX = e.touches[0].clientX;
+            _t0StartY = e.touches[0].clientY;
+            if (_isZoomed()) {
+                _isPanning = true;
+                _panBaseX = _panX;
+                _panBaseY = _panY;
+            } else {
+                _isPanning = false;
+            }
         }, { passive: true });
+
+        lightbox.addEventListener('touchmove', (e) => {
+            if (!_isMobileLB()) return;
+
+            if (_isPinching && e.touches.length >= 2) {
+                const dist = Math.hypot(
+                    e.touches[1].clientX - e.touches[0].clientX,
+                    e.touches[1].clientY - e.touches[0].clientY
+                );
+                _zoomScale = Math.max(1, Math.min(MAX_ZOOM, _pinchStartScale * (dist / _pinchStartDist)));
+                _clampPan();
+                _applyZoomTransform();
+                e.preventDefault();
+                return;
+            }
+
+            if (_isPanning && e.touches.length === 1 && _isZoomed()) {
+                _panX = _panBaseX + (e.touches[0].clientX - _t0StartX);
+                _panY = _panBaseY + (e.touches[0].clientY - _t0StartY);
+                _clampPan();
+                _applyZoomTransform();
+                e.preventDefault();
+            }
+        }, { passive: false });
 
         lightbox.addEventListener('touchend', (e) => {
             if (!_isMobileLB()) return;
-            if (e.changedTouches.length !== 1 || e.touches.length !== 0) return;
-            if (_currentScale() > 1.05) return;
-            const dx = e.changedTouches[0].clientX - touchStartX;
-            const dy = e.changedTouches[0].clientY - touchStartY;
-            if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 45) {
+
+            if (_isPinching) {
+                if (e.touches.length < 2) {
+                    _isPinching = false;
+                    if (_zoomScale < 1.05) resetZoom();
+                    // Transition to pan if one finger still held
+                    if (e.touches.length === 1) {
+                        _t0StartX = e.touches[0].clientX;
+                        _t0StartY = e.touches[0].clientY;
+                        _panBaseX = _panX;
+                        _panBaseY = _panY;
+                        _isPanning = _isZoomed();
+                    }
+                }
+                return;
+            }
+
+            if (_isPanning) {
+                _isPanning = false;
                 _wasGesture = true;
-                navigateLightbox(dx > 0 ? -1 : 1);
+                return;
+            }
+
+            // Swipe nav — only when not zoomed
+            if (!_isZoomed() && e.changedTouches.length === 1 && e.touches.length === 0) {
+                const dx = e.changedTouches[0].clientX - _t0StartX;
+                const dy = e.changedTouches[0].clientY - _t0StartY;
+                if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 45) {
+                    _wasGesture = true;
+                    navigateLightbox(dx > 0 ? -1 : 1);
+                }
             }
         }, { passive: true });
 
@@ -1575,8 +1666,9 @@
             }
         }
 
-        // Changer l'icône fullscreen selon l'état
+        // Changer l'icône fullscreen selon l'état + reset zoom (layout change)
         document.addEventListener('fullscreenchange', () => {
+            resetZoom();
             const icon = document.getElementById('lbFsIcon');
             if (!icon) return;
             if (document.fullscreenElement) {
