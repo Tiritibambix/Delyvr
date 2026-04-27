@@ -1198,18 +1198,26 @@
         async function toggleTheme() {
             const isLight = document.documentElement.classList.contains('light');
             const newTheme = isLight ? 'dark' : 'light';
+            const btn = document.getElementById('themeToggleBtn');
+            // Optimistic update
+            document.documentElement.classList.toggle('light', !isLight);
+            if (btn) btn.textContent = !isLight ? '🌙 Dark mode' : '☀️ Light mode';
             try {
                 const res = await fetch('/api/settings/theme', {
                     method: 'PATCH',
                     headers: { 'X-Admin-Password': adminPassword, 'Content-Type': 'application/json' },
                     body: JSON.stringify({ theme: newTheme })
                 });
-                if (res.ok) {
-                    document.documentElement.classList.toggle('light', newTheme === 'light');
-                    const btn = document.getElementById('themeToggleBtn');
-                    if (btn) btn.textContent = newTheme === 'light' ? '🌙 Dark mode' : '☀️ Light mode';
+                if (!res.ok) {
+                    // Revert
+                    document.documentElement.classList.toggle('light', isLight);
+                    if (btn) btn.textContent = isLight ? '🌙 Dark mode' : '☀️ Light mode';
+                    console.error('Theme update failed:', res.status, await res.text());
                 }
             } catch (err) {
+                // Revert
+                document.documentElement.classList.toggle('light', isLight);
+                if (btn) btn.textContent = isLight ? '🌙 Dark mode' : '☀️ Light mode';
                 console.error('Could not update theme:', err);
             }
         }
