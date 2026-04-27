@@ -48,10 +48,9 @@ This application has been coded with the help of AI and is provided as-is. While
 
 ### Admin Dashboard
 ![Admin Dashboard](docs/screenshots/admin.png)
-![Admin Dashboard 2](docs/screenshots/admin-2.png)
 
-### Gallery Created
-![Gallery Created](docs/screenshots/gallery-created.png)
+### Collection
+![Collection](docs/screenshots/collection.png)
 
 ### Client Download Page
 ![Client Download Page](docs/screenshots/customer-download.png)
