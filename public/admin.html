@@ -870,37 +870,6 @@
                     const s = await res.json();
                     document.documentElement.classList.toggle('light', s.theme === 'light');
                     const btn = document.getElementById('themeToggleBtn');
-                    if (btn) btn.textContent = s.theme === 'light' ? '🌙 Dark' : '☀️ Light';
-                }
-            } catch (e) {}
-        }
-        applyTheme();
-
-        async function toggleTheme() {
-            const isLight = document.documentElement.classList.contains('light');
-            const newTheme = isLight ? 'dark' : 'light';
-            try {
-                const res = await fetch('/api/settings/theme', {
-                    method: 'PATCH',
-                    headers: { 'X-Admin-Password': adminPassword, 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ theme: newTheme })
-                });
-                if (res.ok) {
-                    document.documentElement.classList.toggle('light', newTheme === 'light');
-                    const btn = document.getElementById('themeToggleBtn');
-                    if (btn) btn.textContent = newTheme === 'light' ? '🌙 Dark' : '☀️ Light';
-                }
-            } catch (e) {}
-        }
-
-        // Apply site theme from server settings
-        async function applyTheme() {
-            try {
-                const res = await fetch('/api/settings');
-                if (res.ok) {
-                    const s = await res.json();
-                    document.documentElement.classList.toggle('light', s.theme === 'light');
-                    const btn = document.getElementById('themeToggleBtn');
                     if (btn) btn.textContent = s.theme === 'light' ? '🌙 Dark mode' : '☀️ Light mode';
                 }
             } catch (e) {}
