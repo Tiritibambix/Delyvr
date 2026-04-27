@@ -1121,71 +1121,93 @@
 
         async function createGallery() {
             const eventName = document.getElementById('eventName').value.trim() || 'Untitled Event';
-            
-            const formData = new FormData();
-            formData.append('eventName', eventName);
-            selectedFiles.forEach(file => formData.append('photos', file));
-            
+            const files = [...selectedFiles]; // snapshot before resetForm clears the array
+            const total = files.length;
+            if (total === 0) return;
+
+            const BATCH_SIZE = 20;
+
             document.getElementById('createBtn').disabled = true;
             document.getElementById('progressContainer').classList.add('visible');
-            
-            try {
-                // Upload photos
-                const xhr = new XMLHttpRequest();
-                xhr.open('POST', '/api/gallery/create');
-                xhr.setRequestHeader('X-Admin-Password', adminPassword);
-                
-                xhr.upload.onprogress = (e) => {
-                    if (e.lengthComputable) {
-                        const pct = Math.round((e.loaded / e.total) * 100);
-                        document.getElementById('progressFill').style.width = pct + '%';
-                        document.getElementById('progressText').textContent = `Uploading... ${pct}%`;
-                    }
-                };
 
-                // Data sent to server — now wait for server-side processing
-                xhr.upload.onload = () => {
-                    document.getElementById('progressFill').style.width = '100%';
-                    document.getElementById('progressText').textContent = 'Processing photos…';
-                };
-                
-                const result = await new Promise((resolve, reject) => {
+            function setProgress(pct, label) {
+                document.getElementById('progressFill').style.width = pct + '%';
+                document.getElementById('progressText').textContent = label;
+            }
+
+            // Upload one batch via XHR; resolves with parsed JSON response.
+            // Within the batch, progress is interpolated into the overall counter.
+            function uploadBatch(url, method, batch, extraFields, uploadedSoFar) {
+                return new Promise((resolve, reject) => {
+                    const fd = new FormData();
+                    if (extraFields) Object.entries(extraFields).forEach(([k, v]) => fd.append(k, v));
+                    batch.forEach(f => fd.append('photos', f));
+
+                    const xhr = new XMLHttpRequest();
+                    xhr.open(method, url);
+                    xhr.setRequestHeader('X-Admin-Password', adminPassword);
+
+                    xhr.upload.onprogress = (e) => {
+                        if (!e.lengthComputable) return;
+                        const batchDone = uploadedSoFar + batch.length * (e.loaded / e.total);
+                        const pct = Math.round((batchDone / total) * 100);
+                        setProgress(pct, `Uploading… ${Math.floor(batchDone)} / ${total} photos`);
+                    };
+
                     xhr.onload = () => {
-                        if (xhr.status === 200) {
-                            resolve(JSON.parse(xhr.responseText));
+                        if (xhr.status >= 200 && xhr.status < 300) {
+                            try { resolve(JSON.parse(xhr.responseText)); }
+                            catch { resolve({}); }
                         } else {
-                            const body = JSON.parse(xhr.responseText || '{}');
-                            reject(new Error(body.error || 'Upload failed'));
+                            let msg = 'Upload failed';
+                            try { msg = JSON.parse(xhr.responseText).error || msg; } catch {}
+                            reject(new Error(msg));
                         }
                     };
-                    xhr.onerror = () => reject(new Error('Upload failed'));
-                    xhr.send(formData);
+                    xhr.onerror = () => reject(new Error('Network error'));
+                    xhr.send(fd);
                 });
-                
+            }
+
+            try {
+                // First batch: create the gallery
+                const firstBatch = files.slice(0, BATCH_SIZE);
+                setProgress(0, `Uploading… 0 / ${total} photos`);
+                const result = await uploadBatch('/api/gallery/create', 'POST', firstBatch, { eventName }, 0);
+                const galleryId = result.galleryId;
+                let uploaded = firstBatch.length;
+
+                // Remaining batches: add to the existing gallery
+                for (let i = BATCH_SIZE; i < total; i += BATCH_SIZE) {
+                    const batch = files.slice(i, i + BATCH_SIZE);
+                    await uploadBatch(`/api/gallery/${galleryId}/upload`, 'POST', batch, null, uploaded);
+                    uploaded += batch.length;
+                }
+
+                setProgress(100, `${total} photos uploaded`);
+
                 // Upload background if selected
                 if (selectedBgFile) {
-                    document.getElementById('progressText').textContent = 'Uploading cover image...';
-                    const bgFormData = new FormData();
-                    bgFormData.append('background', selectedBgFile);
-                    
-                    await fetch(`/api/gallery/${result.galleryId}/background`, {
+                    setProgress(100, 'Uploading cover image…');
+                    const bgFd = new FormData();
+                    bgFd.append('background', selectedBgFile);
+                    await fetch(`/api/gallery/${galleryId}/background`, {
                         method: 'POST',
                         headers: { 'X-Admin-Password': adminPassword },
-                        body: bgFormData
+                        body: bgFd
                     });
                 }
-                
+
                 // Show result
                 const baseUrl = window.location.origin;
-                document.getElementById('downloadLinkInput').value = `${baseUrl}/download/${result.galleryId}`;
-                document.getElementById('resultEventName').textContent = `${eventName} • ${result.fileCount} photos`;
-                
+                document.getElementById('downloadLinkInput').value = `${baseUrl}/download/${galleryId}`;
+                document.getElementById('resultEventName').textContent = `${eventName} • ${total} photos`;
                 document.getElementById('resultSection').classList.add('visible');
                 resetForm();
-                
                 loadGalleries();
-                
+
             } catch (err) {
+                document.getElementById('createBtn').disabled = false;
                 alert('Error creating gallery: ' + err.message);
             } finally {
                 document.getElementById('progressContainer').classList.remove('visible');

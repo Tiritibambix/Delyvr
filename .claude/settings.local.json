@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(node -e \"const m = require\\('./node_modules/multer/package.json'\\); console.log\\(m.version\\)\")"
+    ]
+  }
+}
