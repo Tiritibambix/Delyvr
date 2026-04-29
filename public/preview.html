@@ -834,11 +834,54 @@
         /* Responsive — handled by mobile lightbox block above */
 
         /* Social footer */
+        /* Keyboard shortcut hint — desktop only */
+        #kbHint {
+            position: fixed;
+            bottom: 20px;
+            right: 24px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 11px;
+            color: var(--text-secondary);
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.4s;
+            z-index: 50;
+        }
+        #kbHint.visible { opacity: 1; }
+        .kb-key {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 3px;
+            padding: 2px 6px;
+            font-size: 10px;
+            font-family: inherit;
+        }
+        @media (max-width: 768px), (hover: none) {
+            #kbHint { display: none; }
+        }
+
         .social-footer {
             text-align: center;
             padding: 32px 24px 24px;
             border-top: 1px solid var(--border);
             margin-top: 48px;
+        }
+
+        @media (max-width: 768px) {
+            .social-footer {
+                position: fixed;
+                bottom: 0; left: 0; right: 0;
+                margin-top: 0;
+                padding: 12px 16px;
+                background: var(--bg-primary);
+                border-top: 1px solid var(--border);
+                z-index: 90;
+            }
+            html.light .social-footer { background: var(--bg-primary); }
+            /* Avoid footer overlapping last gallery row */
+            .gallery-container { padding-bottom: 64px; }
         }
 
         .social-footer-links {
@@ -1395,6 +1438,7 @@
             updateLightbox();
             document.getElementById('lightbox').classList.add('active');
             document.body.style.overflow = 'hidden';
+            document.getElementById('kbHint').classList.add('visible');
             // Mobile : initialiser les dots et afficher l'overlay
             if (window.innerWidth <= 768) {
                 buildDots();
@@ -1407,6 +1451,7 @@
             document.getElementById('lightbox').classList.remove('active');
             document.body.style.overflow = '';
             if (typeof resetZoom === 'function') resetZoom();
+            document.getElementById('kbHint').classList.remove('visible');
             // Quitter le plein écran si actif
             if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
             clearTimeout(_lbHideTimer);
@@ -1802,5 +1847,11 @@
     </script>
     <footer class="social-footer" id="socialFooter"></footer>
     <div id="favToast"></div>
+    <div id="kbHint">
+        <span class="kb-key">←</span><span class="kb-key">→</span>
+        navigate
+        <span style="margin-left:6px" class="kb-key">Esc</span>
+        close
+    </div>
 </body>
 </html>

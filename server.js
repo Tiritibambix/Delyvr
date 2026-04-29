@@ -1140,6 +1140,26 @@ app.delete('/api/gallery/:galleryId/favorites', requireAuth, validateGalleryId, 
     res.json({ success: true });
 });
 
+// Export favorites as CSV
+app.get('/api/gallery/:galleryId/favorites/export', adminLimiter, requireAuth, validateGalleryId, (req, res) => {
+    const { galleryId } = req.params;
+    const gallery = galleries.get(galleryId);
+    if (!gallery) return res.status(404).json({ error: 'Gallery not found' });
+
+    const favs = gallery.favorites || {};
+    const rows = Object.entries(favs)
+        .map(([filename, voters]) => ({ filename, votes: voters.length }))
+        .filter(r => r.votes > 0)
+        .sort((a, b) => b.votes - a.votes);
+
+    const name = (gallery.eventName || 'favorites').replace(/[^a-z0-9_\-]/gi, '_');
+    const csv = ['filename,votes', ...rows.map(r => `"${r.filename.replace(/"/g, '""')}",${r.votes}`)].join('\r\n');
+
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="${name}_favorites.csv"`);
+    res.send(csv);
+});
+
 // --- Collection routes ---
 
 function validateCollectionId(req, res, next) {

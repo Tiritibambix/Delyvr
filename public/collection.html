@@ -330,6 +330,17 @@
             z-index: 10;
         }
 
+        @media (max-width: 600px) {
+            .social-footer {
+                position: fixed;
+                bottom: 0; left: 0; right: 0;
+                background: var(--bg);
+                z-index: 90;
+            }
+            html.light .social-footer { background: var(--bg); }
+            .galleries-grid { padding-bottom: 64px; }
+        }
+
         .social-footer-links {
             display: flex;
             align-items: center;
