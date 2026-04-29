@@ -342,6 +342,12 @@
         }
         applyTheme();
 
+        function formatBytes(b) {
+            if (b >= 1073741824) return (b / 1073741824).toFixed(1) + ' GB';
+            if (b >= 1048576)    return (b / 1048576).toFixed(0) + ' MB';
+            return (b / 1024).toFixed(0) + ' KB';
+        }
+
         const galleryId = window.location.pathname.split('/').pop();
         const fromCollection = new URLSearchParams(window.location.search).get('from');
 
@@ -363,6 +369,9 @@
 
                 if (data.downloadsEnabled === false) {
                     document.getElementById('downloadBtn').style.display = 'none';
+                } else if (data.totalSizeBytes) {
+                    const sizeLabel = formatBytes(data.totalSizeBytes);
+                    document.getElementById('downloadAllText').textContent = `${t.downloadAll} · ${sizeLabel}`;
                 }
 
                 const previewHref = fromCollection

@@ -442,11 +442,27 @@
         .section-header {
             display: flex; align-items: center; justify-content: space-between;
             margin-bottom: 12px;
+            gap: 10px;
         }
         .section-label {
             font-size: 10px; font-weight: 600;
             letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted);
+            flex-shrink: 0;
         }
+        .gallery-search {
+            flex: 1;
+            max-width: 200px;
+            background: var(--bg3);
+            border: 1px solid var(--border2);
+            border-radius: 4px;
+            padding: 4px 10px;
+            font-size: 12px;
+            color: var(--text);
+            font-family: inherit;
+            outline: none;
+        }
+        .gallery-search:focus { border-color: var(--accent); }
+        .gallery-search::placeholder { color: var(--muted2); }
 
         /* ── RESULT SECTION ── */
         .result-section {
@@ -550,6 +566,15 @@
             background: none; border: none; font-family: inherit; padding: 0;
         }
         .pill-remove:hover { color: var(--error); }
+        .pill-move {
+            color: var(--muted2); cursor: pointer; font-size: 11px; line-height: 1;
+            background: none; border: none; font-family: inherit; padding: 0;
+            display: none; /* shown only on touch devices */
+        }
+        .pill-move:hover { color: var(--text); }
+        @media (hover: none), (max-width: 768px) {
+            .pill-move { display: inline; }
+        }
         .collection-drop-hint { font-size: 12px; color: var(--muted2); font-style: italic; }
 
         .add-gallery-pill {
@@ -915,6 +940,7 @@
             <div>
                 <div class="section-header">
                     <span class="section-label">Galleries</span>
+                    <input class="gallery-search" id="gallerySearch" type="search" placeholder="Search…" oninput="filterGalleries(this.value)">
                 </div>
                 <div id="galleryList"><div class="empty-state">Loading...</div></div>
             </div>
@@ -1441,82 +1467,94 @@
                 if (!res.ok) throw new Error('Failed to load galleries');
                 
                 const galleries = await res.json();
-                const container = document.getElementById('galleryList');
-                
-                if (galleries.length === 0) {
-                    container.innerHTML = '<div class="empty-state">No galleries yet. Create your first one above!</div>';
-                    return;
-                }
-                
-                container.innerHTML = galleries.map(g => `
-                    <div class="gallery-item" draggable="true"
-                         id="gallery-item-${g.id}"
-                         ondragstart="handleGalleryDragStart(event, '${g.id}')"
-                         ondragend="handleGalleryDragEnd(event)">
-
-                        <div class="gallery-cover ${g.hasBackground ? 'has-image' : ''}"
-                             id="cover-${g.id}"
-                             onclick="document.getElementById('cover-input-${g.id}').click()"
-                             ondragover="handleCoverDragOver(event, '${g.id}')"
-                             ondragleave="handleCoverDragLeave(event, '${g.id}')"
-                             ondrop="handleCoverDrop(event, '${g.id}')">
-                            ${g.hasBackground ? `<img src="/api/gallery/${g.id}/background?thumb=1&t=${Date.now()}" alt="">` : ''}
-                            <div class="gallery-cover-placeholder">
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
-                            </div>
-                            <div class="gallery-cover-overlay">
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
-                                <span>${g.hasBackground ? 'Drop or click' : 'Drop or click'}</span>
-                            </div>
-                            <input type="file" id="cover-input-${g.id}" accept="image/*"
-                                   onchange="handleCoverSelect(event, '${g.id}')" style="display:none;">
-                        </div>
-
-                        <div class="gallery-info">
-                            <div class="gallery-name" contenteditable="true" spellcheck="false"
-                                 onblur="renameGalleryInline('${g.id}', this.textContent)"
-                                 onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur();}">${escapeHtml(g.eventName)}</div>
-                            <div class="gallery-meta">${g.fileCount} photos · ${new Date(g.created).toLocaleDateString()}${g.collectionId ? ' · <span class="in-collection">In collection</span>' : ''}</div>
-                            <div class="gallery-bottom">
-                                <label class="downloads-toggle" title="Allow clients to download">
-                                    <span class="toggle-switch">
-                                        <input type="checkbox" ${g.downloadsEnabled !== false ? 'checked' : ''}
-                                               onchange="toggleDownloads('${g.id}', this.checked, this)">
-                                        <span class="toggle-track"></span>
-                                    </span>
-                                    Downloads
-                                </label>
-                                <div class="fav-info">
-                                    ♥ ${g.favoritesCount || 0}
-                                    ${g.favoritesCount > 0 ? `<button class="btn-fav-action" onclick="viewFavorites('${g.id}')">View</button><button class="btn-fav-action" onclick="resetFavorites('${g.id}')">Reset</button>` : ''}
-                                </div>
-                                <div class="fav-info" title="Total downloads">
-                                    ↓ ${g.downloadCount || 0}
-                                </div>
-                            </div>
-                        </div>
-
-                        <div class="gallery-actions">
-                            <button class="btn-icon" onclick="copyGalleryLink('${g.id}', 'download', this)" title="Copy link">
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
-                            </button>
-                            <button class="btn-icon" onclick="openPhotosModal('${g.id}')" title="Manage photos">
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
-                            </button>
-                            <button class="btn-icon btn-icon-danger" onclick="deleteGallery('${g.id}')" title="Delete">
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
-                            </button>
-                        </div>
-                    </div>
-                `).join('');
-
-                // Cache for collection pill labels and refresh collection rendering
                 _galleriesData = galleries;
                 renderCollections(_collectionsData);
+                renderGalleryItems(galleries);
 
             } catch (err) {
                 console.error('Error loading galleries:', err);
             }
+        }
+
+        function renderGalleryItems(items) {
+            const container = document.getElementById('galleryList');
+            if (!items || items.length === 0) {
+                const query = document.getElementById('gallerySearch').value.trim();
+                container.innerHTML = query
+                    ? `<div class="empty-state">No galleries match "${escapeHtml(query)}".</div>`
+                    : '<div class="empty-state">No galleries yet. Create your first one above!</div>';
+                return;
+            }
+            container.innerHTML = items.map(g => `
+                <div class="gallery-item" draggable="true"
+                     id="gallery-item-${g.id}"
+                     ondragstart="handleGalleryDragStart(event, '${g.id}')"
+                     ondragend="handleGalleryDragEnd(event)">
+
+                    <div class="gallery-cover ${g.hasBackground ? 'has-image' : ''}"
+                         id="cover-${g.id}"
+                         onclick="document.getElementById('cover-input-${g.id}').click()"
+                         ondragover="handleCoverDragOver(event, '${g.id}')"
+                         ondragleave="handleCoverDragLeave(event, '${g.id}')"
+                         ondrop="handleCoverDrop(event, '${g.id}')">
+                        ${g.hasBackground ? `<img src="/api/gallery/${g.id}/background?thumb=1&t=${Date.now()}" alt="">` : ''}
+                        <div class="gallery-cover-placeholder">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
+                        </div>
+                        <div class="gallery-cover-overlay">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
+                            <span>Drop or click</span>
+                        </div>
+                        <input type="file" id="cover-input-${g.id}" accept="image/*"
+                               onchange="handleCoverSelect(event, '${g.id}')" style="display:none;">
+                    </div>
+
+                    <div class="gallery-info">
+                        <div class="gallery-name" contenteditable="true" spellcheck="false"
+                             onblur="renameGalleryInline('${g.id}', this.textContent)"
+                             onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur();}">${escapeHtml(g.eventName)}</div>
+                        <div class="gallery-meta">${g.fileCount} photos · ${new Date(g.created).toLocaleDateString()}${g.collectionId ? ' · <span class="in-collection">In collection</span>' : ''}</div>
+                        <div class="gallery-bottom">
+                            <label class="downloads-toggle" title="Allow clients to download">
+                                <span class="toggle-switch">
+                                    <input type="checkbox" ${g.downloadsEnabled !== false ? 'checked' : ''}
+                                           onchange="toggleDownloads('${g.id}', this.checked, this)">
+                                    <span class="toggle-track"></span>
+                                </span>
+                                Downloads
+                            </label>
+                            <div class="fav-info">
+                                ♥ ${g.favoritesCount || 0}
+                                ${g.favoritesCount > 0 ? `<button class="btn-fav-action" onclick="viewFavorites('${g.id}')">View</button><button class="btn-fav-action" onclick="resetFavorites('${g.id}')">Reset</button>` : ''}
+                            </div>
+                            <div class="fav-info" title="Total downloads">
+                                ↓ ${g.downloadCount || 0}
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="gallery-actions">
+                        <button class="btn-icon" onclick="copyGalleryLink('${g.id}', 'download', this)" title="Copy link">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                        </button>
+                        <button class="btn-icon" onclick="openPhotosModal('${g.id}')" title="Manage photos">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
+                        </button>
+                        <button class="btn-icon btn-icon-danger" onclick="deleteGallery('${g.id}')" title="Delete">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
+                        </button>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function filterGalleries(query) {
+            if (!_galleriesData) return;
+            const q = query.trim().toLowerCase();
+            const filtered = q
+                ? _galleriesData.filter(g => g.eventName.toLowerCase().includes(q))
+                : _galleriesData;
+            renderGalleryItems(filtered);
         }
 
         function handleCoverDragOver(e, galleryId) {
@@ -1864,7 +1902,9 @@
                                     ondragover="handlePillDragOver(event)"
                                     ondrop="handlePillDrop(event, '${c.id}')"
                                     ondragend="handlePillDragEnd(event)">
+                            <button class="pill-move" onclick="movePill('${c.id}','${gid}',-1)" title="Move left">◀</button>
                             ${name}
+                            <button class="pill-move" onclick="movePill('${c.id}','${gid}',1)" title="Move right">▶</button>
                             <button class="pill-remove" onclick="removeFromCollection('${c.id}', '${gid}')" title="Remove">✕</button>
                         </span>`;
                     }).join('') + `<button class="add-gallery-pill" onclick="openGalleryPicker('${c.id}')">+ Add gallery</button>`;
@@ -1961,6 +2001,30 @@
         function handlePillDragEnd(event) {
             if (_draggedPill) _draggedPill.style.opacity = '';
             _draggedPill = null;
+        }
+
+        async function movePill(collectionId, galleryId, direction) {
+            const container = document.getElementById(`col-drop-${collectionId}`);
+            const pills = Array.from(container.querySelectorAll('.gallery-pill'));
+            const idx = pills.findIndex(p => p.dataset.gid === galleryId);
+            if (idx === -1) return;
+            const newIdx = idx + direction;
+            if (newIdx < 0 || newIdx >= pills.length) return;
+
+            // Swap in DOM
+            const ref = direction > 0 ? pills[newIdx].nextSibling : pills[newIdx];
+            direction > 0 ? container.insertBefore(pills[idx], ref?.nextSibling ?? null)
+                          : container.insertBefore(pills[idx], ref);
+
+            // Save new order
+            const newOrder = Array.from(container.querySelectorAll('.gallery-pill')).map(p => p.dataset.gid);
+            try {
+                await fetch(`/api/collection/${collectionId}/galleries/reorder`, {
+                    method: 'PATCH',
+                    headers: { 'X-Admin-Password': adminPassword, 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ galleryIds: newOrder })
+                });
+            } catch (_) {}
         }
 
         let _galleriesData = []; // cache for collection pill labels

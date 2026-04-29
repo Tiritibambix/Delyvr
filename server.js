@@ -1000,11 +1000,19 @@ app.get('/api/gallery/:galleryId/info', publicReadLimiter, validateGalleryId, (r
     const gallery = galleries.get(galleryId);
     const eventName = gallery ? gallery.eventName : 'Your Photos';
 
+    let totalSizeBytes = 0;
+    if (fs.existsSync(galleryPath)) {
+        fs.readdirSync(galleryPath).filter(f => !f.startsWith('.')).forEach(f => {
+            try { totalSizeBytes += fs.statSync(path.join(galleryPath, f)).size; } catch (_) {}
+        });
+    }
+
     res.json({
         galleryId,
         eventName,
         background: backgroundFile ? `/api/gallery/${galleryId}/background` : null,
         fileCount,
+        totalSizeBytes,
         downloadsEnabled: gallery ? gallery.downloadsEnabled !== false : true,
         downloadCount: gallery ? (gallery.downloadCount || 0) : 0
     });
@@ -1189,14 +1197,20 @@ app.get('/api/collection/:collectionId', publicReadLimiter, validateCollectionId
         ? new Set(fs.readdirSync(backgroundsDir))
         : new Set();
 
+    let totalSizeBytes = 0;
     const galleriesData = collection.galleryIds
         .map(gid => {
             const gallery = galleries.get(gid);
             if (!gallery) return null;
             const galleryPath = path.join(DATA_DIR, 'uploads', gid);
-            const fileCount = fs.existsSync(galleryPath)
-                ? fs.readdirSync(galleryPath).filter(f => !f.startsWith('.')).length
-                : 0;
+            let fileCount = 0;
+            if (fs.existsSync(galleryPath)) {
+                const files = fs.readdirSync(galleryPath).filter(f => !f.startsWith('.'));
+                fileCount = files.length;
+                files.forEach(f => {
+                    try { totalSizeBytes += fs.statSync(path.join(galleryPath, f)).size; } catch (_) {}
+                });
+            }
             const hasBackground = [...bgFiles].some(f => f.startsWith(gid));
             return {
                 id: gid,
@@ -1214,6 +1228,7 @@ app.get('/api/collection/:collectionId', publicReadLimiter, validateCollectionId
         id: collectionId,
         name: collection.name,
         background: collHasBg ? `/api/collection/${collectionId}/background` : null,
+        totalSizeBytes,
         galleries: galleriesData
     });
 });
