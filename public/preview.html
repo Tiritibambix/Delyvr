@@ -843,7 +843,7 @@
             align-items: center;
             gap: 10px;
             font-size: 11px;
-            color: var(--text-secondary);
+            color: rgba(255,255,255,0.7);
             opacity: 0;
             pointer-events: none;
             transition: opacity 0.4s;
@@ -851,12 +851,13 @@
         }
         #kbHint.visible { opacity: 1; }
         .kb-key {
-            background: var(--bg-secondary);
-            border: 1px solid var(--border);
+            background: rgba(255,255,255,0.12);
+            border: 1px solid rgba(255,255,255,0.25);
             border-radius: 3px;
             padding: 2px 6px;
             font-size: 10px;
             font-family: inherit;
+            color: #fff;
         }
         @media (max-width: 768px), (hover: none) {
             #kbHint { display: none; }
