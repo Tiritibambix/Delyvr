@@ -706,6 +706,14 @@ app.get('/api/gallery/:galleryId/background', publicReadLimiter, validateGallery
                     .jpeg({ quality: 75 })
                     .pipe(res);
             }
+            if (req.query.card === '1') {
+                res.setHeader('Content-Type', 'image/jpeg');
+                res.setHeader('Cache-Control', 'public, max-age=86400');
+                return sharp(fullPath)
+                    .resize(800, null, { fit: 'inside', withoutEnlargement: true })
+                    .jpeg({ quality: 82 })
+                    .pipe(res);
+            }
             return res.sendFile(fullPath);
         }
     }
@@ -1230,6 +1238,14 @@ app.get('/api/collection/:collectionId/background', publicReadLimiter, validateC
                 return sharp(fullPath)
                     .resize(200, 200, { fit: 'cover' })
                     .jpeg({ quality: 75 })
+                    .pipe(res);
+            }
+            if (req.query.card === '1') {
+                res.setHeader('Content-Type', 'image/jpeg');
+                res.setHeader('Cache-Control', 'public, max-age=86400');
+                return sharp(fullPath)
+                    .resize(800, null, { fit: 'inside', withoutEnlargement: true })
+                    .jpeg({ quality: 82 })
                     .pipe(res);
             }
             return res.sendFile(fullPath);
