@@ -1745,7 +1745,7 @@
             try {
                 const res = await fetch(`/api/gallery/${galleryId}/photos`);
                 if (!res.ok) throw new Error('Failed');
-                const photos = await res.json();
+                const { photos } = await res.json();
                 const n = photos.length;
                 document.getElementById('photosModalMeta').textContent = `${n} photo${n !== 1 ? 's' : ''}`;
                 const grid = document.getElementById('photosGrid');
