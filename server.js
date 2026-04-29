@@ -37,7 +37,7 @@ if (!ADMIN_PASSWORD) {
 
 // File size limits (from .env, in MB)
 const MAX_PHOTO_BYTES = parseInt(process.env.MAX_UPLOAD_MB || '200') * 1024 * 1024;
-const MAX_BACKGROUND_BYTES = parseInt(process.env.MAX_BACKGROUND_MB || '20') * 1024 * 1024;
+const MAX_BACKGROUND_BYTES = parseInt(process.env.MAX_BACKGROUND_MB || '25') * 1024 * 1024;
 
 // Install directory — where Node.js stores uploads, backgrounds, and galleries.json
 // Docker: always /data (set via environment in docker-compose.yml)

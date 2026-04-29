@@ -880,6 +880,9 @@
         let selectedBgFile = null;
         let adminPassword = '';
 
+        // Must match MAX_BACKGROUND_MB in .env (default 25)
+        const MAX_BG_MB = 25;
+
         // Password is stored only in memory (adminPassword variable).
         // Requires re-login on page reload for security.
         // The primary protection against interception is HTTPS (see README deployment section).
@@ -1078,6 +1081,10 @@
         });
 
         function handleBgFile(file) {
+            if (file.size > MAX_BG_MB * 1024 * 1024) {
+                alert(`Background image is too large (${(file.size / 1024 / 1024).toFixed(1)} MB). Maximum size is ${MAX_BG_MB} MB.`);
+                return;
+            }
             selectedBgFile = file;
             const reader = new FileReader();
             reader.onload = (e) => {
@@ -1160,11 +1167,17 @@
                     setProgress(100, 'Uploading cover image…');
                     const bgFd = new FormData();
                     bgFd.append('background', selectedBgFile);
-                    await fetch(`/api/gallery/${galleryId}/background`, {
+                    const bgRes = await fetch(`/api/gallery/${galleryId}/background`, {
                         method: 'POST',
                         headers: { 'X-Admin-Password': adminPassword },
                         body: bgFd
                     });
+                    if (!bgRes.ok) {
+                        const msg = bgRes.status === 413
+                            ? `Cover image is too large. Maximum size is ${MAX_BG_MB} MB.`
+                            : 'Could not upload cover image.';
+                        alert(msg);
+                    }
                 }
 
                 // Show result
@@ -1223,6 +1236,10 @@
         }
 
         async function uploadCollectionBackground(collectionId, file) {
+            if (file.size > MAX_BG_MB * 1024 * 1024) {
+                alert(`Background image is too large (${(file.size / 1024 / 1024).toFixed(1)} MB). Maximum size is ${MAX_BG_MB} MB.`);
+                return;
+            }
             const formData = new FormData();
             formData.append('background', file);
             try {
@@ -1234,7 +1251,10 @@
                 if (res.ok) {
                     loadCollections();
                 } else {
-                    alert('Could not upload collection cover.');
+                    const msg = res.status === 413
+                        ? `Cover image is too large. Maximum size is ${MAX_BG_MB} MB.`
+                        : 'Could not upload collection cover.';
+                    alert(msg);
                 }
             } catch (err) {
                 alert('Could not upload collection cover: ' + err.message);
@@ -1455,7 +1475,12 @@
                     body: formData
                 });
 
-                if (!res.ok) throw new Error('Upload failed');
+                if (!res.ok) {
+                    const msg = res.status === 413
+                        ? `Image too large. Maximum size is ${MAX_BG_MB} MB.`
+                        : 'Upload failed.';
+                    throw new Error(msg);
+                }
 
                 // Show success
                 spinner.style.display = 'none';
@@ -1475,7 +1500,7 @@
                 // Show error
                 spinner.style.display = 'none';
                 errorIcon.style.display = 'block';
-                message.textContent = 'Upload failed';
+                message.textContent = err.message || 'Upload failed';
                 toast.classList.add('error');
 
                 setTimeout(() => {

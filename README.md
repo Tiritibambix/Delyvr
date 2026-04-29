@@ -117,7 +117,7 @@ All settings live in your `docker-compose.yml` environment block (or in a `.env`
 | `ADMIN_PASSWORD` | *(required)* | Password to access the admin dashboard. Use a long random string. |
 | `PORT` | `3000` | TCP port the server listens on |
 | `MAX_UPLOAD_MB` | `200` | Max size per photo file, in MB |
-| `MAX_BACKGROUND_MB` | `20` | Max size for background images, in MB |
+| `MAX_BACKGROUND_MB` | `25` | Max size for background images, in MB |
 | `INSTALL_DIR` | *(project dir)* | Set to `/data` in Docker. Do not change. |
 | `TRUST_PROXY` | `0` | Set to `1` when running behind a reverse proxy (Nginx, Caddy, Traefik). Enables correct client IP detection for rate limiting. |
 | `ADMIN_ALLOWED_IPS` | *(unset — all IPs allowed)* | Comma-separated list of IPs or CIDR ranges allowed to access admin routes. Example: `88.123.45.67,192.168.1.0/24`. When unset, no IP restriction is applied. |
