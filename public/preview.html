@@ -233,6 +233,31 @@
             height: 15px;
         }
 
+        /* Favorites toast */
+        #favToast {
+            position: fixed;
+            bottom: 28px;
+            left: 50%;
+            transform: translateX(-50%) translateY(12px);
+            background: rgba(20,20,22,0.92);
+            color: #fff;
+            padding: 9px 20px;
+            border-radius: 20px;
+            font-size: 13px;
+            font-weight: 500;
+            letter-spacing: 0.02em;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.2s, transform 0.2s;
+            z-index: 2000;
+            white-space: nowrap;
+        }
+        html.light #favToast { background: rgba(40,40,44,0.92); }
+        #favToast.visible {
+            opacity: 1;
+            transform: translateX(-50%) translateY(0);
+        }
+
         /* Gallery Grid */
         .gallery-container {
             max-width: 1600px;
@@ -942,7 +967,9 @@
                 loadingGallery: 'Loading gallery...',
                 notFoundTitle: 'Gallery Not Found',
                 notFoundText: 'This gallery may have been removed or the link is incorrect.',
-                backToCollection: '← Back to collection'
+                backToCollection: '← Back to collection',
+                favAdded: '♥ Saved to favorites',
+                favRemoved: 'Removed from favorites'
             },
             pt: {
                 yourPhotos: 'Suas Fotos',
@@ -954,7 +981,9 @@
                 loadingGallery: 'Carregando galeria...',
                 notFoundTitle: 'Galeria Não Encontrada',
                 notFoundText: 'Esta galeria pode ter sido removida ou o link está incorreto.',
-                backToCollection: '← Voltar à coleção'
+                backToCollection: '← Voltar à coleção',
+                favAdded: '♥ Salvo nos favoritos',
+                favRemoved: 'Removido dos favoritos'
             },
             es: {
                 yourPhotos: 'Tus Fotos',
@@ -966,7 +995,9 @@
                 loadingGallery: 'Cargando galería...',
                 notFoundTitle: 'Galería No Encontrada',
                 notFoundText: 'Esta galería puede haber sido eliminada o el enlace es incorrecto.',
-                backToCollection: '← Volver a la colección'
+                backToCollection: '← Volver a la colección',
+                favAdded: '♥ Guardado en favoritos',
+                favRemoved: 'Eliminado de favoritos'
             },
             it: {
                 yourPhotos: 'Le Tue Foto',
@@ -978,7 +1009,9 @@
                 loadingGallery: 'Caricamento galleria...',
                 notFoundTitle: 'Galleria Non Trovata',
                 notFoundText: 'Questa galleria potrebbe essere stata rimossa o il link non è corretto.',
-                backToCollection: '← Torna alla collezione'
+                backToCollection: '← Torna alla collezione',
+                favAdded: '♥ Salvato nei preferiti',
+                favRemoved: 'Rimosso dai preferiti'
             },
             fr: {
                 yourPhotos: 'Vos Photos',
@@ -990,7 +1023,9 @@
                 loadingGallery: 'Chargement de la galerie...',
                 notFoundTitle: 'Galerie Introuvable',
                 notFoundText: 'Cette galerie a peut-être été supprimée ou le lien est incorrect.',
-                backToCollection: 'Retour à la collection'
+                backToCollection: 'Retour à la collection',
+                favAdded: '♥ Ajouté aux favoris',
+                favRemoved: 'Retiré des favoris'
             }
         };
 
@@ -1049,10 +1084,21 @@
         // Favorites state — only this visitor's favorites
         let localFavorites = new Set();
 
+        let _favToastTimer = null;
+        function showFavToast(added) {
+            const el = document.getElementById('favToast');
+            if (!el) return;
+            el.textContent = added ? t.favAdded : t.favRemoved;
+            el.classList.add('visible');
+            clearTimeout(_favToastTimer);
+            _favToastTimer = setTimeout(() => el.classList.remove('visible'), 2000);
+        }
+
         async function toggleFavorite(filename) {
             const wasFavorited = localFavorites.has(filename);
             // Optimistic update
             if (wasFavorited) { localFavorites.delete(filename); } else { localFavorites.add(filename); }
+            showFavToast(!wasFavorited);
 
             // Update card button
             const btn = document.querySelector(`.photo-favorite[data-filename="${CSS.escape(filename)}"]`);
@@ -1755,5 +1801,6 @@
         renderSocialFooter();
     </script>
     <footer class="social-footer" id="socialFooter"></footer>
+    <div id="favToast"></div>
 </body>
 </html>

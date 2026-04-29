@@ -394,11 +394,11 @@
 
     <script>
         const translations = {
-            en: { loading:'Loading...', photos:'photos', photo:'photo', downloadAll:'Download All', browse:'Browse', download:'Download', copyLink:'Copy Link', copied:'Copied!', notFoundTitle:'Collection Not Found', notFoundText:'This collection may have been removed or the link is incorrect.' },
-            fr: { loading:'Chargement...', photos:'photos', photo:'photo', downloadAll:'Tout télécharger', browse:'Parcourir', download:'Télécharger', copyLink:'Copier le lien', copied:'Copié !', notFoundTitle:'Collection introuvable', notFoundText:'Cette collection a peut-être été supprimée ou le lien est incorrect.' },
-            es: { loading:'Cargando...', photos:'fotos', photo:'foto', downloadAll:'Descargar Todo', browse:'Ver fotos', download:'Descargar', copyLink:'Copiar enlace', copied:'¡Copiado!', notFoundTitle:'Colección No Encontrada', notFoundText:'Esta colección puede haber sido eliminada o el enlace es incorrecto.' },
-            pt: { loading:'Carregando...', photos:'fotos', photo:'foto', downloadAll:'Baixar Tudo', browse:'Ver fotos', download:'Baixar', copyLink:'Copiar link', copied:'Copiado!', notFoundTitle:'Coleção Não Encontrada', notFoundText:'Esta coleção pode ter sido removida ou o link está incorreto.' },
-            it: { loading:'Caricamento...', photos:'foto', photo:'foto', downloadAll:'Scarica Tutto', browse:'Sfoglia', download:'Scarica', copyLink:'Copia link', copied:'Copiato!', notFoundTitle:'Collezione Non Trovata', notFoundText:'Questa collezione potrebbe essere stata rimossa o il link non è corretto.' }
+            en: { loading:'Loading...', photos:'photos', photo:'photo', galleries:'galleries', gallery:'gallery', downloadAll:'Download All', browse:'Browse', download:'Download', copyLink:'Copy Link', copied:'Copied!', notFoundTitle:'Collection Not Found', notFoundText:'This collection may have been removed or the link is incorrect.' },
+            fr: { loading:'Chargement...', photos:'photos', photo:'photo', galleries:'galeries', gallery:'galerie', downloadAll:'Tout télécharger', browse:'Parcourir', download:'Télécharger', copyLink:'Copier le lien', copied:'Copié !', notFoundTitle:'Collection introuvable', notFoundText:'Cette collection a peut-être été supprimée ou le lien est incorrect.' },
+            es: { loading:'Cargando...', photos:'fotos', photo:'foto', galleries:'galerías', gallery:'galería', downloadAll:'Descargar Todo', browse:'Ver fotos', download:'Descargar', copyLink:'Copiar enlace', copied:'¡Copiado!', notFoundTitle:'Colección No Encontrada', notFoundText:'Esta colección puede haber sido eliminada o el enlace es incorrecto.' },
+            pt: { loading:'Carregando...', photos:'fotos', photo:'foto', galleries:'galerias', gallery:'galeria', downloadAll:'Baixar Tudo', browse:'Ver fotos', download:'Baixar', copyLink:'Copiar link', copied:'Copiado!', notFoundTitle:'Coleção Não Encontrada', notFoundText:'Esta coleção pode ter sido removida ou o link está incorreto.' },
+            it: { loading:'Caricamento...', photos:'foto', photo:'foto', galleries:'gallerie', gallery:'galleria', downloadAll:'Scarica Tutto', browse:'Sfoglia', download:'Scarica', copyLink:'Copia link', copied:'Copiato!', notFoundTitle:'Collezione Non Trovata', notFoundText:'Questa collezione potrebbe essere stata rimossa o il link non è corretto.' }
         };
 
         function getLocale() {
@@ -453,7 +453,7 @@
                 const totalPhotos = (data.galleries || []).reduce((sum, g) => sum + (g.fileCount || 0), 0);
                 const galleryCount = (data.galleries || []).length;
                 document.getElementById('headerMeta').textContent =
-                    `${galleryCount} ${galleryCount === 1 ? 'galerie' : 'galeries'} · ${totalPhotos} ${totalPhotos === 1 ? t.photo : t.photos}`;
+                    `${galleryCount} ${galleryCount === 1 ? t.gallery : t.galleries} · ${totalPhotos} ${totalPhotos === 1 ? t.photo : t.photos}`;
 
                 if (data.background) {
                     const bgImg = document.getElementById('bgImage');

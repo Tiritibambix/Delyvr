@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -336,7 +336,9 @@
             box-sizing: border-box;
         }
         .file-count { font-size: 11px; color: var(--muted); margin-bottom: 4px; }
-        .file-pills { display: flex; flex-wrap: wrap; gap: 4px; }
+        .link-btn { background: none; border: none; cursor: pointer; color: var(--muted); font-size: 11px; font-family: inherit; padding: 0; text-decoration: underline; }
+        .link-btn:hover { color: var(--error); }
+        .file-pills { display: flex; flex-wrap: wrap; gap: 4px; max-height: 120px; overflow-y: auto; }
         .file-pill {
             display: inline-flex; align-items: center; gap: 4px;
             background: var(--bg3); border: 1px solid var(--border2);
@@ -1024,7 +1026,25 @@
                 return;
             }
             const n = selectedFiles.length;
-            container.innerHTML = `<span class="file-count-pill">${n} photo${n > 1 ? 's' : ''} selected</span>`;
+            const pillsHtml = selectedFiles.map((f, i) =>
+                `<span class="file-pill" title="${escapeAttr(f.name)}">
+                    <span class="file-pill-name">${escapeAttr(f.name)}</span>
+                    <button class="file-pill-remove" onclick="removeFile(${i})" title="Remove">×</button>
+                </span>`
+            ).join('');
+            container.innerHTML = `
+                <div class="file-count">${n} photo${n > 1 ? 's' : ''} selected · <button class="link-btn" onclick="clearAllFiles()">Clear all</button></div>
+                <div class="file-pills">${pillsHtml}</div>`;
+        }
+
+        function clearAllFiles() {
+            selectedFiles = [];
+            updateFileList();
+            document.getElementById('createBtn').disabled = true;
+        }
+
+        function escapeAttr(str) {
+            return String(str).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
         }
 
         // Background/Cover image drop zone
@@ -1082,7 +1102,7 @@
 
         function handleBgFile(file) {
             if (file.size > MAX_BG_MB * 1024 * 1024) {
-                alert(`Background image is too large (${(file.size / 1024 / 1024).toFixed(1)} MB). Maximum size is ${MAX_BG_MB} MB.`);
+                showError(`Background image is too large (${(file.size / 1024 / 1024).toFixed(1)} MB). Maximum size is ${MAX_BG_MB} MB.`);
                 return;
             }
             selectedBgFile = file;
@@ -1176,7 +1196,7 @@
                         const msg = bgRes.status === 413
                             ? `Cover image is too large. Maximum size is ${MAX_BG_MB} MB.`
                             : 'Could not upload cover image.';
-                        alert(msg);
+                        showError(msg);
                     }
                 }
 
@@ -1190,7 +1210,7 @@
 
             } catch (err) {
                 document.getElementById('createBtn').disabled = false;
-                alert('Error creating gallery: ' + err.message);
+                showError('Error creating gallery: ' + err.message);
             } finally {
                 document.getElementById('progressContainer').classList.remove('visible');
             }
@@ -1206,6 +1226,22 @@
             document.getElementById('bgDropZone').classList.remove('has-image');
             document.getElementById('createBtn').disabled = true;
             document.getElementById('progressFill').style.width = '0%';
+        }
+
+        let _errorToastTimer = null;
+        function showError(msg) {
+            const toast = document.getElementById('uploadToast');
+            const spinner = document.getElementById('toastSpinner');
+            const successIcon = document.getElementById('toastSuccess');
+            const errorIcon = document.getElementById('toastError');
+            const message = document.getElementById('toastMessage');
+            spinner.style.display = 'none';
+            successIcon.style.display = 'none';
+            errorIcon.style.display = 'block';
+            message.textContent = msg;
+            toast.className = 'upload-toast visible error';
+            clearTimeout(_errorToastTimer);
+            _errorToastTimer = setTimeout(() => toast.classList.remove('visible', 'error'), 4500);
         }
 
         async function toggleTheme() {
@@ -1237,7 +1273,7 @@
 
         async function uploadCollectionBackground(collectionId, file) {
             if (file.size > MAX_BG_MB * 1024 * 1024) {
-                alert(`Background image is too large (${(file.size / 1024 / 1024).toFixed(1)} MB). Maximum size is ${MAX_BG_MB} MB.`);
+                showError(`Background image is too large (${(file.size / 1024 / 1024).toFixed(1)} MB). Maximum size is ${MAX_BG_MB} MB.`);
                 return;
             }
             const formData = new FormData();
@@ -1254,10 +1290,10 @@
                     const msg = res.status === 413
                         ? `Cover image is too large. Maximum size is ${MAX_BG_MB} MB.`
                         : 'Could not upload collection cover.';
-                    alert(msg);
+                    showError(msg);
                 }
             } catch (err) {
-                alert('Could not upload collection cover: ' + err.message);
+                showError('Could not upload collection cover: ' + err.message);
             }
         }
 
@@ -1280,7 +1316,7 @@
                 document.getElementById('adminLogo').src = '/api/logo?t=' + Date.now();
                 document.getElementById('logoResetBtn').style.display = 'none';
             } catch (err) {
-                alert('Logo reset failed: ' + err.message);
+                showError('Logo reset failed: ' + err.message);
             }
         }
 
@@ -1299,7 +1335,7 @@
                 document.getElementById('adminLogo').src = '/api/logo?t=' + Date.now();
                 document.getElementById('logoResetBtn').style.display = 'block';
             } catch (err) {
-                alert('Logo upload failed: ' + err.message);
+                showError('Logo upload failed: ' + err.message);
             }
             this.value = '';
         });
@@ -1624,7 +1660,7 @@
                 const data = await res.json();
                 checkbox.checked = data.downloadsEnabled;
             } catch (err) {
-                alert('Could not update download setting: ' + err.message);
+                showError('Could not update download setting: ' + err.message);
                 checkbox.checked = !enabled;
             } finally {
                 checkbox.disabled = false;
@@ -1654,7 +1690,7 @@
 
                 document.getElementById('favoritesModal').classList.add('active');
             } catch (err) {
-                alert('Could not load favorites');
+                showError('Could not load favorites');
             }
         }
 
@@ -1672,7 +1708,7 @@
                 if (!res.ok) throw new Error('Failed');
                 loadGalleries();
             } catch (err) {
-                alert('Could not reset favorites');
+                showError('Could not reset favorites');
             }
         }
 
@@ -1799,7 +1835,7 @@
                 });
                 await loadCollections();
             } catch (err) {
-                alert('Could not reorder galleries: ' + err.message);
+                showError('Could not reorder galleries: ' + err.message);
             }
         }
 
@@ -1838,7 +1874,7 @@
                 }
                 await loadCollections();
             } catch (err) {
-                alert('Could not create collection: ' + err.message);
+                showError('Could not create collection: ' + err.message);
             }
         }
 
@@ -1871,7 +1907,7 @@
                 await loadCollections();
                 await loadGalleries(); // refresh collection badges
             } catch (err) {
-                alert('Could not delete collection: ' + err.message);
+                showError('Could not delete collection: ' + err.message);
             }
         }
 
@@ -1892,7 +1928,7 @@
                 await loadCollections();
                 await loadGalleries();
             } catch (err) {
-                alert('Could not remove gallery from collection: ' + err.message);
+                showError('Could not remove gallery from collection: ' + err.message);
             }
         }
 
@@ -1910,7 +1946,7 @@
                 await loadCollections();
                 await loadGalleries();
             } catch (err) {
-                alert('Could not add gallery to collection: ' + err.message);
+                showError('Could not add gallery to collection: ' + err.message);
             }
         }
 
@@ -2020,7 +2056,7 @@
                 });
                 loadGalleries();
             } catch (err) {
-                alert('Error deleting gallery');
+                showError('Error deleting gallery');
             }
         }
 
