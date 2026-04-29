@@ -226,25 +226,21 @@
 
         /* FOOTER */
         .social-footer {
-            position: relative;
-            z-index: 10;
-            padding: 16px 24px;
+            position: fixed;
+            bottom: 0; left: 0; right: 0;
+            z-index: 20;
+            padding: 12px 24px;
             border-top: 1px solid var(--border);
             text-align: center;
+            background: rgba(10,10,11,0.75);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
         }
-
-        html.light .social-footer { background: rgba(245,244,240,0.9); }
-
-        @media (max-width: 600px) {
-            .social-footer {
-                position: fixed;
-                bottom: 0;
-                left: 0;
-                width: 100%;
-                background: var(--bg);
-            }
-            html.light .social-footer { background: #f5f4f0; }
+        html.light .social-footer {
+            background: rgba(245,244,240,0.85);
         }
+        /* Push content above fixed footer */
+        .content, .not-found { padding-bottom: 64px; }
 
         .social-footer-links {
             display: flex;
