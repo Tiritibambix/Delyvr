@@ -155,6 +155,53 @@
         .favorites-grid img { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 3px; }
 
         /* ═══════════════════════════════
+           PHOTOS MODAL
+        ═══════════════════════════════ */
+        .photos-modal {
+            position: fixed; inset: 0;
+            background: rgba(0,0,0,0.85);
+            display: flex; align-items: center; justify-content: center;
+            z-index: 7000; opacity: 0; pointer-events: none;
+            transition: opacity 0.2s; backdrop-filter: blur(6px);
+        }
+        .photos-modal.active { opacity: 1; pointer-events: auto; }
+
+        .photos-modal-card {
+            background: var(--bg2); border: 1px solid var(--border);
+            border-radius: 8px; padding: 24px;
+            width: 90%; max-width: 700px; max-height: 82vh;
+            display: flex; flex-direction: column; gap: 16px;
+        }
+        .photos-modal-header { display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; }
+        .photos-modal-header h3 { font-size: 15px; font-weight: 600; }
+        .photos-modal-close { background: none; border: none; color: var(--muted); font-size: 1.4rem; cursor: pointer; line-height: 1; }
+        .photos-modal-meta { font-size: 12px; color: var(--muted); flex-shrink: 0; }
+        .photos-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+            gap: 6px; overflow-y: auto;
+        }
+        .photos-grid-item {
+            position: relative;
+            aspect-ratio: 1;
+            border-radius: 3px;
+            overflow: hidden;
+            background: var(--bg3);
+        }
+        .photos-grid-item img { width: 100%; height: 100%; object-fit: cover; display: block; }
+        .photos-grid-item .photo-delete-btn {
+            position: absolute; top: 4px; right: 4px;
+            width: 22px; height: 22px;
+            background: rgba(0,0,0,0.65); border: none; border-radius: 50%;
+            color: #fff; font-size: 13px; line-height: 1;
+            display: flex; align-items: center; justify-content: center;
+            cursor: pointer; opacity: 0; transition: opacity 0.15s;
+        }
+        .photos-grid-item:hover .photo-delete-btn { opacity: 1; }
+        .photos-grid-item .photo-delete-btn:hover { background: var(--error); }
+        .photos-grid-item.deleting { opacity: 0.35; pointer-events: none; }
+
+        /* ═══════════════════════════════
            PROFILE MODAL
         ═══════════════════════════════ */
         .profile-modal {
@@ -723,6 +770,18 @@
     </div>
 
     <!-- Favorites Modal -->
+    <!-- Photos Modal -->
+    <div class="photos-modal" id="photosModal" onclick="if(event.target===this) closePhotosModal()">
+        <div class="photos-modal-card">
+            <div class="photos-modal-header">
+                <h3 id="photosModalTitle">Manage Photos</h3>
+                <button class="photos-modal-close" onclick="closePhotosModal()">×</button>
+            </div>
+            <div class="photos-modal-meta" id="photosModalMeta"></div>
+            <div class="photos-grid" id="photosGrid"></div>
+        </div>
+    </div>
+
     <div class="favorites-modal" id="favoritesModal" onclick="if(event.target===this) closeFavoritesModal()">
         <div class="favorites-modal-card">
             <div class="favorites-modal-header">
@@ -1441,6 +1500,9 @@
                             <button class="btn-icon" onclick="copyGalleryLink('${g.id}', 'download', this)" title="Copy link">
                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
                             </button>
+                            <button class="btn-icon" onclick="openPhotosModal('${g.id}')" title="Manage photos">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
+                            </button>
                             <button class="btn-icon btn-icon-danger" onclick="deleteGallery('${g.id}')" title="Delete">
                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
                             </button>
@@ -1664,6 +1726,63 @@
                 checkbox.checked = !enabled;
             } finally {
                 checkbox.disabled = false;
+            }
+        }
+
+        // ---- Photo management ----
+
+        let _photosModalGalleryId = null;
+
+        async function openPhotosModal(galleryId) {
+            _photosModalGalleryId = galleryId;
+            document.getElementById('photosModalMeta').textContent = '';
+            document.getElementById('photosGrid').innerHTML = '<p style="color:var(--muted);font-size:13px">Loading…</p>';
+            document.getElementById('photosModal').classList.add('active');
+            await refreshPhotosGrid(galleryId);
+        }
+
+        async function refreshPhotosGrid(galleryId) {
+            try {
+                const res = await fetch(`/api/gallery/${galleryId}/photos`);
+                if (!res.ok) throw new Error('Failed');
+                const photos = await res.json();
+                const n = photos.length;
+                document.getElementById('photosModalMeta').textContent = `${n} photo${n !== 1 ? 's' : ''}`;
+                const grid = document.getElementById('photosGrid');
+                if (n === 0) {
+                    grid.innerHTML = '<p style="color:var(--muted);font-size:13px">No photos left.</p>';
+                    return;
+                }
+                grid.innerHTML = photos.map(p => `
+                    <div class="photos-grid-item" id="photo-item-${CSS.escape(p.filename)}">
+                        <img src="${p.thumbnailUrl}" alt="${escapeHtml(p.filename)}" title="${escapeHtml(p.filename)}" loading="lazy">
+                        <button class="photo-delete-btn" onclick="deletePhoto('${galleryId}', '${escapeAttr(p.filename)}')" title="Delete photo">×</button>
+                    </div>`).join('');
+            } catch (err) {
+                showError('Could not load photos');
+            }
+        }
+
+        function closePhotosModal() {
+            document.getElementById('photosModal').classList.remove('active');
+            _photosModalGalleryId = null;
+            loadGalleries(); // refresh count in gallery card
+        }
+
+        async function deletePhoto(galleryId, filename) {
+            if (!confirm(`Delete "${filename}"? This cannot be undone.`)) return;
+            const item = document.getElementById(`photo-item-${CSS.escape(filename)}`);
+            if (item) item.classList.add('deleting');
+            try {
+                const res = await fetch(`/api/gallery/${galleryId}/photo/${encodeURIComponent(filename)}`, {
+                    method: 'DELETE',
+                    headers: { 'X-Admin-Password': adminPassword }
+                });
+                if (!res.ok) throw new Error('Failed');
+                await refreshPhotosGrid(galleryId);
+            } catch (err) {
+                if (item) item.classList.remove('deleting');
+                showError('Could not delete photo: ' + err.message);
             }
         }
 

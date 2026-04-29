@@ -867,6 +867,34 @@ app.get('/api/gallery/:galleryId/download/:filename', downloadLimiter, validateG
     res.download(filePath, filename);
 });
 
+// Delete a single photo from a gallery (admin only)
+app.delete('/api/gallery/:galleryId/photo/:filename', adminLimiter, requireAuth, validateGalleryId, validateFilename, (req, res) => {
+    const { galleryId, filename } = req.params;
+    const gallery = galleries.get(galleryId);
+    if (!gallery) return res.status(404).json({ error: 'Gallery not found' });
+
+    const uploadPath = safeResolvePath(safeResolvePath(path.join(DATA_DIR, 'uploads'), galleryId), filename);
+    if (!fs.existsSync(uploadPath)) return res.status(404).json({ error: 'Photo not found' });
+
+    // Remove file
+    fs.unlinkSync(uploadPath);
+
+    // Remove thumbnail (ignore if missing)
+    try { fs.unlinkSync(safeResolvePath(safeResolvePath(THUMBNAILS_DIR, galleryId), filename + '.jpg')); } catch (_) {}
+
+    // Remove preview (ignore if missing)
+    try { fs.unlinkSync(safeResolvePath(safeResolvePath(PREVIEWS_DIR, galleryId), filename + '.jpg')); } catch (_) {}
+
+    // Remove from gallery.files
+    gallery.files = (gallery.files || []).filter(f => f !== filename);
+
+    // Invalidate OG cache (it may have used this photo)
+    try { fs.unlinkSync(safeResolvePath(OG_CACHE_DIR, `${galleryId}.jpg`)); } catch (_) {}
+
+    saveGalleries();
+    res.json({ success: true, fileCount: gallery.files.length });
+});
+
 // Serve/generate OG image (1200×630 JPEG, cached)
 app.get('/api/gallery/:galleryId/og-image', imageLimiter, validateGalleryId, async (req, res) => {
     const { galleryId } = req.params;

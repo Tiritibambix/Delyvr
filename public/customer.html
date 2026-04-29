@@ -191,6 +191,20 @@
         html.light .preview-link { border-color: #8a6515; color: #8a6515; }
         html.light .preview-link:hover { background: rgba(138,101,21,0.08); }
 
+        .back-link {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            color: var(--muted);
+            text-decoration: none;
+            font-size: 12px;
+            font-weight: 500;
+            letter-spacing: 0.04em;
+            transition: color 0.2s;
+            white-space: nowrap;
+        }
+        .back-link:hover { color: var(--text); }
+
         .not-found {
             display: none;
             flex-direction: column;
@@ -281,6 +295,9 @@
                     <span id="browseText"></span>
                 </a>
             </div>
+            <a class="back-link" id="backToCollectionBtn" href="#" style="display:none; margin-top: 20px;">
+                <span id="backToCollectionText"></span>
+            </a>
         </div>
 
         <div class="not-found" id="notFound">
@@ -293,11 +310,11 @@
 
     <script>
         const translations = {
-            en: { yourPhotos:'Your Photos', photo:'photo', photos:'photos', downloadAll:'Download All', browseIndividually:'Browse photos →', browseOnly:'Browse photos →', ready:'Your photos are ready', notFoundTitle:'Gallery Not Found', notFoundText:'This gallery may have been removed or the link is incorrect.' },
-            pt: { yourPhotos:'Suas Fotos', photo:'foto', photos:'fotos', downloadAll:'Baixar Todas', browseIndividually:'Ver as fotos →', browseOnly:'Ver as fotos →', ready:'Suas fotos estão prontas', notFoundTitle:'Galeria Não Encontrada', notFoundText:'Esta galeria pode ter sido removida ou o link está incorreto.' },
-            es: { yourPhotos:'Tus Fotos', photo:'foto', photos:'fotos', downloadAll:'Descargar Todas', browseIndividually:'Ver las fotos →', browseOnly:'Ver las fotos →', ready:'Tus fotos están listas', notFoundTitle:'Galería No Encontrada', notFoundText:'Esta galería puede haber sido eliminada o el enlace es incorrecto.' },
-            it: { yourPhotos:'Le Tue Foto', photo:'foto', photos:'foto', downloadAll:'Scarica Tutte', browseIndividually:'Sfoglia le foto →', browseOnly:'Sfoglia le foto →', ready:'Le tue foto sono pronte', notFoundTitle:'Galleria Non Trovata', notFoundText:'Questa galleria potrebbe essere stata rimossa o il link non è corretto.' },
-            fr: { yourPhotos:'Vos Photos', photo:'photo', photos:'photos', downloadAll:'Télécharger', browseIndividually:'Parcourir les photos →', browseOnly:'Parcourir les photos →', ready:'Vos photos sont prêtes', notFoundTitle:'Galerie Introuvable', notFoundText:'Cette galerie a peut-être été supprimée ou le lien est incorrect.' }
+            en: { yourPhotos:'Your Photos', photo:'photo', photos:'photos', downloadAll:'Download All', browseIndividually:'Browse photos →', browseOnly:'Browse photos →', ready:'Your photos are ready', notFoundTitle:'Gallery Not Found', notFoundText:'This gallery may have been removed or the link is incorrect.', backToCollection:'← Back to collection' },
+            pt: { yourPhotos:'Suas Fotos', photo:'foto', photos:'fotos', downloadAll:'Baixar Todas', browseIndividually:'Ver as fotos →', browseOnly:'Ver as fotos →', ready:'Suas fotos estão prontas', notFoundTitle:'Galeria Não Encontrada', notFoundText:'Esta galeria pode ter sido removida ou o link está incorreto.', backToCollection:'← Voltar à coleção' },
+            es: { yourPhotos:'Tus Fotos', photo:'foto', photos:'fotos', downloadAll:'Descargar Todas', browseIndividually:'Ver las fotos →', browseOnly:'Ver las fotos →', ready:'Tus fotos están listas', notFoundTitle:'Galería No Encontrada', notFoundText:'Esta galería puede haber sido eliminada o el enlace es incorrecto.', backToCollection:'← Volver a la colección' },
+            it: { yourPhotos:'Le Tue Foto', photo:'foto', photos:'foto', downloadAll:'Scarica Tutte', browseIndividually:'Sfoglia le foto →', browseOnly:'Sfoglia le foto →', ready:'Le tue foto sono pronte', notFoundTitle:'Galleria Non Trovata', notFoundText:'Questa galleria potrebbe essere stata rimossa o il link non è corretto.', backToCollection:'← Torna alla collezione' },
+            fr: { yourPhotos:'Vos Photos', photo:'photo', photos:'photos', downloadAll:'Télécharger', browseIndividually:'Parcourir les photos →', browseOnly:'Parcourir les photos →', ready:'Vos photos sont prêtes', notFoundTitle:'Galerie Introuvable', notFoundText:'Cette galerie a peut-être été supprimée ou le lien est incorrect.', backToCollection:'← Retour à la collection' }
         };
 
         function getLocale() {
@@ -326,6 +343,7 @@
         applyTheme();
 
         const galleryId = window.location.pathname.split('/').pop();
+        const fromCollection = new URLSearchParams(window.location.search).get('from');
 
         async function loadGallery() {
             try {
@@ -347,7 +365,17 @@
                     document.getElementById('downloadBtn').style.display = 'none';
                 }
 
-                document.getElementById('previewLink').href = `/preview/${galleryId}`;
+                const previewHref = fromCollection
+                    ? `/preview/${galleryId}?from=${encodeURIComponent(fromCollection)}`
+                    : `/preview/${galleryId}`;
+                document.getElementById('previewLink').href = previewHref;
+
+                if (fromCollection) {
+                    const btn = document.getElementById('backToCollectionBtn');
+                    btn.href = `/collection/${encodeURIComponent(fromCollection)}`;
+                    document.getElementById('backToCollectionText').textContent = t.backToCollection;
+                    btn.style.display = 'inline-flex';
+                }
 
                 if (data.background) {
                     const bgImg = document.getElementById('bgImage');
