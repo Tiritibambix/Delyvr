@@ -444,7 +444,7 @@
         }
 
         .section-header {
-            display: flex; align-items: center; justify-content: space-between;
+            display: flex; align-items: center;
             margin-bottom: 12px;
             gap: 10px;
         }
@@ -452,6 +452,10 @@
             font-size: 10px; font-weight: 600;
             letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted);
             flex-shrink: 0;
+        }
+        .section-header-right {
+            display: flex; align-items: center; gap: 8px;
+            margin-left: auto;
         }
         .gallery-search {
             flex: 1;
@@ -1067,8 +1071,10 @@
             <div>
                 <div class="section-header">
                     <span class="section-label">Galleries</span>
-                    <input class="gallery-search" id="gallerySearch" type="search" placeholder="Search…" oninput="filterGalleries(this.value)">
-                    <button class="section-select-btn" id="selectionModeBtn" onclick="toggleSelectionMode()">Select</button>
+                    <div class="section-header-right">
+                        <input class="gallery-search" id="gallerySearch" type="search" placeholder="Search…" oninput="filterGalleries(this.value)">
+                        <button class="section-select-btn" id="selectionModeBtn" onclick="toggleSelectionMode()">Select</button>
+                    </div>
                 </div>
                 <div id="galleryList"><div class="empty-state">Loading...</div></div>
             </div>
@@ -1751,6 +1757,17 @@
                 el.classList.add('gallery-selected');
                 const cb = document.getElementById(`cb-${id}`);
                 if (cb) cb.checked = true;
+            });
+            updateBulkBar();
+        }
+
+        function deselectAllGalleries() {
+            _selectedGalleries.clear();
+            document.querySelectorAll('#galleryList .gallery-item.gallery-selected').forEach(el => {
+                el.classList.remove('gallery-selected');
+                const id = el.id.replace('gallery-item-', '');
+                const cb = document.getElementById(`cb-${id}`);
+                if (cb) cb.checked = false;
             });
             updateBulkBar();
         }
@@ -2679,6 +2696,7 @@
         <div class="bulk-left">
             <span id="bulkCount">0 selected</span>
             <button class="bulk-select-all" onclick="selectAllGalleries()">Select all</button>
+            <button class="bulk-select-all" onclick="deselectAllGalleries()">Deselect all</button>
         </div>
         <div class="bulk-right">
             <button class="bulk-btn" id="bulkEnableBtn" onclick="bulkSetDownloads(true)" disabled>Enable downloads</button>
