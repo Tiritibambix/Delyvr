@@ -541,9 +541,11 @@
             background: transparent; border: none;
             font-size: 14px; font-weight: 500; color: var(--text);
             font-family: inherit; outline: none; width: 100%;
+            cursor: default;
         }
-        .collection-name-input:focus {
+        .collection-name-input:not([readonly]):focus {
             background: var(--bg2); border-radius: 2px; padding: 1px 6px;
+            cursor: text;
         }
         .collection-meta-row { font-size: 11px; color: var(--muted); margin-top: 1px; }
 
@@ -931,6 +933,17 @@
         .trash-meta { font-size: 11px; color: var(--muted); margin-top: 2px; }
         .trash-meta.urgent { color: var(--error); }
         .trash-actions { display: flex; gap: 6px; flex-shrink: 0; }
+
+        @media (max-width: 600px) {
+            .trash-item { flex-wrap: wrap; gap: 8px; padding: 8px 10px; }
+            .trash-cover { width: 44px; height: 44px; flex-shrink: 0; }
+            .trash-info { flex: 1; min-width: 0; }
+            .trash-actions {
+                width: 100%; justify-content: flex-end;
+                border-top: 1px solid var(--border);
+                padding-top: 8px; margin-top: 2px;
+            }
+        }
         .btn-restore {
             padding: 5px 10px; font-size: 11px; font-weight: 600;
             border: 1px solid var(--border2); border-radius: 3px;
@@ -2383,8 +2396,10 @@
                         </div>
                         <div class="collection-info">
                             <input class="collection-name-input" value="${escapeHtml(c.name)}"
-                                   onblur="renameCollectionInline('${c.id}', this.value)"
-                                   onkeydown="if(event.key==='Enter')this.blur()">
+                                   readonly title="Double-click to rename"
+                                   ondblclick="this.removeAttribute('readonly'); this.select();"
+                                   onblur="renameCollectionInline('${c.id}', this.value); this.setAttribute('readonly','');"
+                                   onkeydown="if(event.key==='Enter')this.blur(); if(event.key==='Escape'){this.value=this.defaultValue; this.blur();}">
                             <div class="collection-meta-row">${c.galleryIds.length} ${c.galleryIds.length === 1 ? 'gallery' : 'galleries'}</div>
                         </div>
                         <div class="collection-actions">

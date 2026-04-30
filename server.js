@@ -1151,15 +1151,12 @@ app.get('/api/gallery/:galleryId/download', downloadLimiter, validateGalleryId, 
     const asciiName = eventName.replace(/[^\x20-\x7E]/g, '_').replace(/["\\]/g, '_').substring(0, 50) || 'photos';
     const encodedName = encodeURIComponent(eventName.substring(0, 200) + '.zip');
 
-    // Compute approximate Content-Length for progress bar (store mode: no compression)
-    const zipBytes = files.reduce((sum, f) => {
-        try { return sum + fs.statSync(path.join(galleryPath, f)).size + 50 + Buffer.byteLength(f, 'utf8'); } catch (_) { return sum; }
-    }, 0) + 22;
-
     res.setHeader('Content-Type', 'application/zip');
     res.setHeader('Content-Disposition', `attachment; filename="${asciiName}.zip"; filename*=UTF-8''${encodedName}`);
-    res.setHeader('Content-Length', String(zipBytes));
 
+    // store: true = no compression (JPEGs are already compressed, saves CPU)
+    // Content-Length intentionally omitted: archiver streaming adds variable ZIP metadata
+    // that makes pre-calculation unreliable and causes "unexpected end of archive" errors.
     const archive = archiver('zip', { store: true });
     archive.on('error', (err) => { res.status(500).send({ error: err.message }); });
     archive.pipe(res);
@@ -1502,13 +1499,8 @@ app.get('/api/collection/:collectionId/download', downloadLimiter, validateColle
         files.forEach(file => entries.push({ diskPath: path.join(galleryPath, file), zipName: `${folderName}/${file}` }));
     }
 
-    const zipBytes = entries.reduce((sum, e) => {
-        try { return sum + fs.statSync(e.diskPath).size + 50 + Buffer.byteLength(e.zipName, 'utf8'); } catch (_) { return sum; }
-    }, 0) + 22;
-
     res.setHeader('Content-Type', 'application/zip');
     res.setHeader('Content-Disposition', `attachment; filename="${asciiColName}.zip"; filename*=UTF-8''${encodedColName}`);
-    res.setHeader('Content-Length', String(zipBytes));
 
     const archive = archiver('zip', { store: true });
     archive.on('error', err => res.status(500).send({ error: err.message }));
