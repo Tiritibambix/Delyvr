@@ -622,8 +622,37 @@
             overflow: hidden; text-align: left;
             transition: border-color 0.15s;
         }
-        .gallery-picker-item:hover:not(:disabled) { border-color: var(--accent); }
+        .gallery-picker-item:hover:not(:disabled) { border-color: var(--muted); }
         .gallery-picker-item:disabled { opacity: 0.4; cursor: default; }
+        .gallery-picker-item.selected { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, var(--bg3)); }
+        .gallery-picker-item.selected .gallery-picker-thumb::after {
+            content: '✓';
+            position: absolute; inset: 0;
+            display: flex; align-items: center; justify-content: center;
+            background: rgba(0,0,0,0.45);
+            color: #fff; font-size: 22px; font-weight: 700;
+        }
+        .gallery-picker-thumb { position: relative; }
+        .gallery-picker-footer {
+            display: flex; justify-content: flex-end; gap: 8px;
+            padding-top: 12px; border-top: 1px solid var(--border);
+            flex-shrink: 0;
+        }
+        .gallery-picker-cancel {
+            background: none; border: 1px solid var(--border2);
+            border-radius: 4px; padding: 7px 16px;
+            font-size: 12px; font-family: inherit;
+            color: var(--muted); cursor: pointer;
+        }
+        .gallery-picker-cancel:hover { border-color: var(--muted); color: var(--text); }
+        .gallery-picker-confirm {
+            background: var(--accent); border: none;
+            border-radius: 4px; padding: 7px 18px;
+            font-size: 12px; font-weight: 600; font-family: inherit;
+            color: #0c0c0e; cursor: pointer;
+        }
+        .gallery-picker-confirm:disabled { opacity: 0.4; cursor: default; }
+        .gallery-picker-confirm:not(:disabled):hover { background: var(--accent-h); }
         .gallery-picker-thumb {
             width: 100%; aspect-ratio: 3/2;
             background: var(--bg); overflow: hidden;
@@ -884,10 +913,14 @@
     <div class="gallery-picker-modal" id="galleryPickerModal" onclick="if(event.target===this) closeGalleryPicker()">
         <div class="gallery-picker-card">
             <div class="gallery-picker-header">
-                <h3>Add gallery to collection</h3>
+                <h3>Add galleries to collection</h3>
                 <button class="gallery-picker-close" onclick="closeGalleryPicker()">&#x2715;</button>
             </div>
             <div class="gallery-picker-list" id="galleryPickerList"></div>
+            <div class="gallery-picker-footer">
+                <button class="gallery-picker-cancel" onclick="closeGalleryPicker()">Cancel</button>
+                <button class="gallery-picker-confirm" id="galleryPickerConfirm" onclick="confirmPickerSelection()" disabled>Add</button>
+            </div>
         </div>
     </div>
 
@@ -2182,10 +2215,13 @@
             }
         }
 
-        // Gallery picker modal — mobile-friendly alternative to drag-and-drop
+        // Gallery picker modal — multi-select
         let _pickerCollectionId = null;
+        let _pickerSelected = new Set();
+
         function openGalleryPicker(collectionId) {
             _pickerCollectionId = collectionId;
+            _pickerSelected = new Set();
             const collection = (_collectionsData || []).find(c => c.id === collectionId);
             const inCollection = new Set(collection ? collection.galleryIds : []);
             const all = _galleriesData || [];
@@ -2199,7 +2235,8 @@
                     const thumbHtml = g.hasBackground
                         ? `<img src="/api/gallery/${g.id}/background?thumb=1" alt="" loading="lazy">`
                         : thumbSvg;
-                    return `<button class="gallery-picker-item" ${already ? 'disabled title="Already in this collection"' : `onclick="pickGallery('${g.id}')"`}>
+                    return `<button class="gallery-picker-item" id="picker-item-${g.id}"
+                            ${already ? 'disabled title="Already in this collection"' : `onclick="togglePickerItem('${g.id}')"`}>
                         <div class="gallery-picker-thumb">${thumbHtml}</div>
                         <div class="gallery-picker-info">
                             <div class="gallery-picker-name">${escapeHtml(g.eventName)}</div>
@@ -2208,16 +2245,41 @@
                     </button>`;
                 }).join('');
             }
+            updatePickerConfirmBtn();
             document.getElementById('galleryPickerModal').classList.add('active');
         }
+
+        function togglePickerItem(galleryId) {
+            if (_pickerSelected.has(galleryId)) {
+                _pickerSelected.delete(galleryId);
+                document.getElementById(`picker-item-${galleryId}`)?.classList.remove('selected');
+            } else {
+                _pickerSelected.add(galleryId);
+                document.getElementById(`picker-item-${galleryId}`)?.classList.add('selected');
+            }
+            updatePickerConfirmBtn();
+        }
+
+        function updatePickerConfirmBtn() {
+            const btn = document.getElementById('galleryPickerConfirm');
+            const n = _pickerSelected.size;
+            btn.disabled = n === 0;
+            btn.textContent = n > 0 ? `Add ${n} ${n === 1 ? 'gallery' : 'galleries'}` : 'Add';
+        }
+
         function closeGalleryPicker() {
             document.getElementById('galleryPickerModal').classList.remove('active');
             _pickerCollectionId = null;
+            _pickerSelected = new Set();
         }
-        async function pickGallery(galleryId) {
+
+        async function confirmPickerSelection() {
             const cid = _pickerCollectionId;
+            const ids = [..._pickerSelected];
             closeGalleryPicker();
-            if (cid) await addToCollection(cid, galleryId);
+            for (const gid of ids) {
+                await addToCollection(cid, gid);
+            }
         }
 
         function startEditCollectionName(collectionId, element) {
