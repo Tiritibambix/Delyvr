@@ -91,6 +91,46 @@ function saveGalleries() {
     fs.writeFileSync(GALLERIES_FILE, JSON.stringify(data, null, 2));
 }
 
+// Returns the gallery only if it exists and is not soft-deleted
+function getActiveGallery(galleryId) {
+    const g = galleries.get(galleryId);
+    return (g && !g.deleted) ? g : null;
+}
+
+// Hard-delete all files for a gallery (used by purge and auto-expiry)
+function hardDeleteGallery(galleryId) {
+    const galleryPath = safeResolvePath(path.join(DATA_DIR, 'uploads'), galleryId);
+    if (fs.existsSync(galleryPath)) fs.rmSync(galleryPath, { recursive: true });
+    const backgroundsDir = path.join(DATA_DIR, 'backgrounds');
+    if (fs.existsSync(backgroundsDir)) {
+        const bgFile = fs.readdirSync(backgroundsDir).find(f => f.startsWith(galleryId));
+        if (bgFile) fs.unlinkSync(path.join(backgroundsDir, bgFile));
+    }
+    fs.rmSync(safeResolvePath(THUMBNAILS_DIR, galleryId), { recursive: true, force: true });
+    fs.rmSync(safeResolvePath(PREVIEWS_DIR, galleryId), { recursive: true, force: true });
+    try { fs.unlinkSync(safeResolvePath(OG_CACHE_DIR, `${galleryId}.jpg`)); } catch (_) {}
+    galleries.delete(galleryId);
+    for (const collection of collections.values()) {
+        const before = collection.galleryIds.length;
+        collection.galleryIds = collection.galleryIds.filter(id => id !== galleryId);
+        if (collection.galleryIds.length !== before) saveCollections();
+    }
+}
+
+// Auto-purge soft-deleted galleries older than TRASH_RETENTION_DAYS
+const TRASH_RETENTION_MS = 3 * 24 * 60 * 60 * 1000; // 3 days
+function purgeExpiredTrash() {
+    const now = Date.now();
+    let changed = false;
+    for (const [id, g] of galleries.entries()) {
+        if (g.deleted && g.deletedAt && (now - new Date(g.deletedAt).getTime()) > TRASH_RETENTION_MS) {
+            hardDeleteGallery(id);
+            changed = true;
+        }
+    }
+    if (changed) saveGalleries();
+}
+
 // Load collections from file on startup
 function loadCollections() {
     if (fs.existsSync(COLLECTIONS_FILE)) {
@@ -193,6 +233,7 @@ function reconcileGalleries() {
 loadGalleries();
 loadCollections();
 reconcileGalleries();
+purgeExpiredTrash();
 
 // Ensure directories exist
 ['uploads', 'backgrounds', 'thumbnails', 'previews', 'og-cache'].forEach(dir => {
@@ -931,12 +972,67 @@ app.get('/api/gallery/:galleryId/og-image', imageLimiter, validateGalleryId, asy
     }
 });
 
+// Regenerate gallery OG image (admin — clears cache so it is rebuilt on next share)
+app.delete('/api/gallery/:galleryId/og-image', adminLimiter, requireAuth, validateGalleryId, (req, res) => {
+    const { galleryId } = req.params;
+    try { fs.unlinkSync(safeResolvePath(OG_CACHE_DIR, `${galleryId}.jpg`)); } catch (_) {}
+    res.json({ success: true });
+});
+
+// Collection OG image — 1200×630, cached in og-cache/collection-{id}.jpg
+app.get('/api/collection/:collectionId/og-image', imageLimiter, validateCollectionId, async (req, res) => {
+    const { collectionId } = req.params;
+    const cacheFile = safeResolvePath(OG_CACHE_DIR, `collection-${collectionId}.jpg`);
+
+    if (fs.existsSync(cacheFile)) return res.sendFile(cacheFile);
+
+    // Source: collection background → first gallery background → first photo of first gallery
+    let sourceFile = null;
+    const backgroundsDir = path.join(DATA_DIR, 'backgrounds');
+    if (fs.existsSync(backgroundsDir)) {
+        const colBg = fs.readdirSync(backgroundsDir).find(f => f.startsWith(`collection-${collectionId}`));
+        if (colBg) sourceFile = path.join(backgroundsDir, colBg);
+    }
+    if (!sourceFile) {
+        const collection = collections.get(collectionId);
+        if (collection) {
+            for (const gid of collection.galleryIds) {
+                if (sourceFile) break;
+                if (fs.existsSync(backgroundsDir)) {
+                    const gbg = fs.readdirSync(backgroundsDir).find(f => f.startsWith(gid));
+                    if (gbg) { sourceFile = path.join(backgroundsDir, gbg); break; }
+                }
+                const gPath = safeResolvePath(path.join(DATA_DIR, 'uploads'), gid);
+                if (fs.existsSync(gPath)) {
+                    const files = fs.readdirSync(gPath).filter(f => !f.startsWith('.'));
+                    if (files.length > 0) sourceFile = path.join(gPath, files[0]);
+                }
+            }
+        }
+    }
+    if (!sourceFile) return res.status(404).send('No image available');
+
+    try {
+        await sharp(sourceFile).resize(1200, 630, { fit: 'cover' }).jpeg({ quality: 80 }).toFile(cacheFile);
+        res.sendFile(cacheFile);
+    } catch (err) {
+        res.status(500).send('Could not generate OG image');
+    }
+});
+
+// Regenerate collection OG image (admin)
+app.delete('/api/collection/:collectionId/og-image', adminLimiter, requireAuth, validateCollectionId, (req, res) => {
+    const { collectionId } = req.params;
+    try { fs.unlinkSync(safeResolvePath(OG_CACHE_DIR, `collection-${collectionId}.jpg`)); } catch (_) {}
+    res.json({ success: true });
+});
+
 // Customer download page — serves HTML with OG meta tags injected
 app.get('/download/:galleryId', publicReadLimiter, validateGalleryId, (req, res) => {
     const { galleryId } = req.params;
     const galleryPath = safeResolvePath(path.join(DATA_DIR, 'uploads'), galleryId);
 
-    if (!fs.existsSync(galleryPath)) {
+    if (!fs.existsSync(galleryPath) || !getActiveGallery(galleryId)) {
         return res.status(404).send('Gallery not found');
     }
 
@@ -961,7 +1057,7 @@ app.get('/preview/:galleryId', publicReadLimiter, validateGalleryId, (req, res) 
     const { galleryId } = req.params;
     const galleryPath = safeResolvePath(path.join(DATA_DIR, 'uploads'), galleryId);
 
-    if (!fs.existsSync(galleryPath)) {
+    if (!fs.existsSync(galleryPath) || !getActiveGallery(galleryId)) {
         return res.status(404).send('Gallery not found');
     }
 
@@ -984,6 +1080,7 @@ app.get('/preview/:galleryId', publicReadLimiter, validateGalleryId, (req, res) 
 // Get gallery info (for customer and preview pages)
 app.get('/api/gallery/:galleryId/info', publicReadLimiter, validateGalleryId, (req, res) => {
     const { galleryId } = req.params;
+    if (!getActiveGallery(galleryId)) return res.status(404).json({ error: 'Gallery not found' });
 
     const backgroundsDir = path.join(DATA_DIR, 'backgrounds');
     let backgroundFile = null;
@@ -1441,6 +1538,7 @@ app.get('/collection/:collectionId', publicReadLimiter, validateCollectionId, (r
     const ogTags = [
         `<meta property="og:title" content="${escapeHtml(collection.name)}">`,
         `<meta property="og:description" content="Your photo galleries are ready.">`,
+        `<meta property="og:image" content="${escapeHtml(baseUrl)}/api/collection/${escapeHtml(collectionId)}/og-image">`,
         `<meta property="og:type" content="website">`,
         `<meta property="og:url" content="${escapeHtml(baseUrl)}/collection/${escapeHtml(collectionId)}">`
     ].join('\n    ');
@@ -1471,6 +1569,7 @@ app.get('/api/galleries', adminLimiter, requireAuth, (req, res) => {
                 const files = fs.readdirSync(galleryPath).filter(f => !f.startsWith('.'));
 
                 let gallery = galleries.get(galleryId);
+                if (gallery && gallery.deleted) return; // exclude trashed galleries
                 if (!gallery) {
                     gallery = {
                         id: galleryId,
@@ -1530,46 +1629,63 @@ app.patch('/api/galleries/reorder', adminLimiter, requireAuth, (req, res) => {
     res.json({ success: true });
 });
 
-// Delete gallery
+// Soft-delete gallery — moves to trash (files kept for TRASH_RETENTION_MS)
 app.delete('/api/gallery/:galleryId', adminLimiter, requireAuth, validateGalleryId, (req, res) => {
     const { galleryId } = req.params;
-
-    // Delete photo uploads
-    const galleryPath = safeResolvePath(path.join(DATA_DIR, 'uploads'), galleryId);
-    if (fs.existsSync(galleryPath)) {
-        fs.rmSync(galleryPath, { recursive: true });
-    }
-
-    // Delete background
-    const backgroundsDir = path.join(DATA_DIR, 'backgrounds');
-    if (fs.existsSync(backgroundsDir)) {
-        const bgFile = fs.readdirSync(backgroundsDir).find(f => f.startsWith(galleryId));
-        if (bgFile) fs.unlinkSync(path.join(backgroundsDir, bgFile));
-    }
-
-    // Delete thumbnails
-    fs.rmSync(safeResolvePath(THUMBNAILS_DIR, galleryId), { recursive: true, force: true });
-
-    // Delete previews
-    fs.rmSync(safeResolvePath(PREVIEWS_DIR, galleryId), { recursive: true, force: true });
-
-    // Delete og-cache
-    const ogFile = safeResolvePath(OG_CACHE_DIR, `${galleryId}.jpg`);
-    if (fs.existsSync(ogFile)) fs.unlinkSync(ogFile);
-
-    galleries.delete(galleryId);
+    const gallery = galleries.get(galleryId);
+    if (!gallery) return res.status(404).json({ error: 'Gallery not found' });
+    gallery.deleted = true;
+    gallery.deletedAt = new Date().toISOString();
     saveGalleries();
-
-    // Remove from any collection it belongs to
-    let collectionChanged = false;
-    for (const collection of collections.values()) {
-        const before = collection.galleryIds.length;
-        collection.galleryIds = collection.galleryIds.filter(id => id !== galleryId);
-        if (collection.galleryIds.length !== before) collectionChanged = true;
-    }
-    if (collectionChanged) saveCollections();
-
     res.json({ success: true });
+});
+
+// List trashed galleries
+app.get('/api/galleries/trash', adminLimiter, requireAuth, (req, res) => {
+    const uploadsDir = path.join(DATA_DIR, 'uploads');
+    const backgroundsDir = path.join(DATA_DIR, 'backgrounds');
+    const bgFiles = fs.existsSync(backgroundsDir) ? new Set(fs.readdirSync(backgroundsDir)) : new Set();
+    const trashed = Array.from(galleries.values())
+        .filter(g => g.deleted)
+        .map(g => {
+            const galleryPath = path.join(uploadsDir, g.id);
+            const fileCount = fs.existsSync(galleryPath)
+                ? fs.readdirSync(galleryPath).filter(f => !f.startsWith('.')).length : 0;
+            const hasBackground = [...bgFiles].some(f => f.startsWith(g.id));
+            const daysLeft = Math.ceil((TRASH_RETENTION_MS - (Date.now() - new Date(g.deletedAt).getTime())) / 86400000);
+            return { id: g.id, eventName: g.eventName, deletedAt: g.deletedAt, daysLeft: Math.max(0, daysLeft), fileCount, hasBackground };
+        })
+        .sort((a, b) => new Date(b.deletedAt) - new Date(a.deletedAt));
+    res.json(trashed);
+});
+
+// Restore gallery from trash
+app.post('/api/gallery/:galleryId/restore', adminLimiter, requireAuth, validateGalleryId, (req, res) => {
+    const { galleryId } = req.params;
+    const gallery = galleries.get(galleryId);
+    if (!gallery || !gallery.deleted) return res.status(404).json({ error: 'Gallery not in trash' });
+    delete gallery.deleted;
+    delete gallery.deletedAt;
+    saveGalleries();
+    res.json({ success: true });
+});
+
+// Permanently delete a single gallery from trash
+app.delete('/api/gallery/:galleryId/purge', adminLimiter, requireAuth, validateGalleryId, (req, res) => {
+    const { galleryId } = req.params;
+    const gallery = galleries.get(galleryId);
+    if (!gallery) return res.status(404).json({ error: 'Gallery not found' });
+    hardDeleteGallery(galleryId);
+    saveGalleries();
+    res.json({ success: true });
+});
+
+// Empty entire trash
+app.delete('/api/galleries/trash', adminLimiter, requireAuth, (req, res) => {
+    const ids = Array.from(galleries.values()).filter(g => g.deleted).map(g => g.id);
+    ids.forEach(id => hardDeleteGallery(id));
+    saveGalleries();
+    res.json({ success: true, purged: ids.length });
 });
 
 // Error handling — never expose internal details (file paths, stack traces) to the client

@@ -850,6 +850,55 @@
 
         .empty-state { font-size: 13px; color: var(--muted); padding: 20px 0; text-align: center; }
 
+        /* ── TRASH ── */
+        .trash-item {
+            display: flex; align-items: center; gap: 12px;
+            padding: 10px 12px; border-radius: 5px;
+            background: var(--bg3); border: 1px solid var(--border);
+            margin-bottom: 6px;
+        }
+        .trash-cover {
+            width: 52px; height: 34px; flex-shrink: 0;
+            border-radius: 3px; overflow: hidden; background: var(--bg);
+            display: flex; align-items: center; justify-content: center;
+        }
+        .trash-cover img { width: 100%; height: 100%; object-fit: cover; }
+        .trash-cover svg { width: 18px; height: 18px; color: var(--border2); }
+        .trash-info { flex: 1; min-width: 0; }
+        .trash-name { font-size: 13px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .trash-meta { font-size: 11px; color: var(--muted); margin-top: 2px; }
+        .trash-meta.urgent { color: var(--error); }
+        .trash-actions { display: flex; gap: 6px; flex-shrink: 0; }
+        .btn-restore {
+            padding: 5px 10px; font-size: 11px; font-weight: 600;
+            border: 1px solid var(--border2); border-radius: 3px;
+            background: none; color: var(--text); cursor: pointer; font-family: inherit;
+        }
+        .btn-restore:hover { border-color: var(--accent); color: var(--accent); }
+        .btn-purge {
+            padding: 5px 10px; font-size: 11px; font-weight: 600;
+            border: 1px solid var(--error); border-radius: 3px;
+            background: none; color: var(--error); cursor: pointer; font-family: inherit;
+        }
+        .btn-purge:hover { background: var(--error); color: #fff; }
+        .trash-section-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+        .btn-empty-trash {
+            padding: 4px 10px; font-size: 11px; font-weight: 600;
+            border: 1px solid var(--error); border-radius: 3px;
+            background: none; color: var(--error); cursor: pointer; font-family: inherit;
+        }
+        .btn-empty-trash:hover { background: var(--error); color: #fff; }
+
+        /* ── OG TOOLTIP ── */
+        .og-tooltip-wrap { position: relative; display: inline-flex; }
+        .og-tooltip-wrap .og-tooltip {
+            display: none; position: absolute; bottom: calc(100% + 6px); right: 0;
+            width: 220px; background: var(--bg); border: 1px solid var(--border2);
+            border-radius: 5px; padding: 10px 12px; font-size: 11px;
+            color: var(--muted); line-height: 1.5; z-index: 200; pointer-events: none;
+        }
+        .og-tooltip-wrap:hover .og-tooltip { display: block; }
+
         .btn-icon.copied {
             color: var(--success);
             border-color: var(--success);
@@ -1079,6 +1128,14 @@
                 <div id="galleryList"><div class="empty-state">Loading...</div></div>
             </div>
 
+            <div id="trashSection" style="display:none;">
+                <div class="trash-section-header">
+                    <span class="section-label">🗑 Trash</span>
+                    <button class="btn-empty-trash" onclick="emptyTrash()">Empty trash</button>
+                </div>
+                <div id="trashList"></div>
+            </div>
+
         </div>
     </div>
 
@@ -1129,6 +1186,7 @@
                     document.getElementById('loginModal').classList.add('hidden');
                     loadGalleries();
                     loadCollections();
+                    loadTrash();
                     checkLogoState();
                 } else {
                     document.getElementById('loginError').style.display = 'block';
@@ -1682,7 +1740,13 @@
                         <button class="btn-icon" onclick="openPhotosModal('${g.id}')" title="Manage photos">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
                         </button>
-                        <button class="btn-icon btn-icon-danger" onclick="deleteGallery('${g.id}')" title="Delete">
+                        <div class="og-tooltip-wrap">
+                            <button class="btn-icon" onclick="regenerateOG('${g.id}')" title="Regenerate share preview">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 12a8 8 0 018-8V2l3 3-3 3V6a6 6 0 100 6"/></svg>
+                            </button>
+                            <div class="og-tooltip">Regenerate the preview image shown when this gallery link is shared on WhatsApp, iMessage or social media.</div>
+                        </div>
+                        <button class="btn-icon btn-icon-danger" onclick="deleteGallery('${g.id}')" title="Move to trash">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
                         </button>
                     </div>
@@ -2610,16 +2674,97 @@
         }
 
         async function deleteGallery(id) {
-            if (!confirm('Delete this gallery? This cannot be undone.')) return;
-            
+            if (!confirm('Move this gallery to trash? It will be permanently deleted after 3 days.')) return;
             try {
-                await fetch(`/api/gallery/${id}`, {
-                    method: 'DELETE',
-                    headers: { 'X-Admin-Password': adminPassword }
-                });
+                const res = await fetch(`/api/gallery/${id}`, { method: 'DELETE', headers: { 'X-Admin-Password': adminPassword } });
+                if (!res.ok) throw new Error('Failed');
                 loadGalleries();
+                loadTrash();
             } catch (err) {
-                showError('Error deleting gallery');
+                showError('Error moving gallery to trash');
+            }
+        }
+
+        async function loadTrash() {
+            try {
+                const res = await fetch('/api/galleries/trash', { headers: { 'X-Admin-Password': adminPassword } });
+                if (!res.ok) return;
+                const trashed = await res.json();
+                const section = document.getElementById('trashSection');
+                const list = document.getElementById('trashList');
+                if (trashed.length === 0) { section.style.display = 'none'; return; }
+                section.style.display = 'block';
+                const thumbSvg = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>`;
+                list.innerHTML = trashed.map(g => {
+                    const thumbHtml = g.hasBackground ? `<img src="/api/gallery/${g.id}/background?thumb=1" alt="">` : thumbSvg;
+                    const urgent = g.daysLeft <= 1;
+                    const dayLabel = g.daysLeft === 0 ? 'Deleted today — expires soon'
+                        : g.daysLeft === 1 ? 'Expires tomorrow'
+                        : `${g.daysLeft} days until permanent deletion`;
+                    return `<div class="trash-item">
+                        <div class="trash-cover">${thumbHtml}</div>
+                        <div class="trash-info">
+                            <div class="trash-name">${escapeHtml(g.eventName)}</div>
+                            <div class="trash-meta${urgent ? ' urgent' : ''}">${g.fileCount} photos · ${dayLabel}</div>
+                        </div>
+                        <div class="trash-actions">
+                            <button class="btn-restore" onclick="restoreGallery('${g.id}')">Restore</button>
+                            <button class="btn-purge" onclick="purgeGallery('${g.id}')">Delete now</button>
+                        </div>
+                    </div>`;
+                }).join('');
+            } catch (_) {}
+        }
+
+        async function restoreGallery(id) {
+            try {
+                const res = await fetch(`/api/gallery/${id}/restore`, { method: 'POST', headers: { 'X-Admin-Password': adminPassword } });
+                if (!res.ok) throw new Error('Failed');
+                loadGalleries();
+                loadTrash();
+            } catch (err) {
+                showError('Could not restore gallery');
+            }
+        }
+
+        async function purgeGallery(id) {
+            if (!confirm('Permanently delete this gallery? This cannot be undone.')) return;
+            try {
+                const res = await fetch(`/api/gallery/${id}/purge`, { method: 'DELETE', headers: { 'X-Admin-Password': adminPassword } });
+                if (!res.ok) throw new Error('Failed');
+                loadTrash();
+            } catch (err) {
+                showError('Could not delete gallery');
+            }
+        }
+
+        async function emptyTrash() {
+            if (!confirm('Permanently delete all trashed galleries? This cannot be undone.')) return;
+            try {
+                const res = await fetch('/api/galleries/trash', { method: 'DELETE', headers: { 'X-Admin-Password': adminPassword } });
+                if (!res.ok) throw new Error('Failed');
+                loadTrash();
+            } catch (err) {
+                showError('Could not empty trash');
+            }
+        }
+
+        async function regenerateOG(galleryId) {
+            try {
+                await fetch(`/api/gallery/${galleryId}/og-image`, { method: 'DELETE', headers: { 'X-Admin-Password': adminPassword } });
+                // Show brief confirmation via toast reuse
+                const toast = document.getElementById('uploadToast');
+                const spinner = document.getElementById('toastSpinner');
+                const successIcon = document.getElementById('toastSuccess');
+                const errorIcon = document.getElementById('toastError');
+                const message = document.getElementById('toastMessage');
+                spinner.style.display = 'none'; errorIcon.style.display = 'none';
+                successIcon.style.display = 'block';
+                message.textContent = 'Share preview will be regenerated on next share.';
+                toast.className = 'upload-toast visible success';
+                setTimeout(() => toast.classList.remove('visible', 'success'), 3000);
+            } catch (err) {
+                showError('Could not reset share preview');
             }
         }
 
