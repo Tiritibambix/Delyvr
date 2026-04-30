@@ -233,6 +233,53 @@
             height: 15px;
         }
 
+        /* Critique mode */
+        .photo-number {
+            position: absolute;
+            bottom: 6px; left: 6px;
+            background: rgba(0,0,0,0.62);
+            color: #fff;
+            font-size: 11px;
+            font-weight: 600;
+            font-variant-numeric: tabular-nums;
+            font-family: 'Instrument Sans', sans-serif;
+            padding: 2px 7px;
+            border-radius: 3px;
+            pointer-events: none;
+            z-index: 4;
+            line-height: 1.6;
+            letter-spacing: 0.03em;
+        }
+        .critique-indicator {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 11px;
+            font-weight: 600;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            color: var(--accent);
+            padding: 7px 12px;
+            border: 1px solid var(--accent);
+            border-radius: 4px;
+            white-space: nowrap;
+        }
+        html.light .critique-indicator { color: #8a6515; border-color: #8a6515; }
+        .lb-critique-num {
+            position: absolute;
+            top: 14px; left: 16px;
+            background: rgba(0,0,0,0.55);
+            color: #fff;
+            font-size: 14px;
+            font-weight: 700;
+            font-variant-numeric: tabular-nums;
+            padding: 4px 10px;
+            border-radius: 4px;
+            z-index: 1020;
+            pointer-events: none;
+            display: none;
+        }
+
         /* Favorites toast */
         #favToast {
             position: fixed;
@@ -923,6 +970,10 @@
             </svg>
             <span id="backToCollectionText"></span>
         </a>
+        <span class="critique-indicator" id="critiqueIndicator" style="display:none;">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><line x1="10" y1="6" x2="21" y2="6"/><line x1="10" y1="12" x2="21" y2="12"/><line x1="10" y1="18" x2="21" y2="18"/><path d="M4 6h1v4M4 10h2M6 18H4c0-1 2-2 2-3s-1-1.5-2-1" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            Critique
+        </span>
         <a class="download-all-btn" id="downloadAllBtn" href="#">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M12 4v12m0 0l-4-4m4 4l4-4M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2" stroke-linecap="round" stroke-linejoin="round"/>
@@ -956,6 +1007,7 @@
         <!-- Photo -->
         <div class="lightbox-content">
             <img class="lightbox-img" id="lightboxImg">
+            <div class="lb-critique-num" id="lbCritiqueNum"></div>
         </div>
 
         <!-- Mobile Overlay (portrait + landscape) -->
@@ -1103,7 +1155,9 @@
         applyTheme();
 
         const galleryId = window.location.pathname.split('/').pop();
-        const fromCollection = new URLSearchParams(window.location.search).get('from');
+        const _params = new URLSearchParams(window.location.search);
+        const fromCollection = _params.get('from');
+        const critiqueMode = _params.get('critique') === '1';
         let photos = [];
         let currentPhotoIndex = 0;
 
@@ -1197,6 +1251,11 @@
                 document.getElementById('loadingState').style.display = 'none';
                 document.getElementById('heroSection').style.display = 'flex';
                 document.getElementById('actionsBar').style.display = 'flex';
+
+                // Critique mode indicator
+                if (critiqueMode) {
+                    document.getElementById('critiqueIndicator').style.display = 'inline-flex';
+                }
 
                 // Show back-to-collection button if ?from= param is present
                 if (fromCollection) {
@@ -1366,6 +1425,7 @@
                     card.innerHTML = `
                         <div class="loading"></div>
                         <img data-src="${photo.thumbnailUrl}" alt="">
+                        ${critiqueMode ? `<span class="photo-number">${index + 1}</span>` : ''}
                         <div class="photo-overlay">
                             <span class="photo-name"></span>
                             <button class="photo-favorite ${favClass}" data-filename="" data-index="${index}" aria-label="Add to favorites">
@@ -1489,6 +1549,11 @@
         function updateLightbox() {
             const photo = photos[currentPhotoIndex];
             const downloadUrl = `/api/gallery/${galleryId}/download/${encodeURIComponent(photo.filename)}`;
+
+            if (critiqueMode) {
+                const num = document.getElementById('lbCritiqueNum');
+                if (num) { num.textContent = `# ${currentPhotoIndex + 1}`; num.style.display = 'block'; }
+            }
 
             document.getElementById('lightboxImg').src = photo.previewUrl || photo.url;
 

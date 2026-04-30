@@ -1862,8 +1862,11 @@
                     <div class="gallery-actions">
                         <button class="gallery-move-btn" onclick="moveGallery('${g.id}', -1)" title="Move up">▲</button>
                         <button class="gallery-move-btn" onclick="moveGallery('${g.id}', 1)" title="Move down">▼</button>
-                        <button class="btn-icon" onclick="copyGalleryLink('${g.id}', 'download', this)" title="Copy link">
+                        <button class="btn-icon" onclick="copyGalleryLink('${g.id}', 'download', this)" title="Copy client link">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                        </button>
+                        <button class="btn-icon" onclick="copyCritiqueLink('${g.id}', this)" title="Copy critique link (numbered photos)">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="10" y1="6" x2="21" y2="6"/><line x1="10" y1="12" x2="21" y2="12"/><line x1="10" y1="18" x2="21" y2="18"/><path d="M4 6h1v4M4 10h2M6 18H4c0-1 2-2 2-3s-1-1.5-2-1" stroke-linecap="round" stroke-linejoin="round"/></svg>
                         </button>
                         <button class="btn-icon" onclick="openPhotosModal('${g.id}')" title="Manage photos">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
@@ -2127,6 +2130,13 @@
 
         function copyGalleryLink(id, type, btn) {
             const url = `${window.location.origin}/${type}/${id}`;
+            copyToClipboard(url);
+            btn.classList.add('copied');
+            setTimeout(() => btn.classList.remove('copied'), 1800);
+        }
+
+        function copyCritiqueLink(id, btn) {
+            const url = `${window.location.origin}/preview/${id}?critique=1`;
             copyToClipboard(url);
             btn.classList.add('copied');
             setTimeout(() => btn.classList.remove('copied'), 1800);
