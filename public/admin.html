@@ -199,7 +199,7 @@
         .photos-grid-item img {
             display: block;
             width: 100%;
-            aspect-ratio: 1;
+            height: 100%;
             object-fit: cover;
         }
         .photos-grid-item .photo-delete-btn {
@@ -2302,9 +2302,19 @@
                         <img src="${p.thumbnailUrl}" alt="${escapeHtml(p.filename)}" title="${escapeHtml(p.filename)}" loading="lazy">
                         <button class="photo-delete-btn" onclick="deletePhoto('${galleryId}', '${escapeAttr(p.filename)}')" title="Delete photo">×</button>
                     </div>`).join('');
+                // Force square cells — CSS aspect-ratio is unreliable on some mobile browsers
+                requestAnimationFrame(() => squarePhotoGridCells());
             } catch (err) {
                 showError('Could not load photos');
             }
+        }
+
+        function squarePhotoGridCells() {
+            const items = document.querySelectorAll('#photosGrid .photos-grid-item');
+            if (!items.length) return;
+            const w = items[0].offsetWidth;
+            if (!w) return;
+            items.forEach(el => { el.style.height = w + 'px'; });
         }
 
         function closePhotosModal() {
