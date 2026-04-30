@@ -541,11 +541,28 @@
             background: transparent; border: none;
             font-size: 14px; font-weight: 500; color: var(--text);
             font-family: inherit; outline: none; width: 100%;
-            cursor: default;
+            cursor: default; caret-color: transparent; user-select: none;
         }
-        .collection-name-input:not([readonly]):focus {
+        .collection-name-input[readonly]:focus { outline: none; }
+        .collection-name-input:not([readonly]) {
+            cursor: text; caret-color: auto; user-select: auto;
             background: var(--bg2); border-radius: 2px; padding: 1px 6px;
-            cursor: text;
+        }
+
+        /* Pencil edit button — always visible on mobile, hover-only on desktop */
+        .name-edit-btn {
+            background: none; border: none; cursor: pointer; padding: 2px 4px;
+            color: var(--muted2); flex-shrink: 0; line-height: 1;
+            display: none; /* shown on touch or hover */
+        }
+        .name-edit-btn svg { width: 13px; height: 13px; }
+        .name-edit-btn:hover { color: var(--accent); }
+        @media (hover: none) {
+            .name-edit-btn { display: inline-flex; align-items: center; }
+        }
+        @media (hover: hover) {
+            .gallery-item:hover .name-edit-btn,
+            .collection-item:hover .name-edit-btn { display: inline-flex; align-items: center; }
         }
         .collection-meta-row { font-size: 11px; color: var(--muted); margin-top: 1px; }
 
@@ -1794,12 +1811,17 @@
                     </div>
 
                     <div class="gallery-info">
-                        <div class="gallery-name" contenteditable="false" spellcheck="false"
-                             title="Double-click to rename"
-                             ondblclick="startGalleryRename(event, '${g.id}', this)"
-                             onblur="finishGalleryRename('${g.id}', this)"
-                             onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur();} if(event.key==='Escape'){this.textContent=this.dataset.orig;this.blur();}"
-                             >${escapeHtml(g.eventName)}</div>
+                        <div style="display:flex;align-items:center;gap:4px;min-width:0;">
+                            <div class="gallery-name" contenteditable="false" spellcheck="false"
+                                 id="gname-${g.id}"
+                                 ondblclick="startGalleryRename(event, '${g.id}', this)"
+                                 onblur="finishGalleryRename('${g.id}', this)"
+                                 onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur();} if(event.key==='Escape'){this.textContent=this.dataset.orig;this.blur();}"
+                                 >${escapeHtml(g.eventName)}</div>
+                            <button class="name-edit-btn" onclick="startGalleryRename(event, '${g.id}', document.getElementById('gname-${g.id}'))" title="Rename">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                            </button>
+                        </div>
                         <div class="gallery-meta">${g.fileCount} photos · ${new Date(g.created).toLocaleDateString()}${g.collectionId ? ' · <span class="in-collection">In collection</span>' : ''}</div>
                         <div class="gallery-bottom">
                             <label class="downloads-toggle" title="Allow clients to download">
@@ -2395,11 +2417,17 @@
                                    onchange="uploadCollectionBackground('${c.id}', this.files[0])">
                         </div>
                         <div class="collection-info">
-                            <input class="collection-name-input" value="${escapeHtml(c.name)}"
-                                   readonly title="Double-click to rename"
-                                   ondblclick="this.removeAttribute('readonly'); this.select();"
-                                   onblur="renameCollectionInline('${c.id}', this.value); this.setAttribute('readonly','');"
-                                   onkeydown="if(event.key==='Enter')this.blur(); if(event.key==='Escape'){this.value=this.defaultValue; this.blur();}">
+                            <div style="display:flex;align-items:center;gap:4px;min-width:0;">
+                                <input class="collection-name-input" id="col-name-${c.id}" value="${escapeHtml(c.name)}"
+                                       readonly title="Double-click to rename"
+                                       onfocus="if(this.hasAttribute('readonly')) this.blur();"
+                                       ondblclick="startCollectionRename('${c.id}');"
+                                       onblur="finishCollectionRename('${c.id}', this);"
+                                       onkeydown="if(event.key==='Enter')this.blur(); if(event.key==='Escape'){this.value=this.defaultValue; this.blur();}">
+                                <button class="name-edit-btn" onclick="startCollectionRename('${c.id}')" title="Rename">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                                </button>
+                            </div>
                             <div class="collection-meta-row">${c.galleryIds.length} ${c.galleryIds.length === 1 ? 'gallery' : 'galleries'}</div>
                         </div>
                         <div class="collection-actions">
@@ -2539,6 +2567,23 @@
                 if (e.key === 'Enter') createCollection();
             });
         });
+
+        function startCollectionRename(collectionId) {
+            const input = document.getElementById(`col-name-${collectionId}`);
+            if (!input) return;
+            input.removeAttribute('readonly');
+            input.focus();
+            input.select();
+        }
+
+        async function finishCollectionRename(collectionId, input) {
+            input.setAttribute('readonly', '');
+            const newName = (input.value || '').trim() || 'Untitled Collection';
+            if (newName !== input.defaultValue) {
+                await renameCollectionInline(collectionId, newName);
+                input.defaultValue = newName;
+            }
+        }
 
         async function renameCollectionInline(collectionId, rawName) {
             const newName = (rawName || '').trim() || 'Untitled Collection';
