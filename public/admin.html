@@ -603,22 +603,41 @@
         .gallery-picker-card {
             background: var(--bg2); border: 1px solid var(--border);
             border-radius: 8px; padding: 24px;
-            width: 90%; max-width: 480px; max-height: 80vh;
-            display: flex; flex-direction: column; gap: 12px;
+            width: 90%; max-width: 640px; max-height: 82vh;
+            display: flex; flex-direction: column; gap: 14px;
         }
-        .gallery-picker-header { display: flex; align-items: center; justify-content: space-between; }
+        .gallery-picker-header { display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; }
         .gallery-picker-header h3 { font-size: 15px; font-weight: 600; }
         .gallery-picker-close { background: none; border: none; color: var(--muted); font-size: 1.4rem; cursor: pointer; line-height: 1; }
-        .gallery-picker-list { display: flex; flex-direction: column; gap: 4px; overflow-y: auto; max-height: 60vh; }
-        .gallery-picker-item {
-            display: flex; align-items: center; gap: 10px;
-            padding: 8px 10px; border-radius: 4px;
-            background: var(--bg3); border: 1px solid var(--border);
-            cursor: pointer; color: var(--text); font-size: 13px;
-            text-align: left; font-family: inherit;
+        .gallery-picker-list {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+            gap: 8px; overflow-y: auto;
         }
-        .gallery-picker-item:hover { background: var(--bg); border-color: var(--muted); }
-        .gallery-picker-empty { color: var(--muted2); font-size: 13px; font-style: italic; padding: 8px 0; }
+        .gallery-picker-item {
+            display: flex; flex-direction: column;
+            border-radius: 5px;
+            background: var(--bg3); border: 1px solid var(--border);
+            cursor: pointer; font-family: inherit;
+            overflow: hidden; text-align: left;
+            transition: border-color 0.15s;
+        }
+        .gallery-picker-item:hover:not(:disabled) { border-color: var(--accent); }
+        .gallery-picker-item:disabled { opacity: 0.4; cursor: default; }
+        .gallery-picker-thumb {
+            width: 100%; aspect-ratio: 3/2;
+            background: var(--bg); overflow: hidden;
+            display: flex; align-items: center; justify-content: center;
+        }
+        .gallery-picker-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+        .gallery-picker-thumb svg { width: 28px; height: 28px; color: var(--border2); }
+        .gallery-picker-info {
+            padding: 7px 9px;
+            display: flex; flex-direction: column; gap: 2px;
+        }
+        .gallery-picker-name { font-size: 12px; font-weight: 500; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .gallery-picker-count { font-size: 11px; color: var(--muted); }
+        .gallery-picker-empty { color: var(--muted2); font-size: 13px; font-style: italic; padding: 8px 0; grid-column: 1/-1; }
 
         .collection-link-row {
             padding: 8px 12px; border-top: 1px solid var(--border);
@@ -643,6 +662,17 @@
         }
         .gallery-item:active { cursor: grabbing; }
         .gallery-item.dragging { opacity: 0.4; }
+        .gallery-item.drag-over-gallery { border-top: 2px solid var(--accent); }
+        .gallery-move-btn {
+            background: none; border: none; cursor: pointer;
+            color: var(--muted2); font-size: 12px; padding: 2px 4px;
+            font-family: inherit; line-height: 1;
+            display: none;
+        }
+        .gallery-move-btn:hover { color: var(--text); }
+        @media (hover: none), (max-width: 768px) {
+            .gallery-move-btn { display: inline; }
+        }
 
         /* Cover vignette galerie — 52px */
         .gallery-cover {
@@ -1499,7 +1529,10 @@
                 <div class="gallery-item" draggable="true"
                      id="gallery-item-${g.id}"
                      ondragstart="handleGalleryDragStart(event, '${g.id}')"
-                     ondragend="handleGalleryDragEnd(event)">
+                     ondragend="handleGalleryDragEnd(event)"
+                     ondragover="handleGalleryItemDragOver(event, '${g.id}')"
+                     ondragleave="handleGalleryItemDragLeave('${g.id}')"
+                     ondrop="handleGalleryItemDrop(event, '${g.id}')">
 
                     <div class="gallery-cover ${g.hasBackground ? 'has-image' : ''}"
                          id="cover-${g.id}"
@@ -1544,6 +1577,8 @@
                     </div>
 
                     <div class="gallery-actions">
+                        <button class="gallery-move-btn" onclick="moveGallery('${g.id}', -1)" title="Move up">▲</button>
+                        <button class="gallery-move-btn" onclick="moveGallery('${g.id}', 1)" title="Move down">▼</button>
                         <button class="btn-icon" onclick="copyGalleryLink('${g.id}', 'download', this)" title="Copy link">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
                         </button>
@@ -2153,16 +2188,25 @@
             _pickerCollectionId = collectionId;
             const collection = (_collectionsData || []).find(c => c.id === collectionId);
             const inCollection = new Set(collection ? collection.galleryIds : []);
-            const available = (_galleriesData || []).filter(g => !inCollection.has(g.id));
+            const all = _galleriesData || [];
             const list = document.getElementById('galleryPickerList');
-            if (available.length === 0) {
-                list.innerHTML = '<div class="gallery-picker-empty">No galleries available to add.</div>';
+            if (all.length === 0) {
+                list.innerHTML = '<div class="gallery-picker-empty">No galleries yet.</div>';
             } else {
-                list.innerHTML = available.map(g => `
-                    <button class="gallery-picker-item" onclick="pickGallery('${g.id}')">
-                        ${escapeHtml(g.eventName)}
-                    </button>
-                `).join('');
+                const thumbSvg = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>`;
+                list.innerHTML = all.map(g => {
+                    const already = inCollection.has(g.id);
+                    const thumbHtml = g.hasBackground
+                        ? `<img src="/api/gallery/${g.id}/background?thumb=1" alt="" loading="lazy">`
+                        : thumbSvg;
+                    return `<button class="gallery-picker-item" ${already ? 'disabled title="Already in this collection"' : `onclick="pickGallery('${g.id}')"`}>
+                        <div class="gallery-picker-thumb">${thumbHtml}</div>
+                        <div class="gallery-picker-info">
+                            <div class="gallery-picker-name">${escapeHtml(g.eventName)}</div>
+                            <div class="gallery-picker-count">${g.fileCount} photo${g.fileCount !== 1 ? 's' : ''}${already ? ' · ✓ added' : ''}</div>
+                        </div>
+                    </button>`;
+                }).join('');
             }
             document.getElementById('galleryPickerModal').classList.add('active');
         }
@@ -2223,6 +2267,56 @@
                 if (el) el.classList.remove('dragging');
             }
             _draggedGalleryId = null;
+        }
+
+        function handleGalleryItemDragOver(event, targetId) {
+            if (!_draggedGalleryId || _draggedGalleryId === targetId) return;
+            event.preventDefault();
+            event.stopPropagation();
+            event.dataTransfer.dropEffect = 'move';
+            document.getElementById(`gallery-item-${targetId}`).classList.add('drag-over-gallery');
+        }
+
+        function handleGalleryItemDragLeave(targetId) {
+            document.getElementById(`gallery-item-${targetId}`)?.classList.remove('drag-over-gallery');
+        }
+
+        async function handleGalleryItemDrop(event, targetId) {
+            event.preventDefault();
+            event.stopPropagation();
+            document.getElementById(`gallery-item-${targetId}`)?.classList.remove('drag-over-gallery');
+            const draggedId = _draggedGalleryId;
+            if (!draggedId || draggedId === targetId) return;
+            const draggedEl = document.getElementById(`gallery-item-${draggedId}`);
+            const targetEl = document.getElementById(`gallery-item-${targetId}`);
+            if (!draggedEl || !targetEl) return;
+            document.getElementById('galleryList').insertBefore(draggedEl, targetEl);
+            await saveGalleryOrder();
+        }
+
+        async function moveGallery(galleryId, direction) {
+            const container = document.getElementById('galleryList');
+            const items = Array.from(container.querySelectorAll('.gallery-item'));
+            const idx = items.findIndex(el => el.id === `gallery-item-${galleryId}`);
+            if (idx === -1) return;
+            const newIdx = idx + direction;
+            if (newIdx < 0 || newIdx >= items.length) return;
+            direction > 0
+                ? container.insertBefore(items[idx], items[newIdx].nextSibling)
+                : container.insertBefore(items[idx], items[newIdx]);
+            await saveGalleryOrder();
+        }
+
+        async function saveGalleryOrder() {
+            const ids = Array.from(document.getElementById('galleryList').querySelectorAll('.gallery-item'))
+                .map(el => el.id.replace('gallery-item-', ''));
+            try {
+                await fetch('/api/galleries/reorder', {
+                    method: 'PATCH',
+                    headers: { 'X-Admin-Password': adminPassword, 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ galleryIds: ids })
+                });
+            } catch (_) {}
         }
 
         function handleColDragOver(event, collectionId) {

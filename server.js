@@ -1507,8 +1507,27 @@ app.get('/api/galleries', adminLimiter, requireAuth, (req, res) => {
         });
     }
 
-    galleryList.sort((a, b) => new Date(b.created) - new Date(a.created));
+    galleryList.sort((a, b) => {
+        const oa = galleries.get(a.id)?.order;
+        const ob = galleries.get(b.id)?.order;
+        if (oa !== undefined && ob !== undefined) return oa - ob;
+        if (oa !== undefined) return -1;
+        if (ob !== undefined) return 1;
+        return new Date(b.created) - new Date(a.created);
+    });
     res.json(galleryList);
+});
+
+// Reorder galleries (admin only)
+app.patch('/api/galleries/reorder', adminLimiter, requireAuth, (req, res) => {
+    const { galleryIds } = req.body;
+    if (!Array.isArray(galleryIds)) return res.status(400).json({ error: 'galleryIds must be an array' });
+    galleryIds.forEach((id, idx) => {
+        const g = galleries.get(id);
+        if (g) g.order = idx;
+    });
+    saveGalleries();
+    res.json({ success: true });
 });
 
 // Delete gallery
