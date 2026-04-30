@@ -457,6 +457,11 @@
             display: flex; align-items: center; gap: 8px;
             margin-left: auto;
         }
+        @media (max-width: 600px) {
+            .section-header { flex-wrap: wrap; gap: 6px; }
+            .section-header-right { width: 100%; margin-left: 0; }
+            .gallery-search { flex: 1; max-width: none; }
+        }
         .gallery-search {
             flex: 1;
             max-width: 200px;
@@ -617,6 +622,10 @@
             display: grid;
             grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
             gap: 8px; overflow-y: auto;
+        }
+        @media (max-width: 480px) {
+            .gallery-picker-card { padding: 16px; width: 95%; }
+            .gallery-picker-list { grid-template-columns: repeat(2, 1fr); gap: 6px; }
         }
         .gallery-picker-item {
             display: flex; flex-direction: column;
@@ -795,11 +804,15 @@
         .gallery-name {
             font-size: 14px; font-weight: 500; color: var(--text);
             white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-            cursor: text; outline: none;
+            cursor: default; outline: none; border-radius: 2px;
         }
-        .gallery-name:focus {
-            background: var(--bg3); border-radius: 2px; padding: 1px 6px;
-            white-space: normal;
+        .gallery-name[contenteditable="true"]:focus {
+            background: var(--bg3); padding: 1px 6px;
+            white-space: normal; cursor: text;
+        }
+        .gallery-name.editing {
+            background: var(--bg3); padding: 1px 6px;
+            white-space: normal; cursor: text;
         }
 
         .gallery-meta {
@@ -847,6 +860,18 @@
         .btn-fav-action:hover { color: var(--accent); }
 
         .gallery-actions { display: flex; gap: 6px; flex-shrink: 0; align-items: center; }
+
+        @media (max-width: 600px) {
+            .gallery-item { flex-wrap: wrap; gap: 8px; padding: 8px 10px; }
+            .gallery-cover { width: 44px; height: 44px; flex-shrink: 0; }
+            .gallery-info { flex: 1; min-width: 0; }
+            .gallery-actions {
+                width: 100%; justify-content: flex-end;
+                border-top: 1px solid var(--border);
+                padding-top: 8px; margin-top: 2px;
+            }
+            .gallery-move-btn { display: none !important; }
+        }
 
         .empty-state { font-size: 13px; color: var(--muted); padding: 20px 0; text-align: center; }
 
@@ -1756,9 +1781,12 @@
                     </div>
 
                     <div class="gallery-info">
-                        <div class="gallery-name" contenteditable="true" spellcheck="false"
-                             onblur="renameGalleryInline('${g.id}', this.textContent)"
-                             onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur();}">${escapeHtml(g.eventName)}</div>
+                        <div class="gallery-name" contenteditable="false" spellcheck="false"
+                             title="Double-click to rename"
+                             ondblclick="startGalleryRename(event, '${g.id}', this)"
+                             onblur="finishGalleryRename('${g.id}', this)"
+                             onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur();} if(event.key==='Escape'){this.textContent=this.dataset.orig;this.blur();}"
+                             >${escapeHtml(g.eventName)}</div>
                         <div class="gallery-meta">${g.fileCount} photos · ${new Date(g.created).toLocaleDateString()}${g.collectionId ? ' · <span class="in-collection">In collection</span>' : ''}</div>
                         <div class="gallery-bottom">
                             <label class="downloads-toggle" title="Allow clients to download">
@@ -2137,6 +2165,32 @@
                 setTimeout(() => {
                     toast.classList.remove('visible', 'error');
                 }, 3000);
+            }
+        }
+
+        function startGalleryRename(event, galleryId, el) {
+            event.stopPropagation();
+            el.dataset.orig = el.textContent;
+            el.contentEditable = 'true';
+            el.classList.add('editing');
+            // Disable drag on parent so text selection works
+            el.closest('.gallery-item').setAttribute('draggable', 'false');
+            el.focus();
+            // Select all text
+            const range = document.createRange();
+            range.selectNodeContents(el);
+            const sel = window.getSelection();
+            sel.removeAllRanges();
+            sel.addRange(range);
+        }
+
+        async function finishGalleryRename(galleryId, el) {
+            el.contentEditable = 'false';
+            el.classList.remove('editing');
+            el.closest('.gallery-item')?.setAttribute('draggable', 'true');
+            const newName = (el.textContent || '').trim() || 'Untitled Event';
+            if (newName !== el.dataset.orig) {
+                await renameGallery(galleryId, newName);
             }
         }
 

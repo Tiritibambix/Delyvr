@@ -364,7 +364,12 @@ const storage = multer.diskStorage({
         cb(null, uploadPath);
     },
     filename: (req, file, cb) => {
-        const safeName = file.originalname.replace(/[^a-zA-Z0-9._-]/g, '_');
+        // Allow accented characters, spaces, &, etc. — only strip truly unsafe filesystem chars
+        const safeName = file.originalname
+            .normalize('NFC')
+            .replace(/[<>:"/\\|?*\x00-\x1f]/g, '_')  // forbidden on Windows & Unix
+            .replace(/^\.+/, '_')                       // no hidden files
+            .trim() || 'photo';
         cb(null, safeName);
     }
 });
@@ -459,7 +464,8 @@ function validateGalleryId(req, res, next) {
 }
 
 // Filename validation — prevents path traversal on per-photo endpoints
-const SAFE_FILENAME_RE = /^[a-zA-Z0-9._\-]+$/;
+// Allow any char except the filesystem-dangerous ones and path separators
+const SAFE_FILENAME_RE = /^[^<>:"/\\|?*\x00-\x1f][^<>:"/\\|?*\x00-\x1f]*$/;
 
 function validateFilename(req, res, next) {
     if (!SAFE_FILENAME_RE.test(req.params.filename)) {
@@ -1142,16 +1148,19 @@ app.get('/api/gallery/:galleryId/download', downloadLimiter, validateGalleryId, 
     }
 
     const eventName = gallery && gallery.eventName ? gallery.eventName : 'photos';
+    const asciiName = eventName.replace(/[^\x20-\x7E]/g, '_').replace(/["\\]/g, '_').substring(0, 50) || 'photos';
+    const encodedName = encodeURIComponent(eventName.substring(0, 200) + '.zip');
 
-    const safeFileName = eventName
-        .replace(/[^a-zA-Z0-9\s-]/g, '')
-        .replace(/\s+/g, '-')
-        .substring(0, 50) || 'photos';
+    // Compute approximate Content-Length for progress bar (store mode: no compression)
+    const zipBytes = files.reduce((sum, f) => {
+        try { return sum + fs.statSync(path.join(galleryPath, f)).size + 50 + Buffer.byteLength(f, 'utf8'); } catch (_) { return sum; }
+    }, 0) + 22;
 
     res.setHeader('Content-Type', 'application/zip');
-    res.setHeader('Content-Disposition', `attachment; filename="${safeFileName}.zip"`);
+    res.setHeader('Content-Disposition', `attachment; filename="${asciiName}.zip"; filename*=UTF-8''${encodedName}`);
+    res.setHeader('Content-Length', String(zipBytes));
 
-    const archive = archiver('zip', { zlib: { level: 5 } });
+    const archive = archiver('zip', { store: true });
     archive.on('error', (err) => { res.status(500).send({ error: err.message }); });
     archive.pipe(res);
     files.forEach(file => archive.file(path.join(galleryPath, file), { name: file }));
@@ -1478,34 +1487,33 @@ app.get('/api/collection/:collectionId/download', downloadLimiter, validateColle
     const collection = collections.get(collectionId);
     if (!collection) return res.status(404).json({ error: 'Collection not found' });
 
-    const safeCollectionName = collection.name
-        .replace(/[^a-zA-Z0-9\s-]/g, '')
-        .replace(/\s+/g, '-')
-        .substring(0, 50) || 'collection';
+    const colName = collection.name || 'collection';
+    const asciiColName = colName.replace(/[^\x20-\x7E]/g, '_').replace(/["\\]/g, '_').substring(0, 50) || 'collection';
+    const encodedColName = encodeURIComponent(colName.substring(0, 200) + '.zip');
 
-    res.setHeader('Content-Type', 'application/zip');
-    res.setHeader('Content-Disposition', `attachment; filename="${safeCollectionName}.zip"`);
-
-    const archive = archiver('zip', { zlib: { level: 5 } });
-    archive.on('error', err => res.status(500).send({ error: err.message }));
-    archive.pipe(res);
-
+    // Pre-scan files for Content-Length and folder names (store mode)
+    const entries = [];
     for (const galleryId of collection.galleryIds) {
         const gallery = galleries.get(galleryId);
         const galleryPath = safeResolvePath(path.join(DATA_DIR, 'uploads'), galleryId);
         if (!fs.existsSync(galleryPath)) continue;
-
-        const folderName = (gallery ? gallery.eventName : galleryId)
-            .replace(/[^a-zA-Z0-9\s-]/g, '')
-            .replace(/\s+/g, '-')
-            .substring(0, 80) || galleryId;
-
+        const folderName = (gallery ? gallery.eventName : galleryId).substring(0, 80) || galleryId;
         const files = fs.readdirSync(galleryPath).filter(f => !f.startsWith('.'));
-        files.forEach(file => {
-            archive.file(path.join(galleryPath, file), { name: `${folderName}/${file}` });
-        });
+        files.forEach(file => entries.push({ diskPath: path.join(galleryPath, file), zipName: `${folderName}/${file}` }));
     }
 
+    const zipBytes = entries.reduce((sum, e) => {
+        try { return sum + fs.statSync(e.diskPath).size + 50 + Buffer.byteLength(e.zipName, 'utf8'); } catch (_) { return sum; }
+    }, 0) + 22;
+
+    res.setHeader('Content-Type', 'application/zip');
+    res.setHeader('Content-Disposition', `attachment; filename="${asciiColName}.zip"; filename*=UTF-8''${encodedColName}`);
+    res.setHeader('Content-Length', String(zipBytes));
+
+    const archive = archiver('zip', { store: true });
+    archive.on('error', err => res.status(500).send({ error: err.message }));
+    archive.pipe(res);
+    entries.forEach(e => archive.file(e.diskPath, { name: e.zipName }));
     archive.finalize();
 });
 
