@@ -179,7 +179,7 @@
         .photos-grid {
             display: grid;
             grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
-            align-items: start; /* prevent stretch from breaking aspect-ratio */
+            align-items: start;
             gap: 6px;
             overflow-y: auto;
             flex: 1;
@@ -192,10 +192,15 @@
         }
         .photos-grid-item {
             position: relative;
-            aspect-ratio: 1;
             border-radius: 3px;
             overflow: hidden;
             background: var(--bg3);
+        }
+        /* ::before creates real in-flow height = column width → reliable square */
+        .photos-grid-item::before {
+            content: '';
+            display: block;
+            padding-top: 100%;
         }
         .photos-grid-item img {
             position: absolute;
