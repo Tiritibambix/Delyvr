@@ -181,6 +181,11 @@
             grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
             gap: 6px; overflow-y: auto;
         }
+        @media (max-width: 480px) {
+            .photos-modal-card { padding: 14px; width: 95%; }
+            .photos-grid { grid-template-columns: repeat(3, 1fr); gap: 4px; }
+            .photos-grid-item .photo-delete-btn { opacity: 1; } /* always visible on touch */
+        }
         .photos-grid-item {
             position: relative;
             aspect-ratio: 1;
@@ -540,7 +545,8 @@
         .collection-name-input {
             background: transparent; border: none;
             font-size: 14px; font-weight: 500; color: var(--text);
-            font-family: inherit; outline: none; width: 100%;
+            font-family: inherit; outline: none;
+            min-width: 0; flex: 1; /* fills wrapper, yields to pencil button */
             cursor: default; caret-color: transparent; user-select: none;
         }
         .collection-name-input[readonly]:focus { outline: none; }
@@ -778,6 +784,20 @@
             color: var(--text); cursor: pointer;
         }
         .bulk-col-select:disabled { opacity: 0.4; cursor: default; }
+
+        @media (max-width: 600px) {
+            #bulkActionBar {
+                flex-direction: column;
+                align-items: stretch;
+                gap: 8px;
+                padding: 10px 14px;
+            }
+            .bulk-left { gap: 8px; }
+            .bulk-right { flex-wrap: wrap; gap: 6px; justify-content: flex-end; }
+            .bulk-btn, .bulk-col-select { font-size: 11px; padding: 5px 9px; }
+            #bulkCount { min-width: 0; font-size: 12px; }
+            .bulk-label-long { display: none; } /* hide verbose words on mobile */
+        }
         .gallery-move-btn {
             background: none; border: none; cursor: pointer;
             color: var(--muted2); font-size: 12px; padding: 2px 4px;
@@ -3016,8 +3036,8 @@
             <button class="bulk-select-all" onclick="deselectAllGalleries()">Deselect all</button>
         </div>
         <div class="bulk-right">
-            <button class="bulk-btn" id="bulkEnableBtn" onclick="bulkSetDownloads(true)" disabled>Enable downloads</button>
-            <button class="bulk-btn" id="bulkDisableBtn" onclick="bulkSetDownloads(false)" disabled>Disable downloads</button>
+            <button class="bulk-btn" id="bulkEnableBtn" onclick="bulkSetDownloads(true)" disabled>Enable<span class="bulk-label-long"> downloads</span></button>
+            <button class="bulk-btn" id="bulkDisableBtn" onclick="bulkSetDownloads(false)" disabled>Disable<span class="bulk-label-long"> downloads</span></button>
             <select class="bulk-col-select" id="bulkCollectionSelect" onchange="if(this.value){bulkAddToCollection(this.value);this.value=''}" disabled>
                 <option value="">Add to collection…</option>
             </select>
