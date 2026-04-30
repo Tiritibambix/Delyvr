@@ -196,17 +196,11 @@
             overflow: hidden;
             background: var(--bg3);
         }
-        /* ::before creates real in-flow height = column width → reliable square */
-        .photos-grid-item::before {
-            content: '';
-            display: block;
-            padding-top: 100%;
-        }
         .photos-grid-item img {
-            position: absolute;
-            inset: 0;
-            width: 100%; height: 100%;
-            object-fit: cover; display: block;
+            display: block;
+            width: 100%;
+            aspect-ratio: 1;
+            object-fit: cover;
         }
         .photos-grid-item .photo-delete-btn {
             position: absolute; top: 4px; right: 4px;
