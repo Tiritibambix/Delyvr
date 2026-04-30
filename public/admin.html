@@ -692,6 +692,60 @@
         .gallery-item:active { cursor: grabbing; }
         .gallery-item.dragging { opacity: 0.4; }
         .gallery-item.drag-over-gallery { border-top: 2px solid var(--accent); }
+
+        /* ── SELECTION MODE ── */
+        .gallery-cb {
+            position: absolute; top: 8px; left: 8px;
+            width: 17px; height: 17px;
+            accent-color: var(--accent);
+            opacity: 0; pointer-events: none;
+            transition: opacity 0.15s; z-index: 5;
+            cursor: pointer;
+        }
+        #galleryList.selection-mode .gallery-cb { opacity: 1; pointer-events: auto; }
+        #galleryList.selection-mode .gallery-item { cursor: pointer; }
+        #galleryList.selection-mode .gallery-item:hover { border-color: var(--muted); }
+        .gallery-item.gallery-selected { outline: 2px solid var(--accent); outline-offset: -2px; background: color-mix(in srgb, var(--accent) 6%, var(--bg2)); }
+        .section-select-btn {
+            background: none; border: 1px solid var(--border2);
+            border-radius: 4px; padding: 4px 10px;
+            font-size: 11px; font-weight: 600; letter-spacing: 0.06em;
+            text-transform: uppercase; color: var(--muted);
+            cursor: pointer; font-family: inherit; flex-shrink: 0;
+        }
+        .section-select-btn:hover { color: var(--text); border-color: var(--muted); }
+        .section-select-btn.active { color: var(--accent); border-color: var(--accent); }
+
+        /* ── BULK ACTION BAR ── */
+        #bulkActionBar {
+            position: fixed; bottom: 0; left: 0; right: 0; z-index: 800;
+            background: var(--bg2); border-top: 1px solid var(--border);
+            display: flex; align-items: center; justify-content: space-between;
+            gap: 12px; padding: 10px 24px;
+            transform: translateY(100%); transition: transform 0.22s ease;
+        }
+        #bulkActionBar.visible { transform: translateY(0); }
+        .bulk-left { display: flex; align-items: center; gap: 12px; flex-shrink: 0; }
+        .bulk-right { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+        #bulkCount { font-size: 13px; font-weight: 600; color: var(--text); min-width: 90px; }
+        .bulk-select-all { background: none; border: none; cursor: pointer; font-size: 12px; color: var(--accent); font-family: inherit; padding: 0; }
+        .bulk-select-all:hover { text-decoration: underline; }
+        .bulk-btn {
+            padding: 6px 12px; border-radius: 4px; font-size: 12px; font-weight: 500;
+            font-family: inherit; cursor: pointer; border: 1px solid var(--border2);
+            background: var(--bg3); color: var(--text); white-space: nowrap;
+        }
+        .bulk-btn:hover { border-color: var(--muted); }
+        .bulk-btn:disabled { opacity: 0.4; cursor: default; }
+        .bulk-btn-danger { border-color: var(--error); color: var(--error); }
+        .bulk-btn-danger:hover { background: var(--error); color: #fff; }
+        .bulk-btn-cancel { color: var(--muted); }
+        .bulk-col-select {
+            padding: 6px 10px; border-radius: 4px; font-size: 12px;
+            font-family: inherit; background: var(--bg3); border: 1px solid var(--border2);
+            color: var(--text); cursor: pointer;
+        }
+        .bulk-col-select:disabled { opacity: 0.4; cursor: default; }
         .gallery-move-btn {
             background: none; border: none; cursor: pointer;
             color: var(--muted2); font-size: 12px; padding: 2px 4px;
@@ -1014,6 +1068,7 @@
                 <div class="section-header">
                     <span class="section-label">Galleries</span>
                     <input class="gallery-search" id="gallerySearch" type="search" placeholder="Search…" oninput="filterGalleries(this.value)">
+                    <button class="section-select-btn" id="selectionModeBtn" onclick="toggleSelectionMode()">Select</button>
                 </div>
                 <div id="galleryList"><div class="empty-state">Loading...</div></div>
             </div>
@@ -1565,7 +1620,10 @@
                      ondragend="handleGalleryDragEnd(event)"
                      ondragover="handleGalleryItemDragOver(event, '${g.id}')"
                      ondragleave="handleGalleryItemDragLeave('${g.id}')"
-                     ondrop="handleGalleryItemDrop(event, '${g.id}')">
+                     ondrop="handleGalleryItemDrop(event, '${g.id}')"
+                     onclick="handleGalleryItemClick(event, '${g.id}')">
+                    <input type="checkbox" class="gallery-cb" id="cb-${g.id}"
+                           onclick="event.stopPropagation(); toggleGallerySelection('${g.id}')">
 
                     <div class="gallery-cover ${g.hasBackground ? 'has-image' : ''}"
                          id="cover-${g.id}"
@@ -1634,6 +1692,141 @@
                 : _galleriesData;
             renderGalleryItems(filtered);
         }
+
+        // ── SELECTION MODE ─────────────────────────────────────────────────────
+
+        let _selectionMode = false;
+        let _selectedGalleries = new Set();
+
+        function toggleSelectionMode() {
+            _selectionMode ? exitSelectionMode() : enterSelectionMode();
+        }
+
+        function enterSelectionMode() {
+            _selectionMode = true;
+            _selectedGalleries = new Set();
+            document.getElementById('galleryList').classList.add('selection-mode');
+            document.getElementById('selectionModeBtn').classList.add('active');
+            document.getElementById('bulkActionBar').classList.add('visible');
+            populateBulkCollectionSelect();
+            updateBulkBar();
+        }
+
+        function exitSelectionMode() {
+            _selectionMode = false;
+            _selectedGalleries = new Set();
+            document.getElementById('galleryList').classList.remove('selection-mode');
+            document.getElementById('selectionModeBtn').classList.remove('active');
+            document.getElementById('bulkActionBar').classList.remove('visible');
+            document.querySelectorAll('.gallery-item.gallery-selected').forEach(el => el.classList.remove('gallery-selected'));
+            document.querySelectorAll('.gallery-cb').forEach(cb => { cb.checked = false; });
+        }
+
+        function handleGalleryItemClick(event, galleryId) {
+            if (!_selectionMode) return;
+            if (event.target.closest('button, input, [contenteditable], label, select')) return;
+            toggleGallerySelection(galleryId);
+        }
+
+        function toggleGallerySelection(galleryId) {
+            const item = document.getElementById(`gallery-item-${galleryId}`);
+            const cb = document.getElementById(`cb-${galleryId}`);
+            if (_selectedGalleries.has(galleryId)) {
+                _selectedGalleries.delete(galleryId);
+                item?.classList.remove('gallery-selected');
+                if (cb) cb.checked = false;
+            } else {
+                _selectedGalleries.add(galleryId);
+                item?.classList.add('gallery-selected');
+                if (cb) cb.checked = true;
+            }
+            updateBulkBar();
+        }
+
+        function selectAllGalleries() {
+            const items = document.querySelectorAll('#galleryList .gallery-item');
+            items.forEach(el => {
+                const id = el.id.replace('gallery-item-', '');
+                _selectedGalleries.add(id);
+                el.classList.add('gallery-selected');
+                const cb = document.getElementById(`cb-${id}`);
+                if (cb) cb.checked = true;
+            });
+            updateBulkBar();
+        }
+
+        function updateBulkBar() {
+            const n = _selectedGalleries.size;
+            document.getElementById('bulkCount').textContent = `${n} ${n === 1 ? 'gallery' : 'galleries'} selected`;
+            const hasSelection = n > 0;
+            document.getElementById('bulkEnableBtn').disabled = !hasSelection;
+            document.getElementById('bulkDisableBtn').disabled = !hasSelection;
+            document.getElementById('bulkDeleteBtn').disabled = !hasSelection;
+            const sel = document.getElementById('bulkCollectionSelect');
+            sel.disabled = !hasSelection || sel.options.length <= 1;
+        }
+
+        function populateBulkCollectionSelect() {
+            const sel = document.getElementById('bulkCollectionSelect');
+            sel.innerHTML = '<option value="">Add to collection…</option>';
+            (_collectionsData || []).forEach(c => {
+                const opt = document.createElement('option');
+                opt.value = c.id;
+                opt.textContent = c.name || 'Untitled Collection';
+                sel.appendChild(opt);
+            });
+            sel.disabled = (_collectionsData || []).length === 0;
+        }
+
+        async function bulkDelete() {
+            const ids = [..._selectedGalleries];
+            const n = ids.length;
+            if (!confirm(`Delete ${n} ${n === 1 ? 'gallery' : 'galleries'}? This cannot be undone.`)) return;
+            for (const id of ids) {
+                try {
+                    await fetch(`/api/gallery/${id}`, { method: 'DELETE', headers: { 'X-Admin-Password': adminPassword } });
+                } catch (_) {}
+            }
+            exitSelectionMode();
+            loadGalleries();
+            loadCollections();
+        }
+
+        async function bulkSetDownloads(enabled) {
+            const ids = [..._selectedGalleries];
+            for (const id of ids) {
+                try {
+                    await fetch(`/api/gallery/${id}/downloads`, {
+                        method: 'PATCH',
+                        headers: { 'X-Admin-Password': adminPassword, 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ enabled })
+                    });
+                } catch (_) {}
+            }
+            exitSelectionMode();
+            loadGalleries();
+        }
+
+        async function bulkAddToCollection(collectionId) {
+            const ids = [..._selectedGalleries];
+            for (const id of ids) {
+                try {
+                    await fetch(`/api/collection/${collectionId}/galleries`, {
+                        method: 'POST',
+                        headers: { 'X-Admin-Password': adminPassword, 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ galleryId: id })
+                    });
+                } catch (_) {}
+            }
+            exitSelectionMode();
+            loadCollections();
+            loadGalleries();
+        }
+
+        // Escape to exit selection mode
+        document.addEventListener('keydown', e => { if (e.key === 'Escape' && _selectionMode) exitSelectionMode(); });
+
+        // ───────────────────────────────────────────────────────────────────────
 
         function handleCoverDragOver(e, galleryId) {
             e.preventDefault();
@@ -2480,5 +2673,22 @@
             }
         }
     </script>
+
+    <!-- Bulk action bar -->
+    <div id="bulkActionBar">
+        <div class="bulk-left">
+            <span id="bulkCount">0 selected</span>
+            <button class="bulk-select-all" onclick="selectAllGalleries()">Select all</button>
+        </div>
+        <div class="bulk-right">
+            <button class="bulk-btn" id="bulkEnableBtn" onclick="bulkSetDownloads(true)" disabled>Enable downloads</button>
+            <button class="bulk-btn" id="bulkDisableBtn" onclick="bulkSetDownloads(false)" disabled>Disable downloads</button>
+            <select class="bulk-col-select" id="bulkCollectionSelect" onchange="if(this.value){bulkAddToCollection(this.value);this.value=''}" disabled>
+                <option value="">Add to collection…</option>
+            </select>
+            <button class="bulk-btn bulk-btn-danger" id="bulkDeleteBtn" onclick="bulkDelete()" disabled>Delete</button>
+            <button class="bulk-btn bulk-btn-cancel" onclick="exitSelectionMode()">Cancel</button>
+        </div>
+    </div>
 </body>
 </html>
