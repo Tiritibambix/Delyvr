@@ -179,12 +179,15 @@
         .photos-grid {
             display: grid;
             grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
-            gap: 6px; overflow-y: auto;
+            gap: 6px;
+            overflow-y: auto;
+            flex: 1;        /* take remaining space in the flex-column modal */
+            min-height: 0;  /* allow flex to constrain height so scroll works */
         }
         @media (max-width: 480px) {
             .photos-modal-card { padding: 14px; width: 95%; }
             .photos-grid { grid-template-columns: repeat(3, 1fr); gap: 4px; }
-            .photos-grid-item .photo-delete-btn { opacity: 1; } /* always visible on touch */
+            .photos-grid-item .photo-delete-btn { opacity: 1; }
         }
         .photos-grid-item {
             position: relative;
@@ -542,18 +545,7 @@
         .collection-cover-overlay svg { width: 16px; height: 16px; color: #fff; }
 
         .collection-info { flex: 1; min-width: 0; }
-        .collection-name-input {
-            background: transparent; border: none;
-            font-size: 14px; font-weight: 500; color: var(--text);
-            font-family: inherit; outline: none;
-            min-width: 0; flex: 1; /* fills wrapper, yields to pencil button */
-            cursor: default; caret-color: transparent; user-select: none;
-        }
-        .collection-name-input[readonly]:focus { outline: none; }
-        .collection-name-input:not([readonly]) {
-            cursor: text; caret-color: auto; user-select: auto;
-            background: var(--bg2); border-radius: 2px; padding: 1px 6px;
-        }
+        /* collection name reuses .gallery-name styles — no extra rules needed */
 
         /* Pencil edit button — always visible on mobile, hover-only on desktop */
         .name-edit-btn {
@@ -2438,12 +2430,12 @@
                         </div>
                         <div class="collection-info">
                             <div style="display:flex;align-items:center;gap:4px;min-width:0;">
-                                <input class="collection-name-input" id="col-name-${c.id}" value="${escapeHtml(c.name)}"
-                                       readonly title="Double-click to rename"
-                                       onfocus="if(this.hasAttribute('readonly')) this.blur();"
-                                       ondblclick="startCollectionRename('${c.id}');"
-                                       onblur="finishCollectionRename('${c.id}', this);"
-                                       onkeydown="if(event.key==='Enter')this.blur(); if(event.key==='Escape'){this.value=this.defaultValue; this.blur();}">
+                                <div class="gallery-name" contenteditable="false" spellcheck="false"
+                                     id="col-name-${c.id}"
+                                     ondblclick="startCollectionRename('${c.id}')"
+                                     onblur="finishCollectionRename('${c.id}', this)"
+                                     onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur();} if(event.key==='Escape'){this.textContent=this.dataset.orig;this.blur();}"
+                                     >${escapeHtml(c.name)}</div>
                                 <button class="name-edit-btn" onclick="startCollectionRename('${c.id}')" title="Rename">
                                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
                                 </button>
@@ -2589,19 +2581,25 @@
         });
 
         function startCollectionRename(collectionId) {
-            const input = document.getElementById(`col-name-${collectionId}`);
-            if (!input) return;
-            input.removeAttribute('readonly');
-            input.focus();
-            input.select();
+            const el = document.getElementById(`col-name-${collectionId}`);
+            if (!el) return;
+            el.dataset.orig = el.textContent;
+            el.contentEditable = 'true';
+            el.classList.add('editing');
+            el.focus();
+            const range = document.createRange();
+            range.selectNodeContents(el);
+            const sel = window.getSelection();
+            sel.removeAllRanges();
+            sel.addRange(range);
         }
 
-        async function finishCollectionRename(collectionId, input) {
-            input.setAttribute('readonly', '');
-            const newName = (input.value || '').trim() || 'Untitled Collection';
-            if (newName !== input.defaultValue) {
+        async function finishCollectionRename(collectionId, el) {
+            el.contentEditable = 'false';
+            el.classList.remove('editing');
+            const newName = (el.textContent || '').trim() || 'Untitled Collection';
+            if (newName !== el.dataset.orig) {
                 await renameCollectionInline(collectionId, newName);
-                input.defaultValue = newName;
             }
         }
 
@@ -2736,37 +2734,6 @@
             for (const gid of ids) {
                 await addToCollection(cid, gid);
             }
-        }
-
-        function startEditCollectionName(collectionId, element) {
-            const currentName = element.textContent;
-            const input = document.createElement('input');
-            input.type = 'text';
-            input.className = 'collection-name-input';
-            input.value = currentName;
-            element.replaceWith(input);
-            input.focus();
-            input.select();
-
-            async function saveEdit() {
-                const newName = input.value.trim() || 'Untitled Collection';
-                if (newName !== currentName) {
-                    try {
-                        await fetch(`/api/collection/${collectionId}/rename`, {
-                            method: 'POST',
-                            headers: { 'X-Admin-Password': adminPassword, 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ name: newName })
-                        });
-                    } catch (_) {}
-                }
-                await loadCollections();
-            }
-
-            input.addEventListener('blur', saveEdit);
-            input.addEventListener('keydown', e => {
-                if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
-                else if (e.key === 'Escape') { input.value = currentName; input.blur(); }
-            });
         }
 
         // Drag-and-drop: gallery → collection drop zone
