@@ -12,6 +12,12 @@ No monthly subscription. No watermarks. No cloud service that might disappear or
 
 ---
 
+## ⚠️ Security Notice
+
+This application was built with the help of AI and is provided as-is. Reasonable security measures have been implemented (see the [Security](https://github.com/Tiritibambix/Delyvr#security) section), but no independent audit has been performed. You are responsible for reviewing the code and validating that the deployment meets your requirements before exposing it to the internet. The repository owner accepts no liability for any damages or data loss resulting from the use of this software.
+
+---
+
 ## Screenshots
 
 ### Admin Dashboard
@@ -25,12 +31,6 @@ No monthly subscription. No watermarks. No cloud service that might disappear or
 
 ### Client Photo Preview
 ![Client Photo Preview](docs/screenshots/customer-preview.png)
-
----
-
-## Security Notice
-
-This application was built with the help of AI and is provided as-is. Reasonable security measures have been implemented (see the Security section), but no independent audit has been performed. You are responsible for reviewing the code and validating that the deployment meets your requirements before exposing it to the internet. The repository owner accepts no liability for any damages or data loss resulting from the use of this software.
 
 ---
 
