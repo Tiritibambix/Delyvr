@@ -200,7 +200,31 @@ On mobile (`≤ 768px`), the lightbox image has `touch-action: none` and a unifi
 
 ### Social footer
 
-All client pages (`customer.html`, `preview.html`, `collection.html`) call `GET /api/settings` on load and render inline SVG icons for each non-empty social/website URL. The footer is hidden entirely if no links are configured.
+All client pages (`customer.html`, `preview.html`, `collection.html`) call `GET /api/settings` on load and render inline SVG icons for each non-empty social/website URL. The footer is `position: fixed; bottom: 0` on all screen sizes, with a semi-transparent blurred background. Hidden entirely if no links are configured.
+
+### Soft-delete and trash
+
+`DELETE /api/gallery/:id` soft-deletes only: sets `gallery.deleted = true` and `gallery.deletedAt = ISO date`, leaves files on disk. `hardDeleteGallery(id)` removes all files (uploads, thumbnails, previews, background, OG cache) and removes the gallery from any collections. `purgeExpiredTrash()` is called at startup and auto-purges galleries where `deletedAt` is older than `TRASH_RETENTION_MS` (3 days). All public routes check `getActiveGallery(galleryId)` and return 404 for deleted galleries.
+
+### OG images
+
+Gallery OG images are generated at `GET /api/gallery/:id/og-image`, cached in `og-cache/{galleryId}.jpg`. Collection OG images are at `GET /api/collection/:id/og-image`, cached as `og-cache/collection-{collectionId}.jpg`. Both use the background image if set, then fall back to the first photo. The cache is invalidated on background upload, on photo deletion, and via `DELETE /api/gallery/:id/og-image` (admin). The admin "regenerate" button uses the rotate-ccw Lucide icon with a hover tooltip explaining what share previews are.
+
+### Critique mode
+
+`preview.html` reads `?critique=1` from the URL at load. When set: each photo card shows a numbered badge (bottom-left), the lightbox shows `# N` in the top-left, and a "Critique" indicator appears in the actions bar. The admin copies the critique link (`/preview/:id?critique=1`) using the ordered-list icon button on each gallery card. Regular clients use the plain preview URL and never see numbers.
+
+### ZIP downloads
+
+Both gallery and collection ZIPs use `archiver` with `store: true` (no compression — JPEGs are already compressed, so this saves CPU without meaningfully increasing size). Content-Disposition uses RFC 5987 encoding (`filename*=UTF-8''...`) with an ASCII fallback for full Unicode support in filenames containing accents, spaces, or special characters. Content-Length is intentionally NOT set because archiver adds variable ZIP metadata during streaming that makes pre-calculation unreliable.
+
+### Filename sanitisation
+
+Multer's `filename` function strips only truly dangerous filesystem characters (`<>:"/\|?*` and control chars) while preserving accents, spaces, ampersands, and all Unicode. `SAFE_FILENAME_RE` used by `validateFilename` middleware follows the same permissive rule. This applies to new uploads only; existing files keep their stored names.
+
+### Gallery name and collection name editing
+
+Gallery names use `contenteditable="false"` by default. Double-clicking (or clicking the pencil icon on mobile) sets `contenteditable="true"`, disables `draggable` on the parent item so text selection works, selects all text, then re-enables drag on blur and saves via `renameGalleryInline`. Collection names use a `<input readonly>` with `onfocus` guard to prevent focus on single click, editable on double-click via `startCollectionRename`. A `.name-edit-btn` pencil icon is hidden on desktop (shown on hover via `@media (hover: hover)`) and always visible on touch devices (`@media (hover: none)`).
 
 ---
 
@@ -210,55 +234,63 @@ All client pages (`customer.html`, `preview.html`, `collection.html`) call `GET 
 
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
-| `GET` | `/` | — | Admin dashboard |
-| `GET` | `/download/:id` | — | Customer download page |
-| `GET` | `/preview/:id` | — | Photo browser |
-| `POST` | `/api/auth/verify` | — | Verify password |
+| `GET` | `/` | | Admin dashboard |
+| `GET` | `/download/:id` | | Customer download page |
+| `GET` | `/preview/:id` | | Photo browser |
+| `POST` | `/api/auth/verify` | | Verify password |
 | `POST` | `/api/gallery/create` | ✓ | Create gallery + upload |
 | `POST` | `/api/gallery/:id/upload` | ✓ | Add photos |
 | `POST` | `/api/gallery/:id/background` | ✓ | Upload/replace background |
 | `POST` | `/api/gallery/:id/rename` | ✓ | Rename |
 | `PATCH` | `/api/gallery/:id/downloads` | ✓ | Toggle downloads |
-| `GET` | `/api/gallery/:id/info` | — | Metadata |
-| `GET` | `/api/gallery/:id/photos` | — | Photo list (sorted) |
-| `GET` | `/api/gallery/:id/photo/:filename` | — | Serve photo or thumbnail |
-| `GET` | `/api/gallery/:id/preview/:filename` | — | Serve 1920px preview (fallback to original) |
-| `GET` | `/api/gallery/:id/download` | — | ZIP download |
-| `GET` | `/api/gallery/:id/download/:filename` | — | Single photo download |
-| `GET` | `/api/gallery/:id/background` | — | Serve background |
-| `GET` | `/api/gallery/:id/og-image` | — | OG image |
-| `POST` | `/api/gallery/:id/favorites` | — | Toggle favorite |
-| `GET` | `/api/gallery/:id/favorites-public` | — | Visitor's favorites |
+| `GET` | `/api/gallery/:id/info` | | Metadata + totalSizeBytes |
+| `GET` | `/api/gallery/:id/photos` | | Photo list with URLs and dimensions |
+| `GET` | `/api/gallery/:id/photo/:filename` | | Serve photo or thumbnail |
+| `GET` | `/api/gallery/:id/preview/:filename` | | Serve 1920px preview |
+| `GET` | `/api/gallery/:id/download` | | ZIP download (store mode, RFC 5987) |
+| `GET` | `/api/gallery/:id/download/:filename` | | Single photo download |
+| `GET` | `/api/gallery/:id/background` | | Serve background; `?thumb=1` 200px, `?card=1` 800px |
+| `GET` | `/api/gallery/:id/og-image` | | Generate/serve OG image |
+| `DELETE` | `/api/gallery/:id/og-image` | ✓ | Clear OG cache |
+| `DELETE` | `/api/gallery/:id/photo/:filename` | ✓ | Delete single photo |
+| `POST` | `/api/gallery/:id/favorites` | | Toggle favorite |
+| `GET` | `/api/gallery/:id/favorites-public` | | Visitor's favorites |
 | `GET` | `/api/gallery/:id/favorites` | ✓ | All favorites (admin) |
 | `DELETE` | `/api/gallery/:id/favorites` | ✓ | Reset favorites |
-| `GET` | `/api/galleries` | ✓ | List all galleries |
-| `DELETE` | `/api/gallery/:id` | ✓ | Delete gallery |
+| `GET` | `/api/gallery/:id/favorites/export` | ✓ | Export favorites as CSV |
+| `GET` | `/api/galleries` | ✓ | List active galleries (excludes deleted) |
+| `DELETE` | `/api/gallery/:id` | ✓ | Soft-delete (move to trash) |
+| `GET` | `/api/galleries/trash` | ✓ | List trashed galleries with daysLeft |
+| `POST` | `/api/gallery/:id/restore` | ✓ | Restore from trash |
+| `DELETE` | `/api/gallery/:id/purge` | ✓ | Hard-delete from trash |
+| `DELETE` | `/api/galleries/trash` | ✓ | Empty entire trash |
 
 ### Collection
 
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
-| `GET` | `/collection/:id` | — | Collection page |
+| `GET` | `/collection/:id` | | Collection page |
 | `POST` | `/api/collection/create` | ✓ | Create collection |
 | `GET` | `/api/collections` | ✓ | List collections |
-| `GET` | `/api/collection/:id` | — | Collection info |
+| `GET` | `/api/collection/:id` | | Collection info + totalSizeBytes |
 | `POST` | `/api/collection/:id/rename` | ✓ | Rename |
 | `POST` | `/api/collection/:id/background` | ✓ | Upload/replace cover |
-| `GET` | `/api/collection/:id/background` | — | Serve cover |
+| `GET` | `/api/collection/:id/background` | | Serve cover; `?thumb=1` 200px, `?card=1` 800px |
+| `GET` | `/api/collection/:id/og-image` | | Generate/serve collection OG image |
+| `DELETE` | `/api/collection/:id/og-image` | ✓ | Clear collection OG cache |
 | `POST` | `/api/collection/:id/galleries` | ✓ | Add gallery |
 | `PATCH` | `/api/collection/:id/galleries/reorder` | ✓ | Reorder galleries |
 | `DELETE` | `/api/collection/:id/galleries/:galleryId` | ✓ | Remove gallery |
-| `GET` | `/api/collection/:id/download` | — | ZIP all galleries |
-| `DELETE` | `/api/collection/:id` | ✓ | Delete collection |
+| `GET` | `/api/collection/:id/download` | | ZIP all galleries (store mode, RFC 5987) |
+| `DELETE` | `/api/collection/:id` | ✓ | Delete collection (galleries kept) |
 
 ### Settings
 
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
-| `GET` | `/api/settings` | — | Get site settings |
+| `GET` | `/api/settings` | | Get site settings |
 | `POST` | `/api/settings` | ✓ | Update theme, website, socials |
-| `POST` | `/api/settings/theme` | ✓ | Update theme only (legacy) |
-| `PATCH` | `/api/settings/theme` | ✓ | Update theme only (legacy) |
+| `PATCH` | `/api/settings/theme` | ✓ | Update theme only |
 
 ---
 
@@ -268,32 +300,43 @@ All HTML files are standalone — no bundler, no imports, all JS inline.
 
 ### `public/admin.html`
 
-- Login via in-memory `adminPassword` variable only — not persisted to sessionStorage or localStorage.
-- Password field has an eye toggle button (`.password-toggle`) to show/hide the password. The button is excluded from `.login-card button` styles via `:not(.password-toggle)`.
-- `applyTheme()` called on load — fetches `/api/settings` and adds `class="light"` on `<html>` if needed.
-- **Profile modal** — triggered by the "Profile" button (top-left of header). Loads current settings on open, saves via `POST /api/settings`. Contains website URL + 8 social network URL fields with inline SVG icons.
-- Gallery grid uses `auto-fill, minmax(280px, 1fr)`. All gallery controls preserved: toggle, favorites, copy, delete, drag.
-- `_galleriesData` cache populated in `loadGalleries()`, used by `renderCollections()` to show gallery names in pills.
+- Login via in-memory `adminPassword` variable only, not persisted to sessionStorage or localStorage.
+- Password field has an eye toggle button (`.password-toggle`).
+- `applyTheme()` called on load. `toggleTheme()` uses optimistic update.
+- Gallery list: `renderGalleryItems(items)` renders gallery cards; `filterGalleries(query)` filters client-side on `_galleriesData` cache. Search input in section header.
+- Gallery cards support: inline rename (double-click), cover image drag/drop, downloads toggle, favorites view/reset, manage photos modal, critique link copy, OG regenerate, soft-delete, drag reorder, bulk selection.
+- **Bulk selection mode:** toggled via "Select" button in gallery section header. `_selectionMode` + `_selectedGalleries` Set. `#bulkActionBar` slides up from bottom. Actions: enable/disable downloads, add to collection, delete. Escape exits.
+- **Trash modal:** opened via trash icon button (with count badge) in gallery section header. Shows trashed galleries with daysLeft, Restore and "Delete now" buttons, Empty trash button.
+- **Photo management modal:** `openPhotosModal(galleryId)` loads photos via `GET /api/gallery/:id/photos`, renders as 3-column grid. Delete button visible on hover (desktop) or always (mobile). `squarePhotoGridCells()` called after render to force square cells via JS measurement.
+- **Gallery picker (for collections):** multi-select. Toggling a gallery adds/removes it from `_pickerSelected` Set. Confirm button shows count and adds all at once.
+- Collection pills: drag to reorder (desktop) or ◀ ▶ buttons (visible on mobile via `@media (hover: none)`).
+- `_galleriesData` cache populated in `loadGalleries()`, used by `renderCollections()` for pill labels and gallery picker.
 
 ### `public/customer.html`
 
-- `html, body { height: 100%; overflow: hidden }` — page is fully fixed, no scroll possible on any screen size.
-- Social footer is `position: fixed; bottom: 0` on mobile (≤600px) so it stays visible without scrolling.
-- In light mode: background image opacity reduced to 0.60, white overlay at rgba(250,250,250,0.35), all text forced to `#000000`.
+- `html, body { height: 100%; overflow: hidden }` — fully fixed page, no scroll.
+- Reads `?from=` URL param; if present shows "Back to collection" link and threads `?from=` through to the preview link.
+- Social footer `position: fixed; bottom: 0` on all screen sizes with backdrop-filter blur.
+- Download button shows total size (`totalSizeBytes` from `/api/gallery/:id/info`).
 - `applyTheme()` and `renderSocialFooter()` called on load.
 
 ### `public/preview.html`
 
-- Justified/row-based gallery: photos are grouped into `.gallery-row` flex rows built in JS that preserve each photo's aspect ratio and fill the row width. Rows are recomputed on resize.
-- Photos are sorted alphabetically by filename (server-side in `GET /api/gallery/:id/photos`).
-- Lightbox preloads N-1 and N+1 previews via `new Image()` on each navigation step (`preloadAdjacentPreviews`).
-- Mobile lightbox supports pinch-to-zoom (up to 5×), one-finger pan while zoomed, and swipe navigation only when not zoomed — see "Mobile lightbox" section above. `touch-action: none` on `.lightbox-img` (mobile) disables native browser zoom.
+- Justified/row-based gallery: photos grouped into `.gallery-row` flex rows built in JS, recomputed on resize.
+- Photos sorted alphabetically by filename (server-side).
+- Lightbox preloads N-1 and N+1 previews via `new Image()` on each navigation.
+- Mobile lightbox: pinch-to-zoom (up to 5x), one-finger pan while zoomed, swipe navigation when not zoomed. `touch-action: none` disables native browser zoom.
+- **Critique mode:** `critiqueMode = URLSearchParams.get('critique') === '1'`. When true: photo number badges rendered on grid cards, `#lbCritiqueNum` shown in lightbox, `#critiqueIndicator` shown in actions bar.
+- Favorites toast: `showFavToast(added)` shown on toggle, localized in all 5 languages, auto-dismisses after 2s.
+- Social footer `position: fixed; bottom: 0` on all screen sizes.
 - `applyTheme()` and `renderSocialFooter()` called on load.
 
 ### `public/collection.html`
 
 - `applyTheme()` and `renderSocialFooter()` called on load.
-- Full i18n: EN, FR, ES, PT, IT.
+- Full i18n: EN, FR, ES, PT, IT — including `gallery`/`galleries` keys (no hardcoded French strings).
+- Gallery covers use `?card=1` (800px) instead of full resolution.
+- Download button shows total size (`totalSizeBytes` from `/api/collection/:id`).
 
 ---
 
@@ -315,5 +358,13 @@ All HTML files are standalone — no bundler, no imports, all JS inline.
 - **Preview generation is non-blocking on request** — if a preview is missing, the original is served immediately and generation runs in the background. Never `await generatePreview` on a request path.
 - **Password never stored in sessionStorage.** Kept in `adminPassword` JS variable only.
 - **`?password` query param removed.** `requireAuth` only checks `X-Admin-Password` header.
-- **Visitor IDs are not authenticated.** Random client-generated strings — not security-sensitive.
-- **Gallery links are public by UUID.** No per-gallery password system. Document this to users.
+- **Visitor IDs are not authenticated.** Random client-generated strings, not security-sensitive.
+- **Gallery links are public by UUID.** No per-gallery password system.
+- **Soft-delete only.** `DELETE /api/gallery/:id` never removes files. `hardDeleteGallery(id)` does. Always call `saveGalleries()` after `hardDeleteGallery`. Auto-purge runs on startup via `purgeExpiredTrash()`.
+- **`getActiveGallery(galleryId)`** returns the gallery only if it exists and `!gallery.deleted`. Use it in all public routes to return 404 for trashed galleries.
+- **ZIP downloads use `store: true`** (no compression). Content-Length is intentionally omitted — archiver adds variable per-file data descriptors during streaming that make pre-calculation unreliable and cause "unexpected end of archive" errors.
+- **Filename sanitisation allows Unicode.** Only truly dangerous filesystem characters are stripped (`<>:"/\|?*` and control chars). Accents, spaces, ampersands are preserved. `SAFE_FILENAME_RE` reflects this.
+- **`?card=1` on background routes** generates an 800px JPEG (fit: inside, quality 82) for use in collection gallery cards. `?thumb=1` stays at 200x200 for admin thumbnails.
+- **Critique mode** is entirely client-side. `?critique=1` in the URL enables photo numbering in `preview.html`. The admin copies the critique URL via `copyCritiqueLink()`. No server-side flag.
+- **Gallery name editing** requires disabling `draggable` on the parent `.gallery-item` during edit (set in `startGalleryRename`, restored in `finishGalleryRename`) so that text selection works. Without this, the browser intercepts mousedown for drag, preventing text selection.
+- **`squarePhotoGridCells()`** in the photos management modal measures `offsetWidth` of the first grid cell after `requestAnimationFrame` and sets explicit `style.height` on all cells. CSS `aspect-ratio` is unreliable in some mobile browsers when combined with grid and `position: absolute` content.
