@@ -315,7 +315,7 @@ async function generateThumbnail(galleryId, filename) {
     if (fs.existsSync(dest)) return;
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
     try {
-        await sharp(src).resize(400).jpeg({ quality: 80 }).toFile(dest);
+        await sharp(src).resize(400).withMetadata().jpeg({ quality: 80 }).toFile(dest);
     } catch (e) {
         // Skip non-image or corrupt files silently
     }
@@ -342,7 +342,7 @@ async function generatePreview(galleryId, filename) {
     if (fs.existsSync(dest)) return;
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
     try {
-        await sharp(src).resize(1920, null, { withoutEnlargement: true }).jpeg({ quality: 85 }).toFile(dest);
+        await sharp(src).resize(1920, null, { withoutEnlargement: true }).withMetadata().jpeg({ quality: 85 }).toFile(dest);
     } catch (e) {
         // Skip non-image or corrupt files silently
     }
@@ -970,6 +970,7 @@ app.get('/api/gallery/:galleryId/og-image', imageLimiter, validateGalleryId, asy
     try {
         await sharp(sourceFile)
             .resize(1200, 630, { fit: 'cover' })
+            .withMetadata()
             .jpeg({ quality: 80 })
             .toFile(cacheFile);
         res.sendFile(cacheFile);
@@ -1019,7 +1020,7 @@ app.get('/api/collection/:collectionId/og-image', imageLimiter, validateCollecti
     if (!sourceFile) return res.status(404).send('No image available');
 
     try {
-        await sharp(sourceFile).resize(1200, 630, { fit: 'cover' }).jpeg({ quality: 80 }).toFile(cacheFile);
+        await sharp(sourceFile).resize(1200, 630, { fit: 'cover' }).withMetadata().jpeg({ quality: 80 }).toFile(cacheFile);
         res.sendFile(cacheFile);
     } catch (err) {
         res.status(500).send('Could not generate OG image');
