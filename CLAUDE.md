@@ -180,6 +180,8 @@ All filesystem paths incorporating user-controlled values go through `safeResolv
 
 The lightbox uses `previewUrl`. Originals are only served on explicit download via `downloadUrl`.
 
+**ICC color profile preservation:** All Sharp pipelines that write to disk (thumbnails, previews, OG images) use `.withMetadata()` so the original embedded ICC profile (Adobe RGB, Display P3, etc.) is carried through to the derived image. Without this, browsers assume sRGB and colors diverge from Lightroom or the OS file viewer. If existing thumbnails/previews were generated before this was added, delete `data/thumbnails/` and `data/previews/` to force regeneration.
+
 ### Justified gallery layout
 
 `preview.html` uses a JS-built justified/row-based layout: photos are grouped into `.gallery-row` flex rows whose children preserve the photo's aspect ratio and together fill the row width. Each row is recomputed on resize. This replaces the previous CSS `columns` masonry so photos are never split and rows always justify edge-to-edge. Photos in the preview page are sorted alphabetically by filename.

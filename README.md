@@ -60,7 +60,7 @@ The admin dashboard is designed to work well on both desktop and mobile. On a co
 
 ### Uploading
 
-Drop photos or entire folders onto the upload zone. The gallery name is pre-filled from the folder name. Photos are uploaded in batches so large sessions (150+ photos) work reliably. Progress is shown throughout. If something goes wrong, you get a clear message rather than a silent failure.
+Drop photos or entire folders onto the upload zone. The gallery name is pre-filled from the folder name. Photos are uploaded in batches so large sessions (150+ photos) work reliably. Progress is shown throughout. If something goes wrong, you get a clear message rather than a silent failure. ICC color profiles (Adobe RGB, Display P3, etc.) are preserved in every generated thumbnail and preview, so what your clients see in the browser matches what you edited in Lightroom.
 
 You can also add a cover image (hero photo) to each gallery. This appears as the full-bleed background on the client download page and as the preview thumbnail in collections.
 
