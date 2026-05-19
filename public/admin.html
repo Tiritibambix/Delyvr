@@ -1281,9 +1281,27 @@
         // Must match MAX_BACKGROUND_MB in .env (default 25)
         const MAX_BG_MB = 25;
 
-        // Password is stored only in memory (adminPassword variable).
-        // Requires re-login on page reload for security.
-        // The primary protection against interception is HTTPS (see README deployment section).
+        // Auto-restore session from sessionStorage (survives refresh, cleared on tab close)
+        (function restoreSession() {
+            const saved = sessionStorage.getItem('delyvr_admin_pw');
+            if (!saved) return;
+            fetch('/api/auth/verify', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ password: saved })
+            }).then(r => {
+                if (r.ok) {
+                    adminPassword = saved;
+                    document.getElementById('loginModal').classList.add('hidden');
+                    loadGalleries();
+                    loadCollections();
+                    loadTrash();
+                    checkLogoState();
+                } else {
+                    sessionStorage.removeItem('delyvr_admin_pw');
+                }
+            }).catch(() => {});
+        })();
 
         // Handle password input enter key
         document.getElementById('passwordInput').addEventListener('keypress', (e) => {
@@ -1301,8 +1319,7 @@
                 
                 if (res.ok) {
                     adminPassword = password;
-                    // Password stored in adminPassword variable only — cleared on tab close
-                    // Not persisting to sessionStorage to avoid storing plaintext credentials
+                    sessionStorage.setItem('delyvr_admin_pw', password);
                     document.getElementById('loginModal').classList.add('hidden');
                     loadGalleries();
                     loadCollections();
