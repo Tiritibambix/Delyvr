@@ -178,14 +178,36 @@
         .photos-modal-header h3 { font-size: 15px; font-weight: 600; }
         .photos-modal-header-right { display: flex; align-items: center; gap: 8px; }
         .photos-modal-close { background: none; border: none; color: var(--muted); font-size: 1.4rem; cursor: pointer; line-height: 1; }
-        .btn-add-photos {
-            display: inline-flex; align-items: center; gap: 6px;
-            background: var(--accent); color: #0c0c0e;
-            border: none; border-radius: 4px;
-            padding: 6px 12px; font-size: 12px; font-weight: 600;
-            font-family: inherit; cursor: pointer; white-space: nowrap;
+
+        /* Bulk bar */
+        .photos-bulk-bar {
+            display: flex; align-items: center; gap: 10px; flex-shrink: 0;
+            padding: 6px 0; font-size: 12px;
         }
-        .btn-add-photos:hover { background: var(--accent-h); }
+        #photosSelectedCount { font-weight: 600; flex: 1; }
+
+        /* Selection mode on grid cards */
+        .photos-grid-card.photo-selected { outline: 2px solid var(--accent); }
+        .photos-grid-card.photo-selected .photo-overlay-info {
+            opacity: 1;
+            background: color-mix(in srgb, var(--accent) 35%, rgba(0,0,0,0.4));
+        }
+        #photosGrid.selection-mode .photos-grid-card { cursor: pointer; }
+
+        /* In-app confirm dialog */
+        .photos-confirm-overlay {
+            position: absolute; inset: 0;
+            background: rgba(0,0,0,0.6);
+            display: flex; align-items: center; justify-content: center;
+            border-radius: 8px; z-index: 10;
+        }
+        .photos-confirm-card {
+            background: var(--bg2); border: 1px solid var(--border);
+            border-radius: 6px; padding: 20px 24px;
+            max-width: 320px; width: 90%; text-align: center;
+        }
+        .photos-confirm-msg { font-size: 14px; margin-bottom: 16px; line-height: 1.5; }
+        .photos-confirm-actions { display: flex; gap: 10px; justify-content: center; }
         .photos-modal-meta { font-size: 12px; color: var(--muted); flex-shrink: 0; }
 
         /* Drop zone */
@@ -1142,20 +1164,54 @@
             <div class="photos-modal-header">
                 <h3 id="photosModalTitle">Manage Photos</h3>
                 <div class="photos-modal-header-right">
-                    <input type="file" id="photosAddInput" multiple accept="image/*" style="display:none" onchange="handlePhotosAddInput(event)">
+                    <button class="section-select-btn" id="photosSelectBtn" onclick="togglePhotoSelection()">Select</button>
                     <button class="photos-modal-close" onclick="closePhotosModal()">×</button>
                 </div>
             </div>
+
+            <!-- Bulk delete bar (selection mode) -->
+            <div class="photos-bulk-bar" id="photosBulkBar" style="display:none">
+                <span id="photosSelectedCount">0 selected</span>
+                <button class="bulk-btn bulk-btn-cancel" onclick="togglePhotoSelection()">Cancel</button>
+                <button class="bulk-btn bulk-btn-danger" id="photosDeleteSelectedBtn" onclick="deleteSelectedPhotos()" disabled>Delete selected</button>
+            </div>
+
+            <!-- Normal meta -->
             <div class="photos-modal-meta" id="photosModalMeta"></div>
+
+            <!-- Drop zone -->
             <div class="photos-add-zone" id="photosAddZone" onclick="document.getElementById('photosAddInput').click()">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="18" height="18" style="vertical-align:middle;margin-right:6px"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="16" height="16" style="vertical-align:middle;margin-right:6px"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
                 Drop photos here or <button class="zone-browse" onclick="event.stopPropagation(); document.getElementById('photosAddInput').click()">browse</button>
             </div>
+            <input type="file" id="photosAddInput" multiple accept="image/*" style="display:none" onchange="handlePhotosAddInput(event)">
+
+            <!-- Upload queue (files selected, not yet uploaded) -->
+            <div id="photosQueueWrap" style="display:none">
+                <div class="file-count" id="photosQueueCount"></div>
+                <div class="file-pills" id="photosQueuePills"></div>
+                <button class="btn-primary" id="photosUploadBtn" onclick="uploadQueuedPhotos()" style="margin-top:8px;width:100%">Upload</button>
+            </div>
+
+            <!-- Upload progress -->
             <div id="photosUploadWrap" style="display:none">
                 <div class="photos-upload-bar"><div class="photos-upload-fill" id="photosUploadFill"></div></div>
                 <div class="photos-upload-text" id="photosUploadText"></div>
             </div>
+
+            <!-- Photos grid -->
             <div class="photos-grid" id="photosGrid"></div>
+        </div>
+
+        <!-- In-app confirm dialog -->
+        <div class="photos-confirm-overlay" id="photosConfirmOverlay" style="display:none">
+            <div class="photos-confirm-card">
+                <p class="photos-confirm-msg" id="photosConfirmMsg"></p>
+                <div class="photos-confirm-actions">
+                    <button class="bulk-btn bulk-btn-cancel" onclick="photosConfirmResolve(false)">Cancel</button>
+                    <button class="bulk-btn bulk-btn-danger" onclick="photosConfirmResolve(true)" id="photosConfirmOkBtn">Delete</button>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -2362,150 +2418,100 @@
 
         // ---- Photo management ----
 
+        // ── PHOTOS MODAL ─────────────────────────────────────────────────
+
         let _photosModalGalleryId = null;
+        let _photosResizeObs = null;
+        let _photosSelectionMode = false;
+        let _photosSelected = new Set();
+        let _pendingUploadFiles = [];
+
+        // ── In-app confirm dialog ─────────────────────────────────────────
+
+        let _confirmResolve = null;
+        function photosConfirm(message, okLabel = 'Delete') {
+            return new Promise(resolve => {
+                _confirmResolve = resolve;
+                document.getElementById('photosConfirmMsg').textContent = message;
+                document.getElementById('photosConfirmOkBtn').textContent = okLabel;
+                document.getElementById('photosConfirmOverlay').style.display = 'flex';
+            });
+        }
+        function photosConfirmResolve(result) {
+            document.getElementById('photosConfirmOverlay').style.display = 'none';
+            if (_confirmResolve) { _confirmResolve(result); _confirmResolve = null; }
+        }
+
+        // ── Open / close ──────────────────────────────────────────────────
 
         async function openPhotosModal(galleryId) {
             _photosModalGalleryId = galleryId;
+            _pendingUploadFiles = [];
+            _photosSelected = new Set();
+            _photosSelectionMode = false;
             document.getElementById('photosModalMeta').textContent = '';
             document.getElementById('photosGrid').innerHTML = '<p style="color:var(--muted);font-size:13px">Loading…</p>';
             document.getElementById('photosUploadWrap').style.display = 'none';
+            document.getElementById('photosQueueWrap').style.display = 'none';
+            document.getElementById('photosBulkBar').style.display = 'none';
             document.getElementById('photosModal').classList.add('active');
-            setupPhotosDropZone(galleryId);
+            setupPhotosDropZone();
             await refreshPhotosGrid(galleryId);
-        }
-
-        // Justified row layout helpers (same algorithm as preview.html)
-        function _photosTargetRowHeight() {
-            const w = document.getElementById('photosGrid').clientWidth;
-            if (w <= 320) return 100;
-            if (w <= 500) return 130;
-            return 180;
-        }
-
-        function _buildPhotoRows(photos, containerWidth, targetH, gap) {
-            const rows = [];
-            let current = [], sumRatio = 0;
-            for (const p of photos) {
-                const ratio = (p.width && p.height) ? p.width / p.height : 4 / 3;
-                current.push({ photo: p, ratio });
-                sumRatio += ratio;
-                const gapsW = gap * (current.length - 1);
-                if (sumRatio * targetH + gapsW >= containerWidth) {
-                    const scaledH = (containerWidth - gapsW) / sumRatio;
-                    rows.push({ items: current, height: scaledH });
-                    current = []; sumRatio = 0;
-                }
-            }
-            if (current.length) rows.push({ items: current, height: targetH });
-            return rows;
-        }
-
-        let _photosResizeObs = null;
-
-        async function refreshPhotosGrid(galleryId) {
-            try {
-                const res = await fetch(`/api/gallery/${galleryId}/photos`);
-                if (!res.ok) throw new Error('Failed');
-                const { photos } = await res.json();
-                const n = photos.length;
-                document.getElementById('photosModalMeta').textContent = `${n} photo${n !== 1 ? 's' : ''}`;
-                const grid = document.getElementById('photosGrid');
-                if (n === 0) {
-                    grid.innerHTML = '<p style="color:var(--muted);font-size:13px">No photos left.</p>';
-                    return;
-                }
-                _renderPhotosRows(galleryId, photos);
-
-                // Always recreate ResizeObserver so its closure has the latest photos list
-                if (_photosResizeObs) { _photosResizeObs.disconnect(); _photosResizeObs = null; }
-                _photosResizeObs = new ResizeObserver(() => {
-                    if (_photosModalGalleryId) _renderPhotosRows(_photosModalGalleryId, photos);
-                });
-                _photosResizeObs.observe(grid);
-            } catch (err) {
-                showError('Could not load photos');
-            }
-        }
-
-        function _renderPhotosRows(galleryId, photos) {
-            const grid = document.getElementById('photosGrid');
-            const containerWidth = grid.clientWidth;
-            if (!containerWidth) return;
-            const gap = 4;
-            const targetH = _photosTargetRowHeight();
-            const rows = _buildPhotoRows(photos, containerWidth, targetH, gap);
-            const trashSvg = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>`;
-            grid.innerHTML = '';
-            rows.forEach(row => {
-                const rowEl = document.createElement('div');
-                rowEl.className = 'photos-grid-row';
-                rowEl.style.height = Math.round(row.height) + 'px';
-                row.items.forEach(({ photo, ratio }) => {
-                    const card = document.createElement('div');
-                    card.className = 'photos-grid-card';
-                    card.id = `photo-item-${CSS.escape(photo.filename)}`;
-                    card.style.width = Math.round(row.height * ratio) + 'px';
-                    card.style.height = Math.round(row.height) + 'px';
-                    card.innerHTML = `<img src="${photo.thumbnailUrl}" alt="" loading="lazy">
-                        <div class="photo-overlay-info">
-                            <span class="photo-filename">${escapeHtml(photo.filename)}</span>
-                            <button class="photo-delete-btn" onclick="deletePhoto('${galleryId}', '${escapeAttr(photo.filename)}')" title="Delete">${trashSvg}</button>
-                        </div>`;
-                    rowEl.appendChild(card);
-                });
-                grid.appendChild(rowEl);
-            });
         }
 
         function closePhotosModal() {
             document.getElementById('photosModal').classList.remove('active');
             _photosModalGalleryId = null;
+            _pendingUploadFiles = [];
+            _photosSelected = new Set();
+            _photosSelectionMode = false;
             if (_photosResizeObs) { _photosResizeObs.disconnect(); _photosResizeObs = null; }
             loadGalleries();
         }
 
-        async function deletePhoto(galleryId, filename) {
-            if (!confirm(`Delete "${filename}"? This cannot be undone.`)) return;
-            const item = document.getElementById(`photo-item-${CSS.escape(filename)}`);
-            if (item) item.classList.add('deleting');
-            try {
-                const res = await fetch(`/api/gallery/${galleryId}/photo/${encodeURIComponent(filename)}`, {
-                    method: 'DELETE'
-                });
-                if (!res.ok) throw new Error('Failed');
-                if (_photosResizeObs) { _photosResizeObs.disconnect(); _photosResizeObs = null; }
-                await refreshPhotosGrid(galleryId);
-            } catch (err) {
-                if (item) item.classList.remove('deleting');
-                showError('Could not delete photo: ' + err.message);
-            }
-        }
-
-        // ── ADD PHOTOS TO EXISTING GALLERY ──────────────────────────────
+        // ── Upload queue (list with × like gallery creation) ──────────────
 
         function handlePhotosAddInput(event) {
-            const galleryId = _photosModalGalleryId;
-            if (!galleryId) return;
             const files = Array.from(event.target.files).filter(f => f.type.startsWith('image/'));
             event.target.value = '';
-            if (files.length) addPhotosToGallery(galleryId, files);
+            if (files.length) addToUploadQueue(files);
         }
 
-        function setupPhotosDropZone(galleryId) {
-            const zone = document.getElementById('photosAddZone');
-            if (!zone || zone._initialized) return;
-            zone._initialized = true;
-            zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('drag-over'); });
-            zone.addEventListener('dragleave', () => zone.classList.remove('drag-over'));
-            zone.addEventListener('drop', e => {
-                e.preventDefault();
-                zone.classList.remove('drag-over');
-                const files = Array.from(e.dataTransfer.files).filter(f => f.type.startsWith('image/'));
-                if (files.length) addPhotosToGallery(_photosModalGalleryId, files);
-            });
+        function addToUploadQueue(files) {
+            _pendingUploadFiles = [..._pendingUploadFiles, ...files];
+            renderUploadQueue();
         }
 
-        async function addPhotosToGallery(galleryId, files) {
+        function removeFromUploadQueue(index) {
+            _pendingUploadFiles.splice(index, 1);
+            renderUploadQueue();
+        }
+
+        function renderUploadQueue() {
+            const wrap = document.getElementById('photosQueueWrap');
+            const count = document.getElementById('photosQueueCount');
+            const pills = document.getElementById('photosQueuePills');
+            const btn = document.getElementById('photosUploadBtn');
+            if (_pendingUploadFiles.length === 0) { wrap.style.display = 'none'; return; }
+            wrap.style.display = 'block';
+            const n = _pendingUploadFiles.length;
+            count.textContent = `${n} photo${n > 1 ? 's' : ''} selected`;
+            btn.textContent = `Upload ${n} photo${n > 1 ? 's' : ''}`;
+            pills.innerHTML = _pendingUploadFiles.map((f, i) =>
+                `<span class="file-pill">
+                    <span class="file-pill-name">${escapeAttr(f.name)}</span>
+                    <button class="file-pill-remove" onclick="removeFromUploadQueue(${i})">×</button>
+                </span>`
+            ).join('');
+        }
+
+        async function uploadQueuedPhotos() {
+            const galleryId = _photosModalGalleryId;
+            const files = [..._pendingUploadFiles];
+            if (!files.length || !galleryId) return;
+            _pendingUploadFiles = [];
+            renderUploadQueue();
+
             const BATCH = 20;
             const total = files.length;
             const wrap = document.getElementById('photosUploadWrap');
@@ -2532,26 +2538,189 @@
                         };
                         xhr.onload = () => {
                             if (xhr.status < 300) resolve();
-                            else {
-                                let msg = 'Upload failed';
-                                try { msg = JSON.parse(xhr.responseText).error || msg; } catch {}
-                                reject(new Error(msg));
-                            }
+                            else { let msg = 'Upload failed'; try { msg = JSON.parse(xhr.responseText).error || msg; } catch {} reject(new Error(msg)); }
                         };
                         xhr.onerror = () => reject(new Error('Network error'));
                         xhr.send(fd);
                     });
                     uploaded += batch.length;
                 }
-
                 fill.style.width = '100%';
                 text.textContent = `${total} photo${total !== 1 ? 's' : ''} added`;
                 setTimeout(() => { wrap.style.display = 'none'; }, 1800);
+                if (_photosResizeObs) { _photosResizeObs.disconnect(); _photosResizeObs = null; }
                 await refreshPhotosGrid(galleryId);
                 loadGalleries();
             } catch (err) {
                 wrap.style.display = 'none';
                 showError('Upload failed: ' + err.message);
+            }
+        }
+
+        function setupPhotosDropZone() {
+            const zone = document.getElementById('photosAddZone');
+            if (!zone || zone._initialized) return;
+            zone._initialized = true;
+            zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('drag-over'); });
+            zone.addEventListener('dragleave', () => zone.classList.remove('drag-over'));
+            zone.addEventListener('drop', e => {
+                e.preventDefault();
+                zone.classList.remove('drag-over');
+                const files = Array.from(e.dataTransfer.files).filter(f => f.type.startsWith('image/'));
+                if (files.length) addToUploadQueue(files);
+            });
+        }
+
+        // ── Selection mode & bulk delete ─────────────────────────────────
+
+        function togglePhotoSelection() {
+            _photosSelectionMode = !_photosSelectionMode;
+            _photosSelected = new Set();
+            const grid = document.getElementById('photosGrid');
+            grid.classList.toggle('selection-mode', _photosSelectionMode);
+            document.getElementById('photosSelectBtn').classList.toggle('active', _photosSelectionMode);
+            document.getElementById('photosBulkBar').style.display = _photosSelectionMode ? 'flex' : 'none';
+            document.getElementById('photosModalMeta').style.display = _photosSelectionMode ? 'none' : '';
+            updatePhotosSelectionBar();
+        }
+
+        function updatePhotosSelectionBar() {
+            const n = _photosSelected.size;
+            document.getElementById('photosSelectedCount').textContent = `${n} selected`;
+            document.getElementById('photosDeleteSelectedBtn').disabled = n === 0;
+        }
+
+        function togglePhotoCard(filename) {
+            if (!_photosSelectionMode) return;
+            const card = document.getElementById(`photo-item-${CSS.escape(filename)}`);
+            if (_photosSelected.has(filename)) {
+                _photosSelected.delete(filename);
+                card?.classList.remove('photo-selected');
+            } else {
+                _photosSelected.add(filename);
+                card?.classList.add('photo-selected');
+            }
+            updatePhotosSelectionBar();
+        }
+
+        async function deleteSelectedPhotos() {
+            const galleryId = _photosModalGalleryId;
+            const filenames = [..._photosSelected];
+            const n = filenames.length;
+            if (!n) return;
+            const ok = await photosConfirm(
+                `Delete ${n} photo${n > 1 ? 's' : ''}? This cannot be undone.`
+            );
+            if (!ok) return;
+            filenames.forEach(f => {
+                const card = document.getElementById(`photo-item-${CSS.escape(f)}`);
+                if (card) card.classList.add('deleting');
+            });
+            let errors = 0;
+            for (const filename of filenames) {
+                try {
+                    const res = await fetch(`/api/gallery/${galleryId}/photo/${encodeURIComponent(filename)}`, { method: 'DELETE' });
+                    if (!res.ok) errors++;
+                } catch { errors++; }
+            }
+            if (errors) showError(`${errors} photo${errors > 1 ? 's' : ''} could not be deleted.`);
+            togglePhotoSelection();
+            if (_photosResizeObs) { _photosResizeObs.disconnect(); _photosResizeObs = null; }
+            await refreshPhotosGrid(galleryId);
+            loadGalleries();
+        }
+
+        // ── Grid render ───────────────────────────────────────────────────
+
+        function _photosTargetRowHeight() {
+            const w = document.getElementById('photosGrid').clientWidth;
+            if (w <= 320) return 100;
+            if (w <= 500) return 130;
+            return 180;
+        }
+
+        function _buildPhotoRows(photos, containerWidth, targetH, gap) {
+            const rows = [];
+            let current = [], sumRatio = 0;
+            for (const p of photos) {
+                const ratio = (p.width && p.height) ? p.width / p.height : 4 / 3;
+                current.push({ photo: p, ratio });
+                sumRatio += ratio;
+                const gapsW = gap * (current.length - 1);
+                if (sumRatio * targetH + gapsW >= containerWidth) {
+                    rows.push({ items: current, height: (containerWidth - gapsW) / sumRatio });
+                    current = []; sumRatio = 0;
+                }
+            }
+            if (current.length) rows.push({ items: current, height: targetH });
+            return rows;
+        }
+
+        async function refreshPhotosGrid(galleryId) {
+            try {
+                const res = await fetch(`/api/gallery/${galleryId}/photos`);
+                if (!res.ok) throw new Error('Failed');
+                const { photos } = await res.json();
+                const n = photos.length;
+                document.getElementById('photosModalMeta').textContent = `${n} photo${n !== 1 ? 's' : ''}`;
+                const grid = document.getElementById('photosGrid');
+                if (n === 0) { grid.innerHTML = '<p style="color:var(--muted);font-size:13px">No photos left.</p>'; return; }
+                _renderPhotosRows(galleryId, photos);
+                if (_photosResizeObs) { _photosResizeObs.disconnect(); _photosResizeObs = null; }
+                _photosResizeObs = new ResizeObserver(() => {
+                    if (_photosModalGalleryId) _renderPhotosRows(_photosModalGalleryId, photos);
+                });
+                _photosResizeObs.observe(grid);
+            } catch (err) {
+                showError('Could not load photos');
+            }
+        }
+
+        function _renderPhotosRows(galleryId, photos) {
+            const grid = document.getElementById('photosGrid');
+            const containerWidth = grid.clientWidth;
+            if (!containerWidth) return;
+            const gap = 4;
+            const rows = _buildPhotoRows(photos, containerWidth, _photosTargetRowHeight(), gap);
+            const trashSvg = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>`;
+            grid.innerHTML = '';
+            grid.classList.toggle('selection-mode', _photosSelectionMode);
+            rows.forEach(row => {
+                const rowEl = document.createElement('div');
+                rowEl.className = 'photos-grid-row';
+                rowEl.style.height = Math.round(row.height) + 'px';
+                row.items.forEach(({ photo, ratio }) => {
+                    const card = document.createElement('div');
+                    card.className = 'photos-grid-card' + (_photosSelected.has(photo.filename) ? ' photo-selected' : '');
+                    card.id = `photo-item-${CSS.escape(photo.filename)}`;
+                    card.style.width = Math.round(row.height * ratio) + 'px';
+                    card.style.height = Math.round(row.height) + 'px';
+                    card.onclick = () => { if (_photosSelectionMode) togglePhotoCard(photo.filename); };
+                    card.innerHTML = `<img src="${photo.thumbnailUrl}" alt="" loading="lazy">
+                        <div class="photo-overlay-info">
+                            <span class="photo-filename">${escapeHtml(photo.filename)}</span>
+                            <button class="photo-delete-btn" onclick="event.stopPropagation(); deletePhoto('${galleryId}', '${escapeAttr(photo.filename)}')" title="Delete">${trashSvg}</button>
+                        </div>`;
+                    rowEl.appendChild(card);
+                });
+                grid.appendChild(rowEl);
+            });
+        }
+
+        async function deletePhoto(galleryId, filename) {
+            if (_photosSelectionMode) return;
+            const ok = await photosConfirm(`Delete "${filename}"?\nThis cannot be undone.`);
+            if (!ok) return;
+            const item = document.getElementById(`photo-item-${CSS.escape(filename)}`);
+            if (item) item.classList.add('deleting');
+            try {
+                const res = await fetch(`/api/gallery/${galleryId}/photo/${encodeURIComponent(filename)}`, { method: 'DELETE' });
+                if (!res.ok) throw new Error('Failed');
+                if (_photosResizeObs) { _photosResizeObs.disconnect(); _photosResizeObs = null; }
+                await refreshPhotosGrid(galleryId);
+            } catch (err) {
+                if (item) item.classList.remove('deleting');
+                showError('Could not delete photo: ' + err.message);
             }
         }
 
