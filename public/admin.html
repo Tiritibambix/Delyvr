@@ -2416,13 +2416,12 @@
                 }
                 _renderPhotosRows(galleryId, photos);
 
-                // ResizeObserver to reflow on modal resize
-                if (!_photosResizeObs) {
-                    _photosResizeObs = new ResizeObserver(() => {
-                        if (_photosModalGalleryId) _renderPhotosRows(_photosModalGalleryId, photos);
-                    });
-                    _photosResizeObs.observe(grid);
-                }
+                // Always recreate ResizeObserver so its closure has the latest photos list
+                if (_photosResizeObs) { _photosResizeObs.disconnect(); _photosResizeObs = null; }
+                _photosResizeObs = new ResizeObserver(() => {
+                    if (_photosModalGalleryId) _renderPhotosRows(_photosModalGalleryId, photos);
+                });
+                _photosResizeObs.observe(grid);
             } catch (err) {
                 showError('Could not load photos');
             }
@@ -2516,32 +2515,44 @@
             fill.style.width = '0%';
             text.textContent = `Uploading 0 / ${total}…`;
 
-            let uploaded = 0;
-            for (let i = 0; i < files.length; i += BATCH) {
-                const batch = files.slice(i, i + BATCH);
-                const fd = new FormData();
-                batch.forEach(f => fd.append('photos', f));
-                await new Promise((resolve, reject) => {
-                    const xhr = new XMLHttpRequest();
-                    xhr.open('POST', `/api/gallery/${galleryId}/upload`);
-                    xhr.upload.onprogress = e => {
-                        if (!e.lengthComputable) return;
-                        const done = uploaded + batch.length * (e.loaded / e.total);
-                        fill.style.width = Math.round((done / total) * 100) + '%';
-                        text.textContent = `Uploading ${Math.floor(done)} / ${total}…`;
-                    };
-                    xhr.onload = () => xhr.status < 300 ? resolve() : reject(new Error('Upload failed'));
-                    xhr.onerror = () => reject(new Error('Network error'));
-                    xhr.send(fd);
-                });
-                uploaded += batch.length;
-            }
+            try {
+                let uploaded = 0;
+                for (let i = 0; i < files.length; i += BATCH) {
+                    const batch = files.slice(i, i + BATCH);
+                    const fd = new FormData();
+                    batch.forEach(f => fd.append('photos', f));
+                    await new Promise((resolve, reject) => {
+                        const xhr = new XMLHttpRequest();
+                        xhr.open('POST', `/api/gallery/${galleryId}/upload`);
+                        xhr.upload.onprogress = e => {
+                            if (!e.lengthComputable) return;
+                            const done = uploaded + batch.length * (e.loaded / e.total);
+                            fill.style.width = Math.round((done / total) * 100) + '%';
+                            text.textContent = `Uploading ${Math.floor(done)} / ${total}…`;
+                        };
+                        xhr.onload = () => {
+                            if (xhr.status < 300) resolve();
+                            else {
+                                let msg = 'Upload failed';
+                                try { msg = JSON.parse(xhr.responseText).error || msg; } catch {}
+                                reject(new Error(msg));
+                            }
+                        };
+                        xhr.onerror = () => reject(new Error('Network error'));
+                        xhr.send(fd);
+                    });
+                    uploaded += batch.length;
+                }
 
-            fill.style.width = '100%';
-            text.textContent = `${total} photo${total !== 1 ? 's' : ''} added`;
-            setTimeout(() => { wrap.style.display = 'none'; }, 1800);
-            await refreshPhotosGrid(galleryId);
-            loadGalleries();
+                fill.style.width = '100%';
+                text.textContent = `${total} photo${total !== 1 ? 's' : ''} added`;
+                setTimeout(() => { wrap.style.display = 'none'; }, 1800);
+                await refreshPhotosGrid(galleryId);
+                loadGalleries();
+            } catch (err) {
+                wrap.style.display = 'none';
+                showError('Upload failed: ' + err.message);
+            }
         }
 
         async function viewFavorites(galleryId) {
