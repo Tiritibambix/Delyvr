@@ -51,6 +51,21 @@ const OG_CACHE_DIR   = path.join(DATA_DIR, 'og-cache');
 // UUID v4 validation regex — used by middleware and reconcileGalleries (must be declared early)
 const UUID_V4_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
+// Admin session tokens — cleared on restart (intentional: forces re-login)
+const sessions = new Map();
+const SESSION_TTL_MS = 24 * 60 * 60 * 1000; // 24 h
+
+function parseCookies(cookieHeader) {
+    return (cookieHeader || '').split(';').reduce((acc, pair) => {
+        const idx = pair.indexOf('=');
+        if (idx < 0) return acc;
+        const k = pair.slice(0, idx).trim();
+        const v = pair.slice(idx + 1).trim();
+        acc[k] = decodeURIComponent(v);
+        return acc;
+    }, {});
+}
+
 // Data store for galleries (in production, use a database)
 const galleries = new Map();
 
@@ -476,12 +491,23 @@ function validateFilename(req, res, next) {
 
 // Simple password authentication middleware — header only, never query param
 function requireAuth(req, res, next) {
-    const password = req.headers['x-admin-password'];
-    if (password === ADMIN_PASSWORD) {
-        next();
-    } else {
-        res.status(401).json({ error: 'Unauthorized' });
+    // 1. Session cookie (browser-based admin)
+    const cookies = parseCookies(req.headers.cookie);
+    const token = cookies['delyvr_session'];
+    if (token) {
+        const session = sessions.get(token);
+        if (session && Date.now() - session.createdAt < SESSION_TTL_MS) {
+            return next();
+        }
+        // Expired token — clear it
+        sessions.delete(token);
     }
+    // 2. X-Admin-Password header (backward compat for direct API / CLI use)
+    const password = req.headers['x-admin-password'];
+    if (password === ADMIN_PASSWORD) return next();
+
+    console.log(`[AUTH] Failed auth attempt from ${req.ip}`);
+    res.status(401).json({ error: 'Unauthorized' });
 }
 
 // Rate limiter for the login endpoint — 10 attempts per 15 minutes per IP
@@ -546,10 +572,46 @@ app.post('/api/auth/verify', authLimiter, (req, res) => {
     const raw = req.body.password;
     const password = Array.isArray(raw) ? raw[0] : raw;
     if (typeof password === 'string' && password === ADMIN_PASSWORD) {
+        const token = uuidv4();
+        sessions.set(token, { createdAt: Date.now() });
+        const isHttps = req.secure || req.headers['x-forwarded-proto'] === 'https';
+        const cookieOpts = [
+            `delyvr_session=${token}`,
+            'HttpOnly',
+            'SameSite=Strict',
+            'Path=/',
+            `Max-Age=${Math.floor(SESSION_TTL_MS / 1000)}`,
+            ...(isHttps ? ['Secure'] : [])
+        ].join('; ');
+        res.setHeader('Set-Cookie', cookieOpts);
         res.json({ success: true });
     } else {
+        console.log(`[AUTH] Failed auth attempt from ${req.ip}`);
         res.status(401).json({ error: 'Invalid password' });
     }
+});
+
+// Check if the current session cookie is still valid
+app.get('/api/auth/session', (req, res) => {
+    const cookies = parseCookies(req.headers.cookie);
+    const token = cookies['delyvr_session'];
+    if (token) {
+        const session = sessions.get(token);
+        if (session && Date.now() - session.createdAt < SESSION_TTL_MS) {
+            return res.json({ valid: true });
+        }
+        sessions.delete(token);
+    }
+    res.status(401).json({ valid: false });
+});
+
+// Logout — clear session token and cookie
+app.post('/api/auth/logout', (req, res) => {
+    const cookies = parseCookies(req.headers.cookie);
+    const token = cookies['delyvr_session'];
+    if (token) sessions.delete(token);
+    res.setHeader('Set-Cookie', 'delyvr_session=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0');
+    res.json({ success: true });
 });
 
 // Admin interface - photographer uploads photos here

@@ -1249,6 +1249,9 @@
                 Profile
             </button>
             <button class="btn-nav-outline" id="themeToggleBtn" onclick="toggleTheme()">☀️ Light</button>
+            <button class="btn-nav-outline" onclick="logout()" title="Log out" style="padding:8px 10px;">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+            </button>
         </div>
     </header>
 
@@ -1349,29 +1352,19 @@
 
         let selectedFiles = [];
         let selectedBgFile = null;
-        let adminPassword = '';
 
         // Must match MAX_BACKGROUND_MB in .env (default 25)
         const MAX_BG_MB = 25;
 
-        // Auto-restore session from sessionStorage (survives refresh, cleared on tab close)
+        // Auto-restore session via HTTP-only cookie (set by server on login)
         (function restoreSession() {
-            const saved = sessionStorage.getItem('delyvr_admin_pw');
-            if (!saved) return;
-            fetch('/api/auth/verify', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ password: saved })
-            }).then(r => {
+            fetch('/api/auth/session').then(r => {
                 if (r.ok) {
-                    adminPassword = saved;
                     document.getElementById('loginModal').classList.add('hidden');
                     loadGalleries();
                     loadCollections();
                     loadTrash();
                     checkLogoState();
-                } else {
-                    sessionStorage.removeItem('delyvr_admin_pw');
                 }
             }).catch(() => {});
         })();
@@ -1389,10 +1382,8 @@
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ password })
                 });
-                
                 if (res.ok) {
-                    adminPassword = password;
-                    sessionStorage.setItem('delyvr_admin_pw', password);
+                    // Session cookie set by server — password never stored in browser
                     document.getElementById('loginModal').classList.add('hidden');
                     loadGalleries();
                     loadCollections();
@@ -1628,7 +1619,6 @@
 
                     const xhr = new XMLHttpRequest();
                     xhr.open(method, url);
-                    xhr.setRequestHeader('X-Admin-Password', adminPassword);
 
                     xhr.upload.onprogress = (e) => {
                         if (!e.lengthComputable) return;
@@ -1676,7 +1666,6 @@
                     bgFd.append('background', selectedBgFile);
                     const bgRes = await fetch(`/api/gallery/${galleryId}/background`, {
                         method: 'POST',
-                        headers: { 'X-Admin-Password': adminPassword },
                         body: bgFd
                     });
                     if (!bgRes.ok) {
@@ -1731,6 +1720,11 @@
             _errorToastTimer = setTimeout(() => toast.classList.remove('visible', 'error'), 4500);
         }
 
+        async function logout() {
+            await fetch('/api/auth/logout', { method: 'POST' }).catch(() => {});
+            location.reload();
+        }
+
         async function toggleTheme() {
             const isLight = document.documentElement.classList.contains('light');
             const newTheme = isLight ? 'dark' : 'light';
@@ -1741,7 +1735,7 @@
             try {
                 const res = await fetch('/api/settings/theme', {
                     method: 'PATCH',
-                    headers: { 'X-Admin-Password': adminPassword, 'Content-Type': 'application/json' },
+                    headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ theme: newTheme })
                 });
                 if (!res.ok) {
@@ -1768,7 +1762,6 @@
             try {
                 const res = await fetch(`/api/collection/${collectionId}/background`, {
                     method: 'POST',
-                    headers: { 'X-Admin-Password': adminPassword },
                     body: formData
                 });
                 if (res.ok) {
@@ -1796,8 +1789,7 @@
             if (!confirm('Reset logo to the built-in default?')) return;
             try {
                 const res = await fetch('/api/logo', {
-                    method: 'DELETE',
-                    headers: { 'X-Admin-Password': adminPassword }
+                    method: 'DELETE'
                 });
                 if (!res.ok) throw new Error('Reset failed');
                 document.getElementById('adminLogo').src = '/api/logo?t=' + Date.now();
@@ -1815,7 +1807,6 @@
             try {
                 const res = await fetch('/api/logo', {
                     method: 'POST',
-                    headers: { 'X-Admin-Password': adminPassword },
                     body: formData
                 });
                 if (!res.ok) throw new Error('Upload failed');
@@ -1863,7 +1854,6 @@
         async function loadGalleries() {
             try {
                 const res = await fetch('/api/galleries', {
-                    headers: { 'X-Admin-Password': adminPassword }
                 });
                 
                 if (!res.ok) throw new Error('Failed to load galleries');
@@ -2086,7 +2076,7 @@
             if (!confirm(`Delete ${n} ${n === 1 ? 'gallery' : 'galleries'}? This cannot be undone.`)) return;
             for (const id of ids) {
                 try {
-                    await fetch(`/api/gallery/${id}`, { method: 'DELETE', headers: { 'X-Admin-Password': adminPassword } });
+                    await fetch(`/api/gallery/${id}`, { method: 'DELETE' });
                 } catch (_) {}
             }
             exitSelectionMode();
@@ -2100,7 +2090,7 @@
                 try {
                     await fetch(`/api/gallery/${id}/downloads`, {
                         method: 'PATCH',
-                        headers: { 'X-Admin-Password': adminPassword, 'Content-Type': 'application/json' },
+                        headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ enabled })
                     });
                 } catch (_) {}
@@ -2115,7 +2105,7 @@
                 try {
                     await fetch(`/api/collection/${collectionId}/galleries`, {
                         method: 'POST',
-                        headers: { 'X-Admin-Password': adminPassword, 'Content-Type': 'application/json' },
+                        headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ galleryId: id })
                     });
                 } catch (_) {}
@@ -2180,7 +2170,6 @@
 
                 const res = await fetch(`/api/gallery/${galleryId}/background`, {
                     method: 'POST',
-                    headers: { 'X-Admin-Password': adminPassword },
                     body: formData
                 });
 
@@ -2287,7 +2276,6 @@
                 const res = await fetch(`/api/gallery/${galleryId}/rename`, {
                     method: 'POST',
                     headers: { 
-                        'X-Admin-Password': adminPassword,
                         'Content-Type': 'application/json'
                     },
                     body: JSON.stringify({ eventName: newName })
@@ -2357,7 +2345,6 @@
                 const res = await fetch(`/api/gallery/${galleryId}/downloads`, {
                     method: 'PATCH',
                     headers: {
-                        'X-Admin-Password': adminPassword,
                         'Content-Type': 'application/json'
                     },
                     body: JSON.stringify({ enabled })
@@ -2484,8 +2471,7 @@
             if (item) item.classList.add('deleting');
             try {
                 const res = await fetch(`/api/gallery/${galleryId}/photo/${encodeURIComponent(filename)}`, {
-                    method: 'DELETE',
-                    headers: { 'X-Admin-Password': adminPassword }
+                    method: 'DELETE'
                 });
                 if (!res.ok) throw new Error('Failed');
                 if (_photosResizeObs) { _photosResizeObs.disconnect(); _photosResizeObs = null; }
@@ -2538,7 +2524,6 @@
                 await new Promise((resolve, reject) => {
                     const xhr = new XMLHttpRequest();
                     xhr.open('POST', `/api/gallery/${galleryId}/upload`);
-                    xhr.setRequestHeader('X-Admin-Password', adminPassword);
                     xhr.upload.onprogress = e => {
                         if (!e.lengthComputable) return;
                         const done = uploaded + batch.length * (e.loaded / e.total);
@@ -2562,7 +2547,6 @@
         async function viewFavorites(galleryId) {
             try {
                 const res = await fetch(`/api/gallery/${galleryId}/favorites`, {
-                    headers: { 'X-Admin-Password': adminPassword }
                 });
                 if (!res.ok) throw new Error('Failed');
                 const data = await res.json();
@@ -2598,8 +2582,7 @@
             if (!confirm('Reset all favorites for this gallery?')) return;
             try {
                 const res = await fetch(`/api/gallery/${galleryId}/favorites`, {
-                    method: 'DELETE',
-                    headers: { 'X-Admin-Password': adminPassword }
+                    method: 'DELETE'
                 });
                 if (!res.ok) throw new Error('Failed');
                 loadGalleries();
@@ -2615,7 +2598,6 @@
         async function loadCollections() {
             try {
                 const res = await fetch('/api/collections', {
-                    headers: { 'X-Admin-Password': adminPassword }
                 });
                 if (!res.ok) throw new Error('Failed');
                 _collectionsData = await res.json();
@@ -2739,7 +2721,7 @@
             try {
                 await fetch(`/api/collection/${collectionId}/galleries/reorder`, {
                     method: 'PATCH',
-                    headers: { 'X-Admin-Password': adminPassword, 'Content-Type': 'application/json' },
+                    headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ galleryIds: newOrder })
                 });
                 await loadCollections();
@@ -2771,7 +2753,7 @@
             try {
                 await fetch(`/api/collection/${collectionId}/galleries/reorder`, {
                     method: 'PATCH',
-                    headers: { 'X-Admin-Password': adminPassword, 'Content-Type': 'application/json' },
+                    headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ galleryIds: newOrder })
                 });
             } catch (_) {}
@@ -2786,7 +2768,7 @@
             try {
                 const res = await fetch('/api/collection/create', {
                     method: 'POST',
-                    headers: { 'X-Admin-Password': adminPassword, 'Content-Type': 'application/json' },
+                    headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ name })
                 });
                 if (!res.ok) throw new Error('Failed');
@@ -2797,7 +2779,6 @@
                     fd.append('background', selectedColBgFile);
                     await fetch(`/api/collection/${data.id}/background`, {
                         method: 'POST',
-                        headers: { 'X-Admin-Password': adminPassword },
                         body: fd
                     });
                     selectedColBgFile = null;
@@ -2845,7 +2826,7 @@
             try {
                 await fetch(`/api/collection/${collectionId}/rename`, {
                     method: 'POST',
-                    headers: { 'X-Admin-Password': adminPassword, 'Content-Type': 'application/json' },
+                    headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ name: newName })
                 });
                 await loadCollections();
@@ -2856,8 +2837,7 @@
             if (!confirm('Delete this collection? The galleries inside will not be deleted.')) return;
             try {
                 const res = await fetch(`/api/collection/${collectionId}`, {
-                    method: 'DELETE',
-                    headers: { 'X-Admin-Password': adminPassword }
+                    method: 'DELETE'
                 });
                 if (!res.ok) throw new Error('Failed');
                 await loadCollections();
@@ -2884,8 +2864,7 @@
         async function removeFromCollection(collectionId, galleryId) {
             try {
                 const res = await fetch(`/api/collection/${collectionId}/galleries/${galleryId}`, {
-                    method: 'DELETE',
-                    headers: { 'X-Admin-Password': adminPassword }
+                    method: 'DELETE'
                 });
                 if (!res.ok) throw new Error('Failed');
                 await loadCollections();
@@ -2899,7 +2878,7 @@
             try {
                 const res = await fetch(`/api/collection/${collectionId}/galleries`, {
                     method: 'POST',
-                    headers: { 'X-Admin-Password': adminPassword, 'Content-Type': 'application/json' },
+                    headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ galleryId })
                 });
                 if (!res.ok) {
@@ -3042,7 +3021,7 @@
             try {
                 await fetch('/api/galleries/reorder', {
                     method: 'PATCH',
-                    headers: { 'X-Admin-Password': adminPassword, 'Content-Type': 'application/json' },
+                    headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ galleryIds: ids })
                 });
             } catch (_) {}
@@ -3069,7 +3048,7 @@
         async function deleteGallery(id) {
             if (!confirm('Move this gallery to trash? It will be permanently deleted after 3 days.')) return;
             try {
-                const res = await fetch(`/api/gallery/${id}`, { method: 'DELETE', headers: { 'X-Admin-Password': adminPassword } });
+                const res = await fetch(`/api/gallery/${id}`, { method: 'DELETE' });
                 if (!res.ok) throw new Error('Failed');
                 loadGalleries();
                 loadTrash();
@@ -3083,7 +3062,7 @@
 
         async function loadTrash() {
             try {
-                const res = await fetch('/api/galleries/trash', { headers: { 'X-Admin-Password': adminPassword } });
+                const res = await fetch('/api/galleries/trash', { headers: {} });
                 if (!res.ok) return;
                 const trashed = await res.json();
                 const btn = document.getElementById('trashOpenBtn');
@@ -3121,7 +3100,7 @@
 
         async function restoreGallery(id) {
             try {
-                const res = await fetch(`/api/gallery/${id}/restore`, { method: 'POST', headers: { 'X-Admin-Password': adminPassword } });
+                const res = await fetch(`/api/gallery/${id}/restore`, { method: 'POST' });
                 if (!res.ok) throw new Error('Failed');
                 loadGalleries();
                 loadTrash();
@@ -3133,7 +3112,7 @@
         async function purgeGallery(id) {
             if (!confirm('Permanently delete this gallery? This cannot be undone.')) return;
             try {
-                const res = await fetch(`/api/gallery/${id}/purge`, { method: 'DELETE', headers: { 'X-Admin-Password': adminPassword } });
+                const res = await fetch(`/api/gallery/${id}/purge`, { method: 'DELETE' });
                 if (!res.ok) throw new Error('Failed');
                 loadTrash();
             } catch (err) {
@@ -3144,7 +3123,7 @@
         async function emptyTrash() {
             if (!confirm('Permanently delete all trashed galleries? This cannot be undone.')) return;
             try {
-                const res = await fetch('/api/galleries/trash', { method: 'DELETE', headers: { 'X-Admin-Password': adminPassword } });
+                const res = await fetch('/api/galleries/trash', { method: 'DELETE' });
                 if (!res.ok) throw new Error('Failed');
                 loadTrash();
             } catch (err) {
@@ -3154,7 +3133,7 @@
 
         async function regenerateOG(galleryId) {
             try {
-                await fetch(`/api/gallery/${galleryId}/og-image`, { method: 'DELETE', headers: { 'X-Admin-Password': adminPassword } });
+                await fetch(`/api/gallery/${galleryId}/og-image`, { method: 'DELETE' });
                 // Show brief confirmation via toast reuse
                 const toast = document.getElementById('uploadToast');
                 const spinner = document.getElementById('toastSpinner');
@@ -3221,7 +3200,7 @@
             try {
                 const res = await fetch('/api/settings', {
                     method: 'POST',
-                    headers: { 'X-Admin-Password': adminPassword, 'Content-Type': 'application/json' },
+                    headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(payload)
                 });
                 const fb = document.getElementById('profileFeedback');
