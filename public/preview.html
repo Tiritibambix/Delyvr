@@ -497,6 +497,33 @@
             color: #dc3250;
         }
 
+        .lightbox-fullscreen-btn {
+            position: absolute;
+            top: 20px;
+            right: 200px;
+            width: 48px;
+            height: 48px;
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border);
+            border-radius: 50%;
+            color: var(--text-primary);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s;
+            z-index: 1010;
+        }
+        .lightbox-fullscreen-btn svg { width: 18px; height: 18px; }
+        .lightbox-fullscreen-btn:hover {
+            background: var(--bg-secondary);
+            border-color: var(--accent);
+            color: var(--accent);
+        }
+        @media (max-width: 768px) {
+            .lightbox-fullscreen-btn { display: none; }
+        }
+
         .lightbox-favorite-btn.favorited {
             background: #dc3250;
             border-color: #dc3250;
@@ -991,6 +1018,9 @@
     <div class="lightbox" id="lightbox">
         <!-- Desktop Controls -->
         <button class="lightbox-close" onclick="closeLightbox()">×</button>
+        <button class="lightbox-fullscreen-btn" id="desktopFsBtn" onclick="toggleFullscreen()" title="Fullscreen">
+            <svg id="desktopFsIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
         <a class="lightbox-download-btn" id="lightboxDownload" href="#" download title="Download">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M12 4v12m0 0l-4-4m4 4l4-4M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2" stroke-linecap="round" stroke-linejoin="round"/>
@@ -1834,15 +1864,14 @@
         // Changer l'icône fullscreen selon l'état + reset zoom (layout change)
         document.addEventListener('fullscreenchange', () => {
             resetZoom();
-            const icon = document.getElementById('lbFsIcon');
-            if (!icon) return;
-            if (document.fullscreenElement) {
-                // Icône "réduire"
-                icon.innerHTML = '<path d="M8 3v3a2 2 0 0 1-2 2H3m18 0h-3a2 2 0 0 1-2-2V3m0 18v-3a2 2 0 0 0 2-2h3M3 16h3a2 2 0 0 0 2 2v3" stroke-linecap="round" stroke-linejoin="round"/>';
-            } else {
-                // Icône "agrandir"
-                icon.innerHTML = '<path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3" stroke-linecap="round" stroke-linejoin="round"/>';
-            }
+            const inFS = !!document.fullscreenElement;
+            const expandPath = '<path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3" stroke-linecap="round" stroke-linejoin="round"/>';
+            const compressPath = '<path d="M8 3v3a2 2 0 0 1-2 2H3m18 0h-3a2 2 0 0 1-2-2V3m0 18v-3a2 2 0 0 0 2-2h3M3 16h3a2 2 0 0 0 2 2v3" stroke-linecap="round" stroke-linejoin="round"/>';
+            const newPath = inFS ? compressPath : expandPath;
+            ['lbFsIcon', 'desktopFsIcon'].forEach(id => {
+                const el = document.getElementById(id);
+                if (el) el.innerHTML = newPath;
+            });
         });
 
 
