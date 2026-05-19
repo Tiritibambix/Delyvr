@@ -2468,8 +2468,11 @@
                             <div class="collection-meta-row">${c.galleryIds.length} ${c.galleryIds.length === 1 ? 'gallery' : 'galleries'}</div>
                         </div>
                         <div class="collection-actions">
-                            <button class="btn-icon" onclick="copyCollectionLink('${c.id}', this)" title="Copy link">
+                            <button class="btn-icon" onclick="copyCollectionLink('${c.id}', this)" title="Copy client link">
                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                            </button>
+                            <button class="btn-icon" onclick="copyCollectionCritiqueLink('${c.id}', this)" title="Copy critique link (numbered photos)">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="10" y1="6" x2="21" y2="6"/><line x1="10" y1="12" x2="21" y2="12"/><line x1="10" y1="18" x2="21" y2="18"/><path d="M4 6h1v4M4 10h2M6 18H4c0-1 2-2 2-3s-1-1.5-2-1" stroke-linecap="round" stroke-linejoin="round"/></svg>
                             </button>
                             <button class="btn-icon btn-icon-danger" onclick="deleteCollection('${c.id}')" title="Delete">
                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
@@ -2657,6 +2660,13 @@
 
         function copyCollectionLink(collectionId, btn) {
             const url = `${window.location.origin}/collection/${collectionId}`;
+            copyToClipboard(url);
+            btn.classList.add('copied');
+            setTimeout(() => btn.classList.remove('copied'), 1800);
+        }
+
+        function copyCollectionCritiqueLink(collectionId, btn) {
+            const url = `${window.location.origin}/collection/${collectionId}?critique=1`;
             copyToClipboard(url);
             btn.classList.add('copied');
             setTimeout(() => btn.classList.remove('copied'), 1800);

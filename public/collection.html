@@ -438,6 +438,7 @@
         }
 
         const collectionId = window.location.pathname.split('/').pop();
+        const critiqueMode = new URLSearchParams(window.location.search).get('critique') === '1';
 
         function escapeHtml(str) {
             const d = document.createElement('div');
@@ -500,7 +501,7 @@
                     const count = gallery.fileCount || 0;
                     const photoLabel = count === 1 ? t.photo : t.photos;
 
-                    const browseUrl = `/preview/${escapeHtml(gallery.id)}?from=${escapeHtml(collectionId)}`;
+                    const browseUrl = `/preview/${escapeHtml(gallery.id)}?from=${escapeHtml(collectionId)}${critiqueMode ? '&critique=1' : ''}`;
                     const customerUrl = `${window.location.origin}/download/${escapeHtml(gallery.id)}`;
                     const dlUrl = `/api/gallery/${escapeHtml(gallery.id)}/download`;
 
