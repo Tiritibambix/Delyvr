@@ -233,24 +233,30 @@
             position: relative;
             overflow: hidden;
             background: var(--bg3);
-            height: 160px;   /* target row height */
+            height: 160px;
             flex-shrink: 1;
-            flex-grow: 1;
-            min-width: 80px;
+            /* flex-grow set inline per item proportional to aspect ratio */
+            min-width: 60px;
         }
         .photos-grid-item img {
             display: block;
             width: 100%;
             height: 100%;
-            object-fit: cover;
+            object-fit: contain;
         }
         .photos-grid-item .photo-overlay-info {
             position: absolute; inset: 0;
             background: rgba(0,0,0,0.52);
-            display: flex; align-items: center; justify-content: center;
+            display: flex; flex-direction: column;
+            align-items: center; justify-content: center; gap: 8px;
             opacity: 0; transition: opacity 0.18s;
         }
         .photos-grid-item:hover .photo-overlay-info { opacity: 1; }
+        .photos-grid-item .photo-filename {
+            color: rgba(255,255,255,0.88); font-size: 9px;
+            text-align: center; padding: 0 8px;
+            word-break: break-all; line-height: 1.4; max-width: 100%;
+        }
         .photos-grid-item .photo-delete-btn {
             width: 34px; height: 34px; flex-shrink: 0;
             background: rgba(0,0,0,0.55); border: 1px solid rgba(255,255,255,0.25);
@@ -266,9 +272,11 @@
             .photos-modal-card { padding: 14px; width: 95%; gap: 10px; }
             .photos-grid-item { height: 110px; }
             .photos-grid-item .photo-overlay-info { opacity: 1; background: rgba(0,0,0,0.32); }
+            .photos-grid-item .photo-filename { display: none; }
         }
         @media (hover: none) {
             .photos-grid-item .photo-overlay-info { opacity: 1; background: rgba(0,0,0,0.32); }
+            .photos-grid-item .photo-filename { display: none; }
         }
 
         /* ═══════════════════════════════
@@ -2396,12 +2404,13 @@
                 }
                 const trashSvg = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>`;
                 grid.innerHTML = photos.map(p => {
-                    // flex-basis proportional to aspect ratio so all photos in a row share the same height
                     const ratio = (p.width && p.height) ? p.width / p.height : 1.5;
-                    const basis = Math.round(ratio * 160); // 160px = target row height
-                    return `<div class="photos-grid-item" id="photo-item-${CSS.escape(p.filename)}" style="flex-basis:${basis}px">
+                    const basis = Math.round(ratio * 160);
+                    // flex-grow matches ratio so items expand proportionally, preserving shape
+                    return `<div class="photos-grid-item" id="photo-item-${CSS.escape(p.filename)}" style="flex-basis:${basis}px;flex-grow:${ratio.toFixed(4)}">
                         <img src="${p.thumbnailUrl}" alt="" loading="lazy">
                         <div class="photo-overlay-info">
+                            <span class="photo-filename">${escapeHtml(p.filename)}</span>
                             <button class="photo-delete-btn" onclick="deletePhoto('${galleryId}', '${escapeAttr(p.filename)}')" title="Delete">${trashSvg}</button>
                         </div>
                     </div>`;
