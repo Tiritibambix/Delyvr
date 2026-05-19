@@ -159,10 +159,12 @@
         ═══════════════════════════════ */
         .photos-modal {
             position: fixed; inset: 0;
-            background: rgba(0,0,0,0.85);
+            background: rgba(0,0,0,0.35);
             display: flex; align-items: center; justify-content: center;
             z-index: 7000; opacity: 0; pointer-events: none;
-            transition: opacity 0.2s; backdrop-filter: blur(6px);
+            transition: opacity 0.2s;
+            backdrop-filter: blur(18px) saturate(160%);
+            -webkit-backdrop-filter: blur(18px) saturate(160%);
         }
         .photos-modal.active { opacity: 1; pointer-events: auto; }
 
