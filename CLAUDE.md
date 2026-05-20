@@ -49,7 +49,8 @@ delyvr/
 │   ├── admin.html      # Photographer dashboard
 │   ├── customer.html   # Client download page (single gallery)
 │   ├── preview.html    # Client photo browser (justified grid + lightbox + favorites + pinch zoom)
-│   └── collection.html # Client collection page (multiple galleries)
+│   ├── collection.html # Client collection page (multiple galleries)
+│   └── favorites.html  # Public favorites ranking page (/favorites/:id)
 └── data/               # Runtime data root (Docker volume mount at /data)
     ├── uploads/        # Gallery photos, organised as uploads/{galleryId}/
     ├── backgrounds/    # Background images — {galleryId}.jpg for galleries,
@@ -259,7 +260,10 @@ Gallery names use `contenteditable="false"` by default. Double-clicking (or clic
 | `GET` | `/api/gallery/:id/favorites-public` | | Visitor's favorites |
 | `GET` | `/api/gallery/:id/favorites` | ✓ | All favorites (admin) |
 | `DELETE` | `/api/gallery/:id/favorites` | ✓ | Reset favorites |
-| `GET` | `/api/gallery/:id/favorites/export` | ✓ | Export favorites as CSV |
+| `GET` | `/api/gallery/:id/favorites/export` | | Export favorites as CSV (public) |
+| `GET` | `/api/gallery/:id/favorites/download` | ✓ | Download favorite photos as ZIP |
+| `GET` | `/api/gallery/:id/favorites-ranked` | | Public favorites sorted by votes |
+| `GET` | `/favorites/:id` | | Public favorites ranking page |
 | `GET` | `/api/galleries` | ✓ | List active galleries (excludes deleted) |
 | `DELETE` | `/api/gallery/:id` | ✓ | Soft-delete (move to trash) |
 | `GET` | `/api/galleries/trash` | ✓ | List trashed galleries with daysLeft |

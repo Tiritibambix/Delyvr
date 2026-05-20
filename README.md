@@ -84,6 +84,8 @@ You can also add a cover image (hero photo) to each gallery. This appears as the
 
 **Critique mode:** When reviewing photos with other photographers, use the ordered list icon on any gallery to copy a special critique link. Share that link with your colleagues. In their browser, every photo in the grid and lightbox shows a number, so they can say "look at photo 23" without any ambiguity. Your regular clients never see these numbers as they use a different link.
 
+**Favorites ranking page:** The favorites modal in the admin has a "Copy ranking link" button. Share that link with your clients or collaborators and they get a clean, public page showing every favorited photo ranked from most voted to least voted, with gold/silver/bronze badges for the top three. The page follows the same style as the rest of the site, respects the theme, and shows your social footer. There is also an "Export CSV" button on that page. The page is read-only — it leads nowhere else.
+
 ### Trash
 
 Deleting a gallery moves it to the trash rather than destroying it immediately. Trashed galleries are kept for 3 days, giving you time to recover anything deleted by mistake. A trash icon appears in the gallery section header with a count badge when the trash is not empty. From the trash modal you can restore individual galleries, permanently delete them right away, or empty the whole trash at once.
@@ -386,7 +388,10 @@ delyvr/
 | `GET` | `/api/gallery/:id/favorites-public` | | Visitor's own favorites |
 | `GET` | `/api/gallery/:id/favorites` | ✓ | All favorites sorted by votes |
 | `DELETE` | `/api/gallery/:id/favorites` | ✓ | Reset all favorites |
-| `GET` | `/api/gallery/:id/favorites/export` | ✓ | Export favorites as CSV |
+| `GET` | `/api/gallery/:id/favorites/export` | | Export favorites as CSV |
+| `GET` | `/api/gallery/:id/favorites/download` | ✓ | Download favorite photos as ZIP |
+| `GET` | `/api/gallery/:id/favorites-ranked` | | Favorites sorted by votes (used by ranking page) |
+| `GET` | `/favorites/:id` | | Public favorites ranking page |
 | `GET` | `/api/galleries` | ✓ | List all active galleries |
 | `DELETE` | `/api/gallery/:id` | ✓ | Move gallery to trash |
 | `GET` | `/api/galleries/trash` | ✓ | List trashed galleries |
