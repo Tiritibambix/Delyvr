@@ -1187,6 +1187,7 @@
             <!-- Bulk delete bar (selection mode) -->
             <div class="photos-bulk-bar" id="photosBulkBar" style="display:none">
                 <span id="photosSelectedCount">0 selected</span>
+                <button class="bulk-select-all" onclick="selectAllPhotos()">Select all</button>
                 <button class="bulk-btn bulk-btn-cancel" onclick="togglePhotoSelection()">Cancel</button>
                 <button class="bulk-btn bulk-btn-danger" id="photosDeleteSelectedBtn" onclick="deleteSelectedPhotos()" disabled>Delete selected</button>
             </div>
@@ -2613,6 +2614,16 @@
             document.getElementById('photosDeleteSelectedBtn').disabled = n === 0;
         }
 
+        function selectAllPhotos() {
+            document.querySelectorAll('#photosGrid .photos-grid-card').forEach(card => {
+                const filename = card.dataset.filename;
+                if (!filename) return;
+                _photosSelected.add(filename);
+                card.classList.add('photo-selected');
+            });
+            updatePhotosSelectionBar();
+        }
+
         function togglePhotoCard(filename) {
             if (!_photosSelectionMode) return;
             const card = document.getElementById(`photo-item-${CSS.escape(filename)}`);
@@ -2716,6 +2727,7 @@
                     const card = document.createElement('div');
                     card.className = 'photos-grid-card' + (_photosSelected.has(photo.filename) ? ' photo-selected' : '');
                     card.id = `photo-item-${CSS.escape(photo.filename)}`;
+                    card.dataset.filename = photo.filename;
                     card.style.width = Math.round(row.height * ratio) + 'px';
                     card.style.height = Math.round(row.height) + 'px';
                     card.onclick = () => { if (_photosSelectionMode) togglePhotoCard(photo.filename); };
