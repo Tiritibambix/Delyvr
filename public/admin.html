@@ -1235,6 +1235,10 @@
             <div class="favorites-modal-header">
                 <h3 id="favoritesModalTitle">Client Favorites</h3>
                 <div style="display:flex;align-items:center;gap:8px;">
+                    <button class="btn-fav-action" id="favCopyRankingBtn" onclick="copyFavoritesRankingLink(this)" style="display:none" title="Copy public ranking link">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12" style="vertical-align:middle;margin-right:3px"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                        Copy ranking link
+                    </button>
                     <a class="btn-fav-action" id="favExportBtn" href="#" download style="display:none">Export CSV</a>
                     <a class="btn-fav-action" id="favDownloadBtn" href="#" download style="display:none">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12" style="vertical-align:middle;margin-right:3px"><path d="M12 4v12m0 0l-4-4m4 4l4-4M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2" stroke-linecap="round" stroke-linejoin="round"/></svg>
@@ -2743,7 +2747,17 @@
             }
         }
 
+        let _favGalleryId = null;
+
+        function copyFavoritesRankingLink(btn) {
+            const url = `${window.location.origin}/favorites/${_favGalleryId}`;
+            copyToClipboard(url);
+            btn.classList.add('copied');
+            setTimeout(() => btn.classList.remove('copied'), 1800);
+        }
+
         async function viewFavorites(galleryId) {
+            _favGalleryId = galleryId;
             try {
                 // Fetch favorites + photo dimensions in parallel
                 const [favRes, photosRes] = await Promise.all([
@@ -2756,11 +2770,13 @@
                 const grid = document.getElementById('favoritesGrid');
                 const exportBtn = document.getElementById('favExportBtn');
                 const downloadBtn = document.getElementById('favDownloadBtn');
+                const rankingBtn = document.getElementById('favCopyRankingBtn');
 
                 if (favData.favorites.length === 0) {
                     grid.innerHTML = '<p class="favorites-empty">No favorites yet.</p>';
                     exportBtn.style.display = 'none';
                     downloadBtn.style.display = 'none';
+                    rankingBtn.style.display = 'none';
                 } else {
                     // Build dimension map from photos API
                     const dimMap = {};
@@ -2781,6 +2797,7 @@
                     exportBtn.style.display = 'inline';
                     downloadBtn.href = `/api/gallery/${galleryId}/favorites/download`;
                     downloadBtn.style.display = 'inline';
+                    rankingBtn.style.display = 'inline';
                 }
 
                 document.getElementById('favoritesModal').classList.add('active');

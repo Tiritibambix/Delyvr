@@ -1280,6 +1280,59 @@ app.get('/api/gallery/:galleryId/favorites-public', publicReadLimiter, validateG
     res.json({ favorites: myFavorites });
 });
 
+// Public favorites ranking page — photos sorted by vote count (public, no auth)
+app.get('/favorites/:galleryId', publicReadLimiter, validateGalleryId, (req, res) => {
+    const { galleryId } = req.params;
+    const gallery = getActiveGallery(galleryId);
+    if (!gallery) return res.status(404).send('Gallery not found');
+
+    const eventName = gallery.eventName || 'Gallery';
+    const baseUrl = `${req.protocol}://${req.get('host')}`;
+    const ogTags = [
+        `<meta property="og:title" content="${escapeHtml(eventName)} — Favorites">`,
+        `<meta property="og:description" content="Client favorite photos from ${escapeHtml(eventName)}.">`,
+        `<meta property="og:image" content="${escapeHtml(baseUrl)}/api/gallery/${escapeHtml(galleryId)}/og-image">`,
+        `<meta property="og:type" content="website">`,
+        `<meta property="og:url" content="${escapeHtml(baseUrl)}/favorites/${escapeHtml(galleryId)}">`
+    ].join('\n    ');
+    const html = fs.readFileSync(path.join(__dirname, 'public', 'favorites.html'), 'utf8');
+    res.send(html.replace('<head>', `<head>\n    ${ogTags}`));
+});
+
+// Public API: favorites sorted by vote count (used by favorites.html)
+app.get('/api/gallery/:galleryId/favorites-ranked', publicReadLimiter, validateGalleryId, (req, res) => {
+    const { galleryId } = req.params;
+    const gallery = getActiveGallery(galleryId);
+    if (!gallery) return res.status(404).json({ error: 'Gallery not found' });
+
+    const favs = gallery.favorites || {};
+    const photos = Object.entries(favs)
+        .map(([filename, voters]) => ({ filename, votes: voters.length }))
+        .filter(r => r.votes > 0)
+        .sort((a, b) => b.votes - a.votes)
+        .map(({ filename, votes }) => {
+            const dims = gallery.dimensions?.[filename];
+            return {
+                filename, votes,
+                thumbnailUrl: `/api/gallery/${galleryId}/photo/${encodeURIComponent(filename)}?thumb=1`,
+                previewUrl:   `/api/gallery/${galleryId}/preview/${encodeURIComponent(filename)}`,
+                width: dims?.w || null,
+                height: dims?.h || null
+            };
+        });
+
+    const backgroundsDir = path.join(DATA_DIR, 'backgrounds');
+    const hasBg = fs.existsSync(backgroundsDir) && !!fs.readdirSync(backgroundsDir).find(f => f.startsWith(galleryId));
+
+    res.json({
+        galleryId,
+        eventName: gallery.eventName || 'Gallery',
+        background: hasBg ? `/api/gallery/${galleryId}/background` : null,
+        csvUrl: `/api/gallery/${galleryId}/favorites/export`,
+        photos
+    });
+});
+
 // Get favorites for a gallery (admin only) — sorted by vote count desc
 app.get('/api/gallery/:galleryId/favorites', requireAuth, validateGalleryId, (req, res) => {
     const { galleryId } = req.params;
