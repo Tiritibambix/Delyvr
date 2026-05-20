@@ -1326,6 +1326,37 @@ app.get('/api/gallery/:galleryId/favorites/export', adminLimiter, requireAuth, v
     res.send(csv);
 });
 
+// Download favorite photos as ZIP
+app.get('/api/gallery/:galleryId/favorites/download', downloadLimiter, requireAuth, validateGalleryId, (req, res) => {
+    const { galleryId } = req.params;
+    const gallery = galleries.get(galleryId);
+    if (!gallery) return res.status(404).json({ error: 'Gallery not found' });
+
+    const favs = gallery.favorites || {};
+    const filenames = Object.entries(favs)
+        .filter(([, voters]) => voters.length > 0)
+        .sort((a, b) => b[1].length - a[1].length)
+        .map(([filename]) => filename);
+
+    if (filenames.length === 0) return res.status(404).json({ error: 'No favorites' });
+
+    const galleryPath = safeResolvePath(path.join(DATA_DIR, 'uploads'), galleryId);
+    const name = (gallery.eventName || 'favorites').replace(/[^\x20-\x7E]/g, '_').replace(/["\\]/g, '_').substring(0, 50) || 'favorites';
+    const encodedName = encodeURIComponent((gallery.eventName || 'favorites').substring(0, 200) + '_favorites.zip');
+
+    res.setHeader('Content-Type', 'application/zip');
+    res.setHeader('Content-Disposition', `attachment; filename="${name}_favorites.zip"; filename*=UTF-8''${encodedName}`);
+
+    const archive = archiver('zip', { store: true });
+    archive.on('error', err => res.status(500).send({ error: err.message }));
+    archive.pipe(res);
+    filenames.forEach(filename => {
+        const filePath = safeResolvePath(galleryPath, filename);
+        if (fs.existsSync(filePath)) archive.file(filePath, { name: filename });
+    });
+    archive.finalize();
+});
+
 // --- Collection routes ---
 
 function validateCollectionId(req, res, next) {
