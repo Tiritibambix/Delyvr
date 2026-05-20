@@ -1360,7 +1360,7 @@ app.delete('/api/gallery/:galleryId/favorites', requireAuth, validateGalleryId, 
 });
 
 // Export favorites as CSV
-app.get('/api/gallery/:galleryId/favorites/export', adminLimiter, requireAuth, validateGalleryId, (req, res) => {
+app.get('/api/gallery/:galleryId/favorites/export', publicReadLimiter, validateGalleryId, (req, res) => {
     const { galleryId } = req.params;
     const gallery = galleries.get(galleryId);
     if (!gallery) return res.status(404).json({ error: 'Gallery not found' });
@@ -1371,11 +1371,16 @@ app.get('/api/gallery/:galleryId/favorites/export', adminLimiter, requireAuth, v
         .filter(r => r.votes > 0)
         .sort((a, b) => b.votes - a.votes);
 
-    const name = (gallery.eventName || 'favorites').replace(/[^a-z0-9_\-]/gi, '_');
-    const csv = ['filename,votes', ...rows.map(r => `"${r.filename.replace(/"/g, '""')}",${r.votes}`)].join('\r\n');
+    const eventName = gallery.eventName || 'favorites';
+    const asciiName = eventName.replace(/[^\x20-\x7E]/g, '_').replace(/["\\]/g, '_').substring(0, 50) + '_favorites';
+    const encodedName = encodeURIComponent(eventName.substring(0, 200) + '_favorites.csv');
+
+    // UTF-8 BOM so Excel opens the file with correct encoding
+    const bom = '﻿';
+    const csv = bom + ['filename,votes', ...rows.map(r => `"${r.filename.replace(/"/g, '""')}",${r.votes}`)].join('\r\n');
 
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
-    res.setHeader('Content-Disposition', `attachment; filename="${name}_favorites.csv"`);
+    res.setHeader('Content-Disposition', `attachment; filename="${asciiName}.csv"; filename*=UTF-8''${encodedName}`);
     res.send(csv);
 });
 
