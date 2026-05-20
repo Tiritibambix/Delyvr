@@ -70,7 +70,7 @@ You can also add a cover image (hero photo) to each gallery. This appears as the
 
 **Search:** Type in the search box above the gallery list to filter by name. Instant, no page reload.
 
-**Manage photos:** Click the grid icon on any gallery card to open a photo manager. See all photos as thumbnails and delete individual ones if you need to remove an accidental upload. Works on mobile too.
+**Manage photos:** Click the grid icon on any gallery card to open a photo manager. Photos are displayed at their natural proportions in a justified layout. You can add new photos by dropping them into the zone or browsing — they are queued with a list where you can remove individual ones before uploading. To delete, hover a photo and click the trash icon for one at a time, or use the Select button to pick multiple photos and delete them in one go. All confirmations happen inside the app, no browser popups.
 
 **Cover image:** Click or drag a photo onto the gallery cover area to change it.
 
@@ -107,6 +107,8 @@ Upload your logo from the admin header. It appears on every page including the c
 The Profile modal (top of the admin header) lets you set your website URL and social links. Instagram, Facebook, Pinterest, TikTok, LinkedIn, 500px, Flickr, and Behance are supported. Only links you fill in appear on client pages.
 
 Light and dark mode can be toggled from the admin header. The theme applies instantly to every visitor.
+
+Your session persists across page refreshes using a secure HTTP-only cookie, so you do not have to log in again every time. A logout button is available in the header.
 
 ---
 
