@@ -1475,7 +1475,7 @@ app.get('/api/collection/:collectionId', publicReadLimiter, validateCollectionId
     let totalSizeBytes = 0;
     const galleriesData = collection.galleryIds
         .map(gid => {
-            const gallery = galleries.get(gid);
+            const gallery = getActiveGallery(gid);
             if (!gallery) return null;
             const galleryPath = path.join(DATA_DIR, 'uploads', gid);
             let fileCount = 0;
@@ -1789,6 +1789,14 @@ app.delete('/api/gallery/:galleryId', adminLimiter, requireAuth, validateGallery
     gallery.deleted = true;
     gallery.deletedAt = new Date().toISOString();
     saveGalleries();
+    // Remove from any collection it belongs to
+    let collectionChanged = false;
+    for (const collection of collections.values()) {
+        const before = collection.galleryIds.length;
+        collection.galleryIds = collection.galleryIds.filter(id => id !== galleryId);
+        if (collection.galleryIds.length !== before) collectionChanged = true;
+    }
+    if (collectionChanged) saveCollections();
     res.json({ success: true });
 });
 
