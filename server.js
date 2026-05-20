@@ -1097,6 +1097,29 @@ app.delete('/api/collection/:collectionId/og-image', adminLimiter, requireAuth, 
 });
 
 // Customer download page — serves HTML with OG meta tags injected
+// Build OG + Twitter meta tags for a shareable page
+function buildOgTags({ title, description, imageUrl, pageUrl }) {
+    return [
+        `<meta property="og:title" content="${escapeHtml(title)}">`,
+        `<meta property="og:description" content="${escapeHtml(description)}">`,
+        `<meta property="og:image" content="${escapeHtml(imageUrl)}">`,
+        `<meta property="og:image:width" content="1200">`,
+        `<meta property="og:image:height" content="630">`,
+        `<meta property="og:type" content="website">`,
+        `<meta property="og:url" content="${escapeHtml(pageUrl)}">`,
+        `<meta name="twitter:card" content="summary_large_image">`,
+        `<meta name="twitter:title" content="${escapeHtml(title)}">`,
+        `<meta name="twitter:description" content="${escapeHtml(description)}">`,
+        `<meta name="twitter:image" content="${escapeHtml(imageUrl)}">`
+    ].join('\n    ');
+}
+
+function galleryPhotoCount(galleryId) {
+    const gallery = getActiveGallery(galleryId);
+    if (!gallery) return 0;
+    return (gallery.files || []).length;
+}
+
 app.get('/download/:galleryId', publicReadLimiter, validateGalleryId, (req, res) => {
     const { galleryId } = req.params;
     const galleryPath = safeResolvePath(path.join(DATA_DIR, 'uploads'), galleryId);
@@ -1107,15 +1130,15 @@ app.get('/download/:galleryId', publicReadLimiter, validateGalleryId, (req, res)
 
     const gallery = galleries.get(galleryId);
     const eventName = gallery ? gallery.eventName : 'Your Photos';
+    const photoCount = galleryPhotoCount(galleryId);
     const baseUrl = `${req.protocol}://${req.get('host')}`;
 
-    const ogTags = [
-        `<meta property="og:title" content="${escapeHtml(eventName)}">`,
-        `<meta property="og:description" content="Your photos are ready to download.">`,
-        `<meta property="og:image" content="${escapeHtml(baseUrl)}/api/gallery/${escapeHtml(galleryId)}/og-image">`,
-        `<meta property="og:type" content="website">`,
-        `<meta property="og:url" content="${escapeHtml(baseUrl)}/download/${escapeHtml(galleryId)}">`
-    ].join('\n    ');
+    const ogTags = buildOgTags({
+        title: eventName,
+        description: `${photoCount} photo${photoCount !== 1 ? 's' : ''} · Ready to download`,
+        imageUrl: `${baseUrl}/api/gallery/${galleryId}/og-image`,
+        pageUrl: `${baseUrl}/download/${galleryId}`
+    });
 
     const html = fs.readFileSync(path.join(__dirname, 'public', 'customer.html'), 'utf8');
     res.send(html.replace('<head>', `<head>\n    ${ogTags}`));
@@ -1132,15 +1155,15 @@ app.get('/preview/:galleryId', publicReadLimiter, validateGalleryId, (req, res) 
 
     const gallery = galleries.get(galleryId);
     const eventName = gallery ? gallery.eventName : 'Your Photos';
+    const photoCount = galleryPhotoCount(galleryId);
     const baseUrl = `${req.protocol}://${req.get('host')}`;
 
-    const ogTags = [
-        `<meta property="og:title" content="${escapeHtml(eventName)}">`,
-        `<meta property="og:description" content="Browse and download individual photos.">`,
-        `<meta property="og:image" content="${escapeHtml(baseUrl)}/api/gallery/${escapeHtml(galleryId)}/og-image">`,
-        `<meta property="og:type" content="website">`,
-        `<meta property="og:url" content="${escapeHtml(baseUrl)}/preview/${escapeHtml(galleryId)}">`
-    ].join('\n    ');
+    const ogTags = buildOgTags({
+        title: eventName,
+        description: `${photoCount} photo${photoCount !== 1 ? 's' : ''}`,
+        imageUrl: `${baseUrl}/api/gallery/${galleryId}/og-image`,
+        pageUrl: `${baseUrl}/preview/${galleryId}`
+    });
 
     const html = fs.readFileSync(path.join(__dirname, 'public', 'preview.html'), 'utf8');
     res.send(html.replace('<head>', `<head>\n    ${ogTags}`));
@@ -1287,14 +1310,14 @@ app.get('/favorites/:galleryId', publicReadLimiter, validateGalleryId, (req, res
     if (!gallery) return res.status(404).send('Gallery not found');
 
     const eventName = gallery.eventName || 'Gallery';
+    const favCount = Object.values(gallery.favorites || {}).filter(v => v.length > 0).length;
     const baseUrl = `${req.protocol}://${req.get('host')}`;
-    const ogTags = [
-        `<meta property="og:title" content="${escapeHtml(eventName)} — Favorites">`,
-        `<meta property="og:description" content="Client favorite photos from ${escapeHtml(eventName)}.">`,
-        `<meta property="og:image" content="${escapeHtml(baseUrl)}/api/gallery/${escapeHtml(galleryId)}/og-image">`,
-        `<meta property="og:type" content="website">`,
-        `<meta property="og:url" content="${escapeHtml(baseUrl)}/favorites/${escapeHtml(galleryId)}">`
-    ].join('\n    ');
+    const ogTags = buildOgTags({
+        title: `${eventName} — Favorites`,
+        description: `${favCount} favorite photo${favCount !== 1 ? 's' : ''} · Ranked by votes`,
+        imageUrl: `${baseUrl}/api/gallery/${galleryId}/og-image`,
+        pageUrl: `${baseUrl}/favorites/${galleryId}`
+    });
     const html = fs.readFileSync(path.join(__dirname, 'public', 'favorites.html'), 'utf8');
     res.send(html.replace('<head>', `<head>\n    ${ogTags}`));
 });
@@ -1687,13 +1710,17 @@ app.get('/collection/:collectionId', publicReadLimiter, validateCollectionId, (r
     if (!collection) return res.status(404).send('Collection not found');
 
     const baseUrl = `${req.protocol}://${req.get('host')}`;
-    const ogTags = [
-        `<meta property="og:title" content="${escapeHtml(collection.name)}">`,
-        `<meta property="og:description" content="Your photo galleries are ready.">`,
-        `<meta property="og:image" content="${escapeHtml(baseUrl)}/api/collection/${escapeHtml(collectionId)}/og-image">`,
-        `<meta property="og:type" content="website">`,
-        `<meta property="og:url" content="${escapeHtml(baseUrl)}/collection/${escapeHtml(collectionId)}">`
-    ].join('\n    ');
+    const activeGalleries = collection.galleryIds.map(id => getActiveGallery(id)).filter(Boolean);
+    const galleryCount = activeGalleries.length;
+    const totalPhotos = activeGalleries.reduce((sum, g) => sum + (g.files || []).length, 0);
+    const colDesc = `${galleryCount} ${galleryCount === 1 ? 'gallery' : 'galleries'} · ${totalPhotos} photo${totalPhotos !== 1 ? 's' : ''}`;
+
+    const ogTags = buildOgTags({
+        title: collection.name,
+        description: colDesc,
+        imageUrl: `${baseUrl}/api/collection/${collectionId}/og-image`,
+        pageUrl: `${baseUrl}/collection/${collectionId}`
+    });
 
     const html = fs.readFileSync(path.join(__dirname, 'public', 'collection.html'), 'utf8');
     res.send(html.replace('<head>', `<head>\n    ${ogTags}`));
