@@ -2942,14 +2942,16 @@
                                 </button>
                             </div>
                             <div class="collection-meta-row">${c.galleryIds.length} ${c.galleryIds.length === 1 ? 'gallery' : 'galleries'}</div>
-                            <label class="downloads-toggle" title="Allow clients to download">
-                                <span class="toggle-switch">
-                                    <input type="checkbox" ${c.downloadsEnabled !== false ? 'checked' : ''}
-                                           onchange="toggleCollectionDownloads('${c.id}', this.checked, this)">
-                                    <span class="toggle-track"></span>
-                                </span>
-                                Downloads
-                            </label>
+                            <div class="gallery-bottom">
+                                <label class="downloads-toggle" title="Allow clients to download">
+                                    <span class="toggle-switch">
+                                        <input type="checkbox" ${c.downloadsEnabled !== false ? 'checked' : ''}
+                                               onchange="toggleCollectionDownloads('${c.id}', this.checked, this)">
+                                        <span class="toggle-track"></span>
+                                    </span>
+                                    Downloads
+                                </label>
+                            </div>
                         </div>
                         <div class="collection-actions">
                             <button class="btn-icon" onclick="copyCollectionLink('${c.id}', this)" title="Copy client link">
