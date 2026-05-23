@@ -2851,6 +2851,22 @@
             document.getElementById('favoritesModal').classList.remove('active');
         }
 
+        async function toggleCollectionDownloads(collectionId, enabled, checkbox) {
+            try {
+                const res = await fetch(`/api/collection/${collectionId}/downloads`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ enabled })
+                });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.error || 'Error');
+                checkbox.checked = data.downloadsEnabled;
+            } catch (e) {
+                checkbox.checked = !enabled;
+                alert('Error: ' + e.message);
+            }
+        }
+
         async function resetViews(galleryId) {
             if (!confirm('Reset view count for this gallery?')) return;
             try {
@@ -2941,6 +2957,16 @@
                                 </button>
                             </div>
                             <div class="collection-meta-row">${c.galleryIds.length} ${c.galleryIds.length === 1 ? 'gallery' : 'galleries'}</div>
+                            <div class="gallery-bottom">
+                                <label class="downloads-toggle" title="Allow clients to download">
+                                    <span class="toggle-switch">
+                                        <input type="checkbox" ${c.downloadsEnabled !== false ? 'checked' : ''}
+                                               onchange="toggleCollectionDownloads('${c.id}', this.checked, this)">
+                                        <span class="toggle-track"></span>
+                                    </span>
+                                    Downloads
+                                </label>
+                            </div>
                         </div>
                         <div class="collection-actions">
                             <button class="btn-icon" onclick="copyCollectionLink('${c.id}', this)" title="Copy client link">
