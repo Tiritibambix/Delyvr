@@ -9,6 +9,7 @@ const archiver = require('archiver');
 const rateLimit = require('express-rate-limit');
 const sharp = require('sharp');
 const escapeHtml = require('escape-html');
+const crypto = require('crypto');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -1172,7 +1173,6 @@ app.get('/api/gallery/:galleryId/info', publicReadLimiter, validateGalleryId, (r
 
     // Track unique views via hash of IP + User-Agent
     if (gallery) {
-        const crypto = require('crypto');
         const ip = req.ip || req.connection.remoteAddress || '';
         const ua = req.headers['user-agent'] || '';
         const hash = crypto.createHash('sha256').update(ip + ua).digest('hex');
