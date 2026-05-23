@@ -475,7 +475,8 @@
                     bgImg.src = `/api/collection/${collectionId}/background`;
                 }
 
-                const hasDownloadable = (data.galleries || []).some(g => g.downloadsEnabled !== false);
+                const collDownloadsEnabled = data.downloadsEnabled !== false;
+                const hasDownloadable = collDownloadsEnabled && (data.galleries || []).some(g => g.downloadsEnabled !== false);
                 if (hasDownloadable) {
                     _downloadUrl = `/api/collection/${collectionId}/download`;
                     const sizeLabel = data.totalSizeBytes ? ' · ' + formatBytes(data.totalSizeBytes) : '';

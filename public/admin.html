@@ -2419,6 +2419,22 @@
             await renameGallery(galleryId, newName);
         }
 
+        async function toggleCollectionDownloads(collectionId, enabled, checkbox) {
+            try {
+                const res = await fetch(`/api/collection/${collectionId}/downloads`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ enabled })
+                });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.error || 'Error');
+                checkbox.checked = data.downloadsEnabled;
+            } catch (e) {
+                checkbox.checked = !enabled;
+                alert('Error: ' + e.message);
+            }
+        }
+
         async function toggleDownloads(galleryId, enabled, checkbox) {
             checkbox.disabled = true;
             try {
@@ -2925,7 +2941,15 @@
                                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
                                 </button>
                             </div>
-                            <div class="collection-meta-row">${c.galleryIds.length} ${c.galleryIds.length === 1 ? 'gallery' : 'galleries'}</div>
+                            <div class="collection-meta-row">
+                                ${c.galleryIds.length} ${c.galleryIds.length === 1 ? 'gallery' : 'galleries'}
+                                &nbsp;·&nbsp;
+                                <label style="display:inline-flex;align-items:center;gap:4px;cursor:pointer;font-size:11px;">
+                                    <input type="checkbox" ${c.downloadsEnabled !== false ? 'checked' : ''}
+                                           onchange="toggleCollectionDownloads('${c.id}', this.checked, this)">
+                                    Downloads
+                                </label>
+                            </div>
                         </div>
                         <div class="collection-actions">
                             <button class="btn-icon" onclick="copyCollectionLink('${c.id}', this)" title="Copy client link">

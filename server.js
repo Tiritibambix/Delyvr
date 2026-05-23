@@ -958,6 +958,16 @@ app.get('/api/gallery/:galleryId/photo/:filename', imageLimiter, validateGallery
     res.sendFile(filePath);
 });
 
+// Returns true if any collection containing this gallery has downloadsEnabled === false
+function isGalleryBlockedByCollection(galleryId) {
+    for (const collection of collections.values()) {
+        if (collection.galleryIds.includes(galleryId) && collection.downloadsEnabled === false) {
+            return true;
+        }
+    }
+    return false;
+}
+
 // Download a single photo as an attachment
 app.get('/api/gallery/:galleryId/download/:filename', downloadLimiter, validateGalleryId, validateFilename, (req, res) => {
     const { galleryId, filename } = req.params;
@@ -965,6 +975,9 @@ app.get('/api/gallery/:galleryId/download/:filename', downloadLimiter, validateG
     const gallery = galleries.get(galleryId);
     if (gallery && gallery.downloadsEnabled === false) {
         return res.status(403).json({ error: 'Downloads are disabled for this gallery' });
+    }
+    if (isGalleryBlockedByCollection(galleryId)) {
+        return res.status(403).json({ error: 'Downloads are disabled for this collection' });
     }
 
     const filePath = safeResolvePath(safeResolvePath(path.join(DATA_DIR, 'uploads'), galleryId), filename);
@@ -1179,7 +1192,7 @@ app.get('/api/gallery/:galleryId/info', publicReadLimiter, validateGalleryId, (r
         background: backgroundFile ? `/api/gallery/${galleryId}/background` : null,
         fileCount,
         totalSizeBytes,
-        downloadsEnabled: gallery ? gallery.downloadsEnabled !== false : true,
+        downloadsEnabled: gallery ? (gallery.downloadsEnabled !== false && !isGalleryBlockedByCollection(galleryId)) : true,
         downloadCount: gallery ? (gallery.downloadCount || 0) : 0
     });
 });
@@ -1196,6 +1209,9 @@ app.get('/api/gallery/:galleryId/download', downloadLimiter, validateGalleryId, 
     const gallery = galleries.get(galleryId);
     if (gallery && gallery.downloadsEnabled === false) {
         return res.status(403).json({ error: 'Downloads are disabled for this gallery' });
+    }
+    if (isGalleryBlockedByCollection(galleryId)) {
+        return res.status(403).json({ error: 'Downloads are disabled for this collection' });
     }
 
     // Track download count
@@ -1436,7 +1452,8 @@ app.post('/api/collection/create', requireAuth, (req, res) => {
         id,
         name,
         created: new Date().toISOString(),
-        galleryIds: []
+        galleryIds: [],
+        downloadsEnabled: true
     });
     saveCollections();
     const baseUrl = `${req.protocol}://${req.get('host')}`;
@@ -1487,22 +1504,25 @@ app.get('/api/collection/:collectionId', publicReadLimiter, validateCollectionId
                 });
             }
             const hasBackground = [...bgFiles].some(f => f.startsWith(gid));
+            const collDownloads = collection.downloadsEnabled !== false;
             return {
                 id: gid,
                 eventName: gallery.eventName || 'Untitled Event',
                 fileCount,
                 background: hasBackground ? `/api/gallery/${gid}/background` : null,
-                downloadsEnabled: gallery.downloadsEnabled !== false
+                downloadsEnabled: collDownloads && gallery.downloadsEnabled !== false
             };
         })
         .filter(Boolean);
 
     const collBgFiles = fs.existsSync(backgroundsDir) ? [...new Set(fs.readdirSync(backgroundsDir))] : [];
+    const collDownloadsEnabled = collection.downloadsEnabled !== false;
     const collHasBg = collBgFiles.some(f => f.startsWith(`collection-${collectionId}`));
     res.json({
         id: collectionId,
         name: collection.name,
         background: collHasBg ? `/api/collection/${collectionId}/background` : null,
+        downloadsEnabled: collDownloadsEnabled,
         totalSizeBytes,
         galleries: galleriesData
     });
@@ -1635,6 +1655,9 @@ app.get('/api/collection/:collectionId/download', downloadLimiter, validateColle
     const { collectionId } = req.params;
     const collection = collections.get(collectionId);
     if (!collection) return res.status(404).json({ error: 'Collection not found' });
+    if (collection.downloadsEnabled === false) {
+        return res.status(403).json({ error: 'Downloads are disabled for this collection' });
+    }
 
     const colName = collection.name || 'collection';
     const asciiColName = colName.replace(/[^\x20-\x7E]/g, '_').replace(/["\\]/g, '_').substring(0, 50) || 'collection';
@@ -1659,6 +1682,17 @@ app.get('/api/collection/:collectionId/download', downloadLimiter, validateColle
     archive.pipe(res);
     entries.forEach(e => archive.file(e.diskPath, { name: e.zipName }));
     archive.finalize();
+});
+
+// Toggle downloads on/off for a collection
+app.patch('/api/collection/:collectionId/downloads', adminLimiter, requireAuth, validateCollectionId, (req, res) => {
+    const { collectionId } = req.params;
+    const collection = collections.get(collectionId);
+    if (!collection) return res.status(404).json({ error: 'Collection not found' });
+    const enabled = req.body.enabled !== false;
+    collection.downloadsEnabled = enabled;
+    saveCollections();
+    res.json({ success: true, downloadsEnabled: collection.downloadsEnabled });
 });
 
 // Delete a collection (admin only — does NOT delete the galleries)
