@@ -2009,12 +2009,16 @@
                                 </span>
                                 Downloads
                             </label>
-                            <div class="fav-info">
-                                ♥ ${g.favoritesCount || 0}
-                                ${g.favoritesCount > 0 ? `<button class="btn-fav-action" onclick="viewFavorites('${g.id}')">View</button><button class="btn-fav-action" onclick="resetFavorites('${g.id}')">Reset</button>` : ''}
+                            <div class="fav-info" title="Unique views">
+                                👁 ${g.viewCount || 0}
+                                ${(g.viewCount || 0) > 0 ? `<button class="btn-fav-action" onclick="resetViews('${g.id}')">Reset</button>` : ''}
                             </div>
                             <div class="fav-info" title="Total downloads">
                                 ↓ ${g.downloadCount || 0}
+                            </div>
+                            <div class="fav-info">
+                                ♥ ${g.favoritesCount || 0}
+                                ${g.favoritesCount > 0 ? `<button class="btn-fav-action" onclick="viewFavorites('${g.id}')">View</button><button class="btn-fav-action" onclick="resetFavorites('${g.id}')">Reset</button>` : ''}
                             </div>
                         </div>
                     </div>
@@ -2417,22 +2421,6 @@
         async function renameGalleryInline(galleryId, rawName) {
             const newName = (rawName || '').trim() || 'Untitled Event';
             await renameGallery(galleryId, newName);
-        }
-
-        async function toggleCollectionDownloads(collectionId, enabled, checkbox) {
-            try {
-                const res = await fetch(`/api/collection/${collectionId}/downloads`, {
-                    method: 'PATCH',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ enabled })
-                });
-                const data = await res.json();
-                if (!res.ok) throw new Error(data.error || 'Error');
-                checkbox.checked = data.downloadsEnabled;
-            } catch (e) {
-                checkbox.checked = !enabled;
-                alert('Error: ' + e.message);
-            }
         }
 
         async function toggleDownloads(galleryId, enabled, checkbox) {
@@ -2863,6 +2851,17 @@
             document.getElementById('favoritesModal').classList.remove('active');
         }
 
+        async function resetViews(galleryId) {
+            if (!confirm('Reset view count for this gallery?')) return;
+            try {
+                const res = await fetch(`/api/gallery/${galleryId}/views`, { method: 'DELETE' });
+                if (!res.ok) throw new Error('Error');
+                await loadGalleries();
+            } catch (e) {
+                alert('Error resetting views: ' + e.message);
+            }
+        }
+
         async function resetFavorites(galleryId) {
             if (!confirm('Reset all favorites for this gallery?')) return;
             try {
@@ -2942,16 +2941,6 @@
                                 </button>
                             </div>
                             <div class="collection-meta-row">${c.galleryIds.length} ${c.galleryIds.length === 1 ? 'gallery' : 'galleries'}</div>
-                            <div class="gallery-bottom">
-                                <label class="downloads-toggle" title="Allow clients to download">
-                                    <span class="toggle-switch">
-                                        <input type="checkbox" ${c.downloadsEnabled !== false ? 'checked' : ''}
-                                               onchange="toggleCollectionDownloads('${c.id}', this.checked, this)">
-                                        <span class="toggle-track"></span>
-                                    </span>
-                                    Downloads
-                                </label>
-                            </div>
                         </div>
                         <div class="collection-actions">
                             <button class="btn-icon" onclick="copyCollectionLink('${c.id}', this)" title="Copy client link">
