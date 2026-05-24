@@ -50,7 +50,8 @@ delyvr/
 │   ├── customer.html   # Client download page (single gallery)
 │   ├── preview.html    # Client photo browser (justified grid + lightbox + favorites + pinch zoom)
 │   ├── collection.html # Client collection page (multiple galleries)
-│   └── favorites.html  # Public favorites ranking page (/favorites/:id)
+│   ├── favorites.html  # Public favorites ranking page (/favorites/:id)
+│   └── shared.js       # Shared client JS — SOCIAL_ICONS, applyTheme(), renderSocialFooter()
 └── data/               # Runtime data root (Docker volume mount at /data)
     ├── uploads/        # Gallery photos, organised as uploads/{galleryId}/
     ├── backgrounds/    # Background images — {galleryId}.jpg for galleries,
@@ -94,6 +95,8 @@ delyvr/
   background: string|null,
   downloadsEnabled: boolean, // default true (missing = true)
   downloadCount: number,    // incremented on every ZIP download (default 0)
+  viewCount: number,        // unique view count (default 0)
+  viewerHashes: string[],   // SHA-256(ip+ua) per unique visitor — not security-sensitive
   favorites: {              // filename → [visitorId, ...]
     [filename: string]: string[]
   }
@@ -108,7 +111,8 @@ delyvr/
   name: string,
   created: string,
   galleryIds: string[],     // ordered — order is the client display order
-  background: string|null
+  background: string|null,
+  downloadsEnabled: boolean // default true (missing = true)
 }
 ```
 
@@ -170,7 +174,7 @@ All filesystem paths incorporating user-controlled values go through `safeResolv
 
 `POST /api/settings` is admin-only — accepts `{ theme, website, socials }` and saves the merged result.
 
-`PATCH /api/settings/theme` and `POST /api/settings/theme` are both supported for backward compatibility with the existing admin toggle.
+`PATCH /api/settings/theme` is used by the admin theme toggle.
 
 ### Preview generation
 
@@ -248,8 +252,7 @@ Gallery names use `contenteditable="false"` by default. Double-clicking (or clic
 | `PATCH` | `/api/gallery/:id/downloads` | ✓ | Toggle downloads |
 | `GET` | `/api/gallery/:id/info` | | Metadata + totalSizeBytes |
 | `GET` | `/api/gallery/:id/photos` | | Photo list with URLs and dimensions |
-| `GET` | `/api/gallery/:id/photo/:filename` | | Serve photo or thumbnail |
-| `GET` | `/api/gallery/:id/preview/:filename` | | Serve 1920px preview |
+| `GET` | `/api/gallery/:id/photo/:filename` | | Serve photo; `?thumb=1` for 400px thumbnail, `?preview=1` for 1920px preview |
 | `GET` | `/api/gallery/:id/download` | | ZIP download (store mode, RFC 5987) |
 | `GET` | `/api/gallery/:id/download/:filename` | | Single photo download |
 | `GET` | `/api/gallery/:id/background` | | Serve background; `?thumb=1` 200px, `?card=1` 800px |
@@ -304,6 +307,15 @@ Gallery names use `contenteditable="false"` by default. Double-clicking (or clic
 
 All HTML files are standalone — no bundler, no imports, all JS inline.
 
+### `public/shared.js`
+
+Loaded by all client pages via `<script src="/shared.js">` before their inline `<script>` block. Provides:
+- `SOCIAL_ICONS` — SVG strings for website, instagram, facebook, pinterest, tiktok, linkedin, 500px, flickr, behance.
+- `applyTheme()` — fetches `GET /api/settings` and toggles `html.light` CSS class.
+- `renderSocialFooter()` — renders icon links into `#socialFooter` from settings; hides the container entirely if no links are configured.
+
+`admin.html` loads `shared.js` but defines its own `applyTheme()` that additionally updates the theme toggle button text — it overrides the shared version.
+
 ### `public/admin.html`
 
 - Login via in-memory `adminPassword` variable only, not persisted to sessionStorage or localStorage.
@@ -343,6 +355,7 @@ All HTML files are standalone — no bundler, no imports, all JS inline.
 - Full i18n: EN, FR, ES, PT, IT — including `gallery`/`galleries` keys (no hardcoded French strings).
 - Gallery covers use `?card=1` (800px) instead of full resolution.
 - Download button shows total size (`totalSizeBytes` from `/api/collection/:id`).
+- Browse and customer-link URLs are page-relative (`../preview/...`, `../download/...`) for subpath deployment compatibility.
 
 ---
 
@@ -374,3 +387,4 @@ All HTML files are standalone — no bundler, no imports, all JS inline.
 - **Critique mode** is entirely client-side. `?critique=1` in the URL enables photo numbering in `preview.html`. The admin copies the critique URL via `copyCritiqueLink()`. No server-side flag.
 - **Gallery name editing** requires disabling `draggable` on the parent `.gallery-item` during edit (set in `startGalleryRename`, restored in `finishGalleryRename`) so that text selection works. Without this, the browser intercepts mousedown for drag, preventing text selection.
 - **`squarePhotoGridCells()`** in the photos management modal measures `offsetWidth` of the first grid cell after `requestAnimationFrame` and sets explicit `style.height` on all cells. CSS `aspect-ratio` is unreliable in some mobile browsers when combined with grid and `position: absolute` content.
+- **`public/shared.js`** is loaded by all client pages via `<script src="/shared.js">`. It provides `SOCIAL_ICONS`, `applyTheme()`, and `renderSocialFooter()`. `admin.html` loads it but overrides `applyTheme()` locally to also update the theme toggle button text. Do not duplicate these functions into individual HTML files.

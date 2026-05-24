@@ -10,13 +10,15 @@ const rateLimit = require('express-rate-limit');
 const sharp = require('sharp');
 const escapeHtml = require('escape-html');
 const crypto = require('crypto');
+const net = require('net');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
 // Trust reverse-proxy headers (X-Forwarded-For, X-Forwarded-Proto).
-// Defaults to 1 for deployments behind Nginx/NPM/Caddy. Set TRUST_PROXY=0 to disable.
-const TRUST_PROXY = parseInt(process.env.TRUST_PROXY || '1', 10);
+// Set TRUST_PROXY=1 when running behind Nginx/Caddy/Traefik. Default is 0 (safe for direct exposure).
+// Docker Compose sets this to 1 explicitly via docker-compose.yml.
+const TRUST_PROXY = parseInt(process.env.TRUST_PROXY || '0', 10);
 app.set('trust proxy', TRUST_PROXY);
 
 app.use(express.json());
@@ -35,6 +37,10 @@ if (!ADMIN_PASSWORD) {
     console.error('FATAL: ADMIN_PASSWORD environment variable is not set. Set it in your .env file.');
     process.exit(1);
 }
+
+// Admin IP allowlist — comma-separated IPs or CIDR ranges (optional)
+const ADMIN_ALLOWED_IPS = (process.env.ADMIN_ALLOWED_IPS || '')
+    .split(',').map(s => s.trim()).filter(Boolean);
 
 // File size limits (from .env, in MB)
 const MAX_PHOTO_BYTES = parseInt(process.env.MAX_UPLOAD_MB || '200') * 1024 * 1024;
@@ -78,12 +84,27 @@ const collections = new Map();
 const COLLECTIONS_FILE = path.join(DATA_DIR, 'collections.json');
 const SETTINGS_FILE    = path.join(DATA_DIR, 'settings.json');
 
+const SETTINGS_DEFAULTS = {
+    theme: 'dark',
+    website: '',
+    socials: {}
+};
+
 // Load/save settings
 function loadSettings() {
     try {
-        if (fs.existsSync(SETTINGS_FILE)) return JSON.parse(fs.readFileSync(SETTINGS_FILE, 'utf8'));
-    } catch (e) {}
-    return { theme: 'dark', website: '', socials: {} };
+        if (fs.existsSync(SETTINGS_FILE)) {
+            const data = JSON.parse(fs.readFileSync(SETTINGS_FILE, 'utf8'));
+            return {
+                ...SETTINGS_DEFAULTS,
+                ...data,
+                socials: { ...SETTINGS_DEFAULTS.socials, ...(data.socials || {}) }
+            };
+        }
+    } catch (e) {
+        console.error('[SETTINGS] Failed to parse settings.json, using defaults:', e.message);
+    }
+    return { ...SETTINGS_DEFAULTS };
 }
 function saveSettings(s) {
     fs.writeFileSync(SETTINGS_FILE, JSON.stringify(s, null, 2));
@@ -492,9 +513,75 @@ function validateFilename(req, res, next) {
     next();
 }
 
+// ── IP allowlist (ADMIN_ALLOWED_IPS) ────────────────────────────────────────
+
+// Expand IPv6 :: shorthand to full 8-group form
+function expandIPv6(ip) {
+    if (!ip.includes('::')) return ip;
+    const [left, right] = ip.split('::');
+    const l = left ? left.split(':') : [];
+    const r = right ? right.split(':') : [];
+    const fill = Array(8 - l.length - r.length).fill('0');
+    return [...l, ...fill, ...r].join(':');
+}
+
+// Convert an IPv4 or IPv6 address string to a BigInt
+function ipToBigInt(ip) {
+    if (net.isIPv4(ip)) {
+        return ip.split('.').reduce((acc, o) => (acc << 8n) | BigInt(+o), 0n);
+    }
+    if (net.isIPv6(ip)) {
+        return expandIPv6(ip)
+            .split(':')
+            .reduce((acc, g) => (acc << 16n) | BigInt(parseInt(g || '0', 16)), 0n);
+    }
+    return null;
+}
+
+// Returns true if ip falls within the given CIDR range or matches the exact IP
+function ipMatchesCIDR(ip, entry) {
+    const slashIdx = entry.indexOf('/');
+    const cidrIp = slashIdx === -1 ? entry : entry.slice(0, slashIdx);
+    const prefix  = slashIdx === -1 ? null  : parseInt(entry.slice(slashIdx + 1), 10);
+
+    const ipBig   = ipToBigInt(ip);
+    const cidrBig = ipToBigInt(cidrIp);
+    if (ipBig === null || cidrBig === null) return false;
+    if (prefix === null) return ipBig === cidrBig;
+
+    const bits = net.isIPv4(ip) ? 32n : 128n;
+    const mask = ((1n << bits) - 1n) ^ ((1n << (bits - BigInt(prefix))) - 1n);
+    return (ipBig & mask) === (cidrBig & mask);
+}
+
+// Normalise the request IP: strip ::ffff: prefix for IPv4-mapped IPv6 addresses
+function resolveClientIp(req) {
+    const raw = req.ip || '';
+    return raw.startsWith('::ffff:') ? raw.slice(7) : raw;
+}
+
+// Middleware: reject requests from IPs not in ADMIN_ALLOWED_IPS (when set)
+function requireAllowedIP(req, res, next) {
+    if (ADMIN_ALLOWED_IPS.length === 0) return next();
+    const ip = resolveClientIp(req);
+    if (ADMIN_ALLOWED_IPS.some(entry => ipMatchesCIDR(ip, entry))) return next();
+    console.log(`[AUTH] IP blocked: ${ip}`);
+    res.status(403).json({ error: 'Forbidden' });
+}
+
+// ── Authentication ───────────────────────────────────────────────────────────
+
 // Simple password authentication middleware — header only, never query param
 function requireAuth(req, res, next) {
-    // 1. Session cookie (browser-based admin)
+    // 1. IP allowlist — checked before credentials so blocked IPs never reach auth logic
+    if (ADMIN_ALLOWED_IPS.length > 0) {
+        const ip = resolveClientIp(req);
+        if (!ADMIN_ALLOWED_IPS.some(entry => ipMatchesCIDR(ip, entry))) {
+            console.log(`[AUTH] IP blocked: ${ip}`);
+            return res.status(403).json({ error: 'Forbidden' });
+        }
+    }
+    // 2. Session cookie (browser-based admin)
     const cookies = parseCookies(req.headers.cookie);
     const token = cookies['delyvr_session'];
     if (token) {
@@ -505,7 +592,7 @@ function requireAuth(req, res, next) {
         // Expired token — clear it
         sessions.delete(token);
     }
-    // 2. X-Admin-Password header (backward compat for direct API / CLI use)
+    // 3. X-Admin-Password header (backward compat for direct API / CLI use)
     const password = req.headers['x-admin-password'];
     if (password === ADMIN_PASSWORD) return next();
 
@@ -571,7 +658,7 @@ const downloadLimiter = rateLimit({
 // --- Routes ---
 
 // Verify password endpoint
-app.post('/api/auth/verify', authLimiter, (req, res) => {
+app.post('/api/auth/verify', authLimiter, requireAllowedIP, (req, res) => {
     const raw = req.body.password;
     const password = Array.isArray(raw) ? raw[0] : raw;
     if (typeof password === 'string' && password === ADMIN_PASSWORD) {
@@ -945,15 +1032,13 @@ app.get('/api/gallery/:galleryId/photo/:filename', imageLimiter, validateGallery
     if (req.query.preview === '1') {
         const previewPath = safeResolvePath(safeResolvePath(PREVIEWS_DIR, galleryId), filename + '.jpg');
 
-        if (!fs.existsSync(previewPath)) {
-            // Generate on-the-fly if missing
-            await generatePreview(galleryId, filename);
-        }
-
         if (fs.existsSync(previewPath)) {
             return res.sendFile(previewPath);
         }
-        // Fall through to original if preview generation failed
+
+        // Preview missing — serve original immediately and generate in background
+        generatePreview(galleryId, filename).catch(() => {});
+        // Fall through to serve original
     }
 
     const filePath = safeResolvePath(safeResolvePath(path.join(DATA_DIR, 'uploads'), galleryId), filename);
@@ -1350,7 +1435,7 @@ app.get('/api/gallery/:galleryId/favorites-ranked', publicReadLimiter, validateG
             return {
                 filename, votes,
                 thumbnailUrl: `/api/gallery/${galleryId}/photo/${encodeURIComponent(filename)}?thumb=1`,
-                previewUrl:   `/api/gallery/${galleryId}/preview/${encodeURIComponent(filename)}`,
+                previewUrl:   `/api/gallery/${galleryId}/photo/${encodeURIComponent(filename)}?preview=1`,
                 width: dims?.w || null,
                 height: dims?.h || null
             };
@@ -1382,7 +1467,7 @@ app.get('/api/gallery/:galleryId/favorites', requireAuth, validateGalleryId, (re
     res.json({ favorites: sorted });
 });
 
-// Reset favorites for a gallery (admin only)
+// Reset view count for a gallery (admin only)
 app.delete('/api/gallery/:galleryId/views', adminLimiter, requireAuth, validateGalleryId, (req, res) => {
     const { galleryId } = req.params;
     const gallery = galleries.get(galleryId);
