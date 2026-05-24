@@ -457,6 +457,9 @@
         .form-input:focus { border-color: var(--accent); }
         .form-input::placeholder { color: var(--muted); }
         #eventName { border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
+        #galleryCollectionSelect { margin-top: 10px; }
+        #galleryCollectionSelect.has-new-input { border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
+        #newColNameForGallery { border-top-left-radius: 0; border-top-right-radius: 0; border-top: none; margin-top: 0; }
 
         .drop-zone {
             background: var(--bg3); border: 1px dashed var(--border2);
@@ -1355,6 +1358,11 @@
                     <p>Drop image or click to browse</p>
                 </div>
                 <input type="file" id="bgInput" accept="image/*" style="display:none">
+                <select class="form-input" id="galleryCollectionSelect" onchange="onCollectionSelectChange()">
+                    <option value="">No collection</option>
+                    <option value="__new__">+ New collection…</option>
+                </select>
+                <input type="text" class="form-input" id="newColNameForGallery" placeholder="New collection name" maxlength="200" style="display:none">
                 <button class="btn-primary" id="createBtn" onclick="createGallery()" disabled>Create & copy link</button>
                 <div class="progress-container" id="progressContainer">
                     <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
@@ -1763,6 +1771,41 @@
                     }
                 }
 
+                // Assign to collection if requested
+                const colSel = document.getElementById('galleryCollectionSelect');
+                const colVal = colSel ? colSel.value : '';
+                let refreshCollections = false;
+                if (colVal) {
+                    try {
+                        let targetCollectionId;
+                        if (colVal === '__new__') {
+                            const newColName = (document.getElementById('newColNameForGallery').value || '').trim();
+                            if (newColName) {
+                                const colRes = await fetch('/api/collection/create', {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({ name: newColName })
+                                });
+                                if (colRes.ok) {
+                                    const colData = await colRes.json();
+                                    targetCollectionId = colData.id;
+                                    refreshCollections = true;
+                                }
+                            }
+                        } else {
+                            targetCollectionId = colVal;
+                            refreshCollections = true;
+                        }
+                        if (targetCollectionId) {
+                            await fetch(`/api/collection/${targetCollectionId}/galleries`, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ galleryId })
+                            });
+                        }
+                    } catch (_) {}
+                }
+
                 // Show result
                 const baseUrl = window.location.origin;
                 document.getElementById('downloadLinkInput').value = `${baseUrl}/download/${galleryId}`;
@@ -1770,6 +1813,7 @@
                 document.getElementById('resultSection').classList.add('visible');
                 resetForm();
                 loadGalleries();
+                if (refreshCollections) loadCollections();
 
             } catch (err) {
                 document.getElementById('createBtn').disabled = false;
@@ -1789,6 +1833,8 @@
             document.getElementById('bgDropZone').classList.remove('has-image');
             document.getElementById('createBtn').disabled = true;
             document.getElementById('progressFill').style.width = '0%';
+            const colSel = document.getElementById('galleryCollectionSelect');
+            if (colSel) { colSel.value = ''; onCollectionSelectChange(); }
         }
 
         let _errorToastTimer = null;
@@ -2909,6 +2955,7 @@
                 if (!res.ok) throw new Error('Failed');
                 _collectionsData = await res.json();
                 renderCollections(_collectionsData);
+                populateCollectionSelect();
             } catch (err) {
                 console.error('Error loading collections:', err);
             }
@@ -3077,6 +3124,33 @@
         }
 
         let _galleriesData = []; // cache for collection pill labels
+
+        function populateCollectionSelect() {
+            const sel = document.getElementById('galleryCollectionSelect');
+            if (!sel) return;
+            const prev = sel.value;
+            sel.innerHTML = '<option value="">No collection</option>';
+            (_collectionsData || []).forEach(c => {
+                const opt = document.createElement('option');
+                opt.value = c.id;
+                opt.textContent = c.name;
+                sel.appendChild(opt);
+            });
+            const newOpt = document.createElement('option');
+            newOpt.value = '__new__';
+            newOpt.textContent = '+ New collection…';
+            sel.appendChild(newOpt);
+            if (prev && sel.querySelector(`option[value="${CSS.escape(prev)}"]`)) sel.value = prev;
+        }
+
+        function onCollectionSelectChange() {
+            const sel = document.getElementById('galleryCollectionSelect');
+            const inp = document.getElementById('newColNameForGallery');
+            const isNew = sel.value === '__new__';
+            inp.style.display = isNew ? 'block' : 'none';
+            sel.classList.toggle('has-new-input', isNew);
+            if (isNew) inp.focus();
+        }
 
         async function createCollection() {
             const input = document.getElementById('newCollectionName');
