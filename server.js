@@ -161,6 +161,7 @@ function purgeExpiredTrash() {
     let changed = false;
     for (const [id, g] of galleries.entries()) {
         if (g.deleted && g.deletedAt && (now - new Date(g.deletedAt).getTime()) > TRASH_RETENTION_MS) {
+            console.log(`[STARTUP] Auto-purge: gallery "${g.eventName}" (${id}) deleted at ${g.deletedAt}`);
             hardDeleteGallery(id);
             changed = true;
         }
@@ -198,6 +199,7 @@ function reconcileGalleries() {
     for (const galleryId of galleries.keys()) {
         if (!fs.existsSync(path.join(uploadsDir, galleryId))) {
             galleries.delete(galleryId);
+            console.log(`[STARTUP] Reconcile: removed stale entry ${galleryId} (no uploads folder)`);
             changed = true;
         }
     }
@@ -221,6 +223,7 @@ function reconcileGalleries() {
                 viewerHashes: [],
                 dimensions: {}
             });
+            console.log(`[STARTUP] Reconcile: recovered gallery ${entry} from disk (${files.length} file(s))`);
             changed = true;
         }
     }
@@ -356,7 +359,7 @@ async function generateThumbnail(galleryId, filename) {
     try {
         await sharp(src).resize(400).withMetadata().jpeg({ quality: 80 }).toFile(dest);
     } catch (e) {
-        // Skip non-image or corrupt files silently
+        console.warn(`[PREVIEW] Thumbnail failed for ${galleryId}/${filename}: ${e.message}`);
     }
 }
 
@@ -383,7 +386,7 @@ async function generatePreview(galleryId, filename) {
     try {
         await sharp(src).resize(1920, null, { withoutEnlargement: true }).withMetadata().jpeg({ quality: 85 }).toFile(dest);
     } catch (e) {
-        // Skip non-image or corrupt files silently
+        console.warn(`[PREVIEW] Preview failed for ${galleryId}/${filename}: ${e.message}`);
     }
 }
 
@@ -473,6 +476,7 @@ app.patch('/api/settings/theme', requireAuth, (req, res) => {
     if (theme === 'light' || theme === 'dark') {
         current.theme = theme;
         saveSettings(current);
+        console.log(`[SETTINGS] Theme changed to ${theme}`);
     }
     res.json(current);
 });
@@ -673,6 +677,7 @@ app.post('/api/auth/verify', authLimiter, requireAllowedIP, (req, res) => {
             `Max-Age=${Math.floor(SESSION_TTL_MS / 1000)}`,
             ...(isHttps ? ['Secure'] : [])
         ].join('; ');
+        console.log(`[AUTH] Login successful from ${req.ip}`);
         res.setHeader('Set-Cookie', cookieOpts);
         res.json({ success: true });
     } else {
@@ -747,7 +752,7 @@ app.post('/api/logo', adminLimiter, requireAuth, uploadLogo.single('logo'), (req
 
     const ext = path.extname(req.file.originalname).toLowerCase();
     fs.writeFileSync(path.join(DATA_DIR, `logo${ext}`), req.file.buffer);
-
+    console.log(`[SETTINGS] Logo updated (${req.file.originalname})`);
     res.json({ success: true });
 });
 
@@ -757,6 +762,7 @@ app.delete('/api/logo', adminLimiter, requireAuth, (_req, res) => {
         const p = path.join(DATA_DIR, `logo${ext}`);
         if (fs.existsSync(p)) fs.unlinkSync(p);
     }
+    console.log('[SETTINGS] Logo reset to default');
     res.json({ success: true });
 });
 
@@ -797,6 +803,7 @@ app.post('/api/gallery/create', requireAuth, generateGalleryId, upload.array('ph
         saveGalleries();
         generateGalleryThumbnails(galleryId, gallery.files).catch(() => {});
         generateGalleryPreviews(galleryId, gallery.files).catch(() => {});
+        console.log(`[GALLERY] Created "${gallery.eventName}" (${galleryId}) — ${gallery.files.length} photo(s)`);
     }
 
     const baseUrl = `${req.protocol}://${req.get('host')}`;
@@ -825,6 +832,7 @@ app.post('/api/gallery/:galleryId/upload', requireAuth, validateGalleryId, uploa
         saveGalleries();
         generateGalleryThumbnails(galleryId, newFiles).catch(() => {});
         generateGalleryPreviews(galleryId, newFiles).catch(() => {});
+        console.log(`[UPLOAD] Added ${newFiles.length} photo(s) to "${gallery.eventName}" (${galleryId})`);
     }
 
     res.json({
@@ -868,9 +876,10 @@ app.post('/api/gallery/:galleryId/background', adminLimiter, requireAuth, valida
 
         gallery.background = `${galleryId}.jpg`;
         saveGalleries();
-
+        console.log(`[GALLERY] Background updated for "${gallery.eventName}" (${galleryId})`);
         res.json({ success: true, background: gallery.background });
     } catch (err) {
+        console.error(`[GALLERY] Background processing failed for ${galleryId}: ${err.message}`);
         res.status(500).json({ error: 'Failed to process background image' });
     }
 });
@@ -951,9 +960,10 @@ app.post('/api/gallery/:galleryId/rename', requireAuth, validateGalleryId, (req,
         return res.status(404).json({ error: 'Gallery not found' });
     }
 
+    const oldName = gallery.eventName;
     gallery.eventName = (String(Array.isArray(req.body.eventName) ? req.body.eventName[0] : (req.body.eventName || 'Untitled Event'))).trim().substring(0, 200);
     saveGalleries();
-
+    console.log(`[GALLERY] Renamed "${oldName}" → "${gallery.eventName}" (${galleryId})`);
     res.json({ success: true, eventName: gallery.eventName });
 });
 
@@ -1140,6 +1150,7 @@ app.get('/api/gallery/:galleryId/og-image', imageLimiter, validateGalleryId, asy
             .toFile(cacheFile);
         res.sendFile(cacheFile);
     } catch (err) {
+        console.error(`[GALLERY] OG image generation failed for ${galleryId}: ${err.message}`);
         res.status(500).send('Could not generate OG image');
     }
 });
@@ -1188,6 +1199,7 @@ app.get('/api/collection/:collectionId/og-image', imageLimiter, validateCollecti
         await sharp(sourceFile).resize(1200, 630, { fit: 'cover' }).withMetadata().jpeg({ quality: 80 }).toFile(cacheFile);
         res.sendFile(cacheFile);
     } catch (err) {
+        console.error(`[COLLECTION] OG image generation failed for ${collectionId}: ${err.message}`);
         res.status(500).send('Could not generate OG image');
     }
 });
@@ -1322,6 +1334,7 @@ app.get('/api/gallery/:galleryId/download', downloadLimiter, validateGalleryId, 
     if (gallery) {
         gallery.downloadCount = (gallery.downloadCount || 0) + 1;
         saveGalleries();
+        console.log(`[DOWNLOAD] Gallery "${gallery.eventName}" (${galleryId}) — #${gallery.downloadCount} from ${req.ip}`);
     }
 
     const files = fs.readdirSync(galleryPath).filter(f => !f.startsWith('.'));
@@ -1475,6 +1488,7 @@ app.delete('/api/gallery/:galleryId/views', adminLimiter, requireAuth, validateG
     gallery.viewCount = 0;
     gallery.viewerHashes = [];
     saveGalleries();
+    console.log(`[GALLERY] Views reset for "${gallery.eventName}" (${galleryId})`);
     res.json({ success: true });
 });
 
@@ -1486,6 +1500,7 @@ app.delete('/api/gallery/:galleryId/favorites', requireAuth, validateGalleryId, 
     }
     gallery.favorites = {};
     saveGalleries();
+    console.log(`[GALLERY] Favorites reset for "${gallery.eventName}" (${galleryId})`);
     res.json({ success: true });
 });
 
@@ -1570,6 +1585,7 @@ app.post('/api/collection/create', requireAuth, (req, res) => {
         downloadsEnabled: true
     });
     saveCollections();
+    console.log(`[COLLECTION] Created "${name}" (${id})`);
     const baseUrl = `${req.protocol}://${req.get('host')}`;
     res.json({ success: true, id, collectionUrl: `${baseUrl}/collection/${id}` });
 });
@@ -1646,8 +1662,10 @@ app.post('/api/collection/:collectionId/rename', requireAuth, validateCollection
     const { collectionId } = req.params;
     const collection = collections.get(collectionId);
     if (!collection) return res.status(404).json({ error: 'Collection not found' });
+    const oldColName = collection.name;
     collection.name = (String(Array.isArray(req.body.name) ? req.body.name[0] : (req.body.name || 'Untitled Collection'))).trim().substring(0, 200);
     saveCollections();
+    console.log(`[COLLECTION] Renamed "${oldColName}" → "${collection.name}" (${collectionId})`);
     res.json({ success: true, name: collection.name });
 });
 
@@ -1669,8 +1687,10 @@ app.post('/api/collection/:collectionId/background', adminLimiter, requireAuth, 
             .toFile(dest);
         collection.background = `collection-${collectionId}.jpg`;
         saveCollections();
+        console.log(`[COLLECTION] Background updated for "${collection.name}" (${collectionId})`);
         res.json({ success: true, background: collection.background });
     } catch (err) {
+        console.error(`[COLLECTION] Background processing failed for ${collectionId}: ${err.message}`);
         res.status(500).json({ error: 'Failed to process background image' });
     }
 });
@@ -1792,6 +1812,7 @@ app.get('/api/collection/:collectionId/download', downloadLimiter, validateColle
 
     const archive = archiver('zip', { store: true });
     archive.on('error', err => res.status(500).send({ error: err.message }));
+    console.log(`[DOWNLOAD] Collection "${collection.name}" (${collectionId}) — ${entries.length} file(s) from ${req.ip}`);
     archive.pipe(res);
     entries.forEach(e => archive.file(e.diskPath, { name: e.zipName }));
     archive.finalize();
@@ -1811,7 +1832,8 @@ app.patch('/api/collection/:collectionId/downloads', adminLimiter, requireAuth, 
 // Delete a collection (admin only — does NOT delete the galleries)
 app.delete('/api/collection/:collectionId', adminLimiter, requireAuth, validateCollectionId, (req, res) => {
     const { collectionId } = req.params;
-    if (!collections.has(collectionId)) return res.status(404).json({ error: 'Collection not found' });
+    const collection = collections.get(collectionId);
+    if (!collection) return res.status(404).json({ error: 'Collection not found' });
 
     // Delete collection background (any extension)
     const backgroundsDir = path.join(DATA_DIR, 'backgrounds');
@@ -1822,6 +1844,7 @@ app.delete('/api/collection/:collectionId', adminLimiter, requireAuth, validateC
         }
     }
 
+    console.log(`[COLLECTION] Deleted "${collection.name}" (${collectionId})`);
     collections.delete(collectionId);
     saveCollections();
     res.json({ success: true });
@@ -1937,6 +1960,7 @@ app.delete('/api/gallery/:galleryId', adminLimiter, requireAuth, validateGallery
     gallery.deleted = true;
     gallery.deletedAt = new Date().toISOString();
     saveGalleries();
+    console.log(`[GALLERY] Trashed "${gallery.eventName}" (${galleryId})`);
     // Remove from any collection it belongs to
     let collectionChanged = false;
     for (const collection of collections.values()) {
@@ -1975,6 +1999,7 @@ app.post('/api/gallery/:galleryId/restore', adminLimiter, requireAuth, validateG
     delete gallery.deleted;
     delete gallery.deletedAt;
     saveGalleries();
+    console.log(`[GALLERY] Restored "${gallery.eventName}" (${galleryId})`);
     res.json({ success: true });
 });
 
@@ -1983,8 +2008,10 @@ app.delete('/api/gallery/:galleryId/purge', adminLimiter, requireAuth, validateG
     const { galleryId } = req.params;
     const gallery = galleries.get(galleryId);
     if (!gallery) return res.status(404).json({ error: 'Gallery not found' });
+    const purgedName = gallery.eventName;
     hardDeleteGallery(galleryId);
     saveGalleries();
+    console.log(`[GALLERY] Purged "${purgedName}" (${galleryId})`);
     res.json({ success: true });
 });
 
@@ -1993,25 +2020,33 @@ app.delete('/api/galleries/trash', adminLimiter, requireAuth, (req, res) => {
     const ids = Array.from(galleries.values()).filter(g => g.deleted).map(g => g.id);
     ids.forEach(id => hardDeleteGallery(id));
     saveGalleries();
+    console.log(`[GALLERY] Trash emptied — ${ids.length} gallery(ies) purged`);
     res.json({ success: true, purged: ids.length });
 });
 
 // Error handling — never expose internal details (file paths, stack traces) to the client
 app.use((err, req, res, next) => {
-    console.error(err);
     const status = err.status || err.statusCode || 500;
     // Multer errors have a user-safe code; surface only those
     if (err.code === 'LIMIT_FILE_SIZE') {
         return res.status(413).json({ error: 'File too large' });
     }
+    console.error(`[ERROR] ${req.method} ${req.path} → ${status}: ${err.message}`);
+    if (status >= 500) console.error(err.stack || err);
     res.status(status).json({ error: 'Internal server error' });
 });
 
 app.listen(PORT, () => {
-    console.log(`\n📸 Delyvr is running on port ${PORT}\n`);
+    const activeGalleries = Array.from(galleries.values()).filter(g => !g.deleted).length;
+    const trashedGalleries = Array.from(galleries.values()).filter(g => g.deleted).length;
+    console.log(`[STARTUP] Delyvr running on port ${PORT}`);
+    console.log(`[STARTUP] Data dir: ${DATA_DIR} | Trust proxy: ${TRUST_PROXY}`);
+    if (ADMIN_ALLOWED_IPS.length > 0) console.log(`[STARTUP] IP allowlist: ${ADMIN_ALLOWED_IPS.join(', ')}`);
+    console.log(`[STARTUP] ${activeGalleries} gallery(ies) active, ${trashedGalleries} in trash | ${collections.size} collection(s)`);
 
     // Generate missing previews in background after server is ready
     setImmediate(async () => {
+        let totalMissing = 0;
         for (const [galleryId, gallery] of galleries.entries()) {
             const galleryPath = path.join(DATA_DIR, 'uploads', galleryId);
             if (!fs.existsSync(galleryPath)) continue;
@@ -2021,8 +2056,10 @@ app.listen(PORT, () => {
                 return !fs.existsSync(p);
             });
             if (missing.length > 0) {
+                totalMissing += missing.length;
                 generateGalleryPreviews(galleryId, missing).catch(() => {});
             }
         }
+        if (totalMissing > 0) console.log(`[STARTUP] Generating ${totalMissing} missing preview(s) in background`);
     });
 });
