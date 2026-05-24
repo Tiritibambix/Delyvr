@@ -1350,7 +1350,7 @@ app.get('/api/gallery/:galleryId/favorites-ranked', publicReadLimiter, validateG
             return {
                 filename, votes,
                 thumbnailUrl: `/api/gallery/${galleryId}/photo/${encodeURIComponent(filename)}?thumb=1`,
-                previewUrl:   `/api/gallery/${galleryId}/preview/${encodeURIComponent(filename)}`,
+                previewUrl:   `/api/gallery/${galleryId}/photo/${encodeURIComponent(filename)}?preview=1`,
                 width: dims?.w || null,
                 height: dims?.h || null
             };
