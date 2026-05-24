@@ -94,6 +94,8 @@ delyvr/
   background: string|null,
   downloadsEnabled: boolean, // default true (missing = true)
   downloadCount: number,    // incremented on every ZIP download (default 0)
+  viewCount: number,        // unique view count (default 0)
+  viewerHashes: string[],   // SHA-256(ip+ua) per unique visitor — not security-sensitive
   favorites: {              // filename → [visitorId, ...]
     [filename: string]: string[]
   }
@@ -108,7 +110,8 @@ delyvr/
   name: string,
   created: string,
   galleryIds: string[],     // ordered — order is the client display order
-  background: string|null
+  background: string|null,
+  downloadsEnabled: boolean // default true (missing = true)
 }
 ```
 
