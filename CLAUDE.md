@@ -170,7 +170,7 @@ All filesystem paths incorporating user-controlled values go through `safeResolv
 
 `POST /api/settings` is admin-only — accepts `{ theme, website, socials }` and saves the merged result.
 
-`PATCH /api/settings/theme` and `POST /api/settings/theme` are both supported for backward compatibility with the existing admin toggle.
+`PATCH /api/settings/theme` is used by the admin theme toggle.
 
 ### Preview generation
 
