@@ -84,14 +84,27 @@ const collections = new Map();
 const COLLECTIONS_FILE = path.join(DATA_DIR, 'collections.json');
 const SETTINGS_FILE    = path.join(DATA_DIR, 'settings.json');
 
+const SETTINGS_DEFAULTS = {
+    theme: 'dark',
+    website: '',
+    socials: {}
+};
+
 // Load/save settings
 function loadSettings() {
     try {
-        if (fs.existsSync(SETTINGS_FILE)) return JSON.parse(fs.readFileSync(SETTINGS_FILE, 'utf8'));
+        if (fs.existsSync(SETTINGS_FILE)) {
+            const data = JSON.parse(fs.readFileSync(SETTINGS_FILE, 'utf8'));
+            return {
+                ...SETTINGS_DEFAULTS,
+                ...data,
+                socials: { ...SETTINGS_DEFAULTS.socials, ...(data.socials || {}) }
+            };
+        }
     } catch (e) {
         console.error('[SETTINGS] Failed to parse settings.json, using defaults:', e.message);
     }
-    return { theme: 'dark', website: '', socials: {} };
+    return { ...SETTINGS_DEFAULTS };
 }
 function saveSettings(s) {
     fs.writeFileSync(SETTINGS_FILE, JSON.stringify(s, null, 2));
