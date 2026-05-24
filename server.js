@@ -1454,7 +1454,7 @@ app.get('/api/gallery/:galleryId/favorites', requireAuth, validateGalleryId, (re
     res.json({ favorites: sorted });
 });
 
-// Reset favorites for a gallery (admin only)
+// Reset view count for a gallery (admin only)
 app.delete('/api/gallery/:galleryId/views', adminLimiter, requireAuth, validateGalleryId, (req, res) => {
     const { galleryId } = req.params;
     const gallery = galleries.get(galleryId);
