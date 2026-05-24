@@ -10,6 +10,7 @@ const rateLimit = require('express-rate-limit');
 const sharp = require('sharp');
 const escapeHtml = require('escape-html');
 const crypto = require('crypto');
+const net = require('net');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -36,6 +37,10 @@ if (!ADMIN_PASSWORD) {
     console.error('FATAL: ADMIN_PASSWORD environment variable is not set. Set it in your .env file.');
     process.exit(1);
 }
+
+// Admin IP allowlist — comma-separated IPs or CIDR ranges (optional)
+const ADMIN_ALLOWED_IPS = (process.env.ADMIN_ALLOWED_IPS || '')
+    .split(',').map(s => s.trim()).filter(Boolean);
 
 // File size limits (from .env, in MB)
 const MAX_PHOTO_BYTES = parseInt(process.env.MAX_UPLOAD_MB || '200') * 1024 * 1024;
@@ -493,9 +498,75 @@ function validateFilename(req, res, next) {
     next();
 }
 
+// ── IP allowlist (ADMIN_ALLOWED_IPS) ────────────────────────────────────────
+
+// Expand IPv6 :: shorthand to full 8-group form
+function expandIPv6(ip) {
+    if (!ip.includes('::')) return ip;
+    const [left, right] = ip.split('::');
+    const l = left ? left.split(':') : [];
+    const r = right ? right.split(':') : [];
+    const fill = Array(8 - l.length - r.length).fill('0');
+    return [...l, ...fill, ...r].join(':');
+}
+
+// Convert an IPv4 or IPv6 address string to a BigInt
+function ipToBigInt(ip) {
+    if (net.isIPv4(ip)) {
+        return ip.split('.').reduce((acc, o) => (acc << 8n) | BigInt(+o), 0n);
+    }
+    if (net.isIPv6(ip)) {
+        return expandIPv6(ip)
+            .split(':')
+            .reduce((acc, g) => (acc << 16n) | BigInt(parseInt(g || '0', 16)), 0n);
+    }
+    return null;
+}
+
+// Returns true if ip falls within the given CIDR range or matches the exact IP
+function ipMatchesCIDR(ip, entry) {
+    const slashIdx = entry.indexOf('/');
+    const cidrIp = slashIdx === -1 ? entry : entry.slice(0, slashIdx);
+    const prefix  = slashIdx === -1 ? null  : parseInt(entry.slice(slashIdx + 1), 10);
+
+    const ipBig   = ipToBigInt(ip);
+    const cidrBig = ipToBigInt(cidrIp);
+    if (ipBig === null || cidrBig === null) return false;
+    if (prefix === null) return ipBig === cidrBig;
+
+    const bits = net.isIPv4(ip) ? 32n : 128n;
+    const mask = ((1n << bits) - 1n) ^ ((1n << (bits - BigInt(prefix))) - 1n);
+    return (ipBig & mask) === (cidrBig & mask);
+}
+
+// Normalise the request IP: strip ::ffff: prefix for IPv4-mapped IPv6 addresses
+function resolveClientIp(req) {
+    const raw = req.ip || '';
+    return raw.startsWith('::ffff:') ? raw.slice(7) : raw;
+}
+
+// Middleware: reject requests from IPs not in ADMIN_ALLOWED_IPS (when set)
+function requireAllowedIP(req, res, next) {
+    if (ADMIN_ALLOWED_IPS.length === 0) return next();
+    const ip = resolveClientIp(req);
+    if (ADMIN_ALLOWED_IPS.some(entry => ipMatchesCIDR(ip, entry))) return next();
+    console.log(`[AUTH] IP blocked: ${ip}`);
+    res.status(403).json({ error: 'Forbidden' });
+}
+
+// ── Authentication ───────────────────────────────────────────────────────────
+
 // Simple password authentication middleware — header only, never query param
 function requireAuth(req, res, next) {
-    // 1. Session cookie (browser-based admin)
+    // 1. IP allowlist — checked before credentials so blocked IPs never reach auth logic
+    if (ADMIN_ALLOWED_IPS.length > 0) {
+        const ip = resolveClientIp(req);
+        if (!ADMIN_ALLOWED_IPS.some(entry => ipMatchesCIDR(ip, entry))) {
+            console.log(`[AUTH] IP blocked: ${ip}`);
+            return res.status(403).json({ error: 'Forbidden' });
+        }
+    }
+    // 2. Session cookie (browser-based admin)
     const cookies = parseCookies(req.headers.cookie);
     const token = cookies['delyvr_session'];
     if (token) {
@@ -506,7 +577,7 @@ function requireAuth(req, res, next) {
         // Expired token — clear it
         sessions.delete(token);
     }
-    // 2. X-Admin-Password header (backward compat for direct API / CLI use)
+    // 3. X-Admin-Password header (backward compat for direct API / CLI use)
     const password = req.headers['x-admin-password'];
     if (password === ADMIN_PASSWORD) return next();
 
@@ -572,7 +643,7 @@ const downloadLimiter = rateLimit({
 // --- Routes ---
 
 // Verify password endpoint
-app.post('/api/auth/verify', authLimiter, (req, res) => {
+app.post('/api/auth/verify', authLimiter, requireAllowedIP, (req, res) => {
     const raw = req.body.password;
     const password = Array.isArray(raw) ? raw[0] : raw;
     if (typeof password === 'string' && password === ADMIN_PASSWORD) {
