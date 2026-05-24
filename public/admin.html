@@ -458,8 +458,6 @@
         .form-input::placeholder { color: var(--muted); }
         #eventName { border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
         #galleryCollectionSelect { margin-top: 10px; }
-        #galleryCollectionSelect.has-new-input { border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
-        #newColNameForGallery { border-top-left-radius: 0; border-top-right-radius: 0; border-top: none; margin-top: 0; }
 
         .drop-zone {
             background: var(--bg3); border: 1px dashed var(--border2);
@@ -1358,11 +1356,9 @@
                     <p>Drop image or click to browse</p>
                 </div>
                 <input type="file" id="bgInput" accept="image/*" style="display:none">
-                <select class="form-input" id="galleryCollectionSelect" onchange="onCollectionSelectChange()">
-                    <option value="">No collection</option>
-                    <option value="__new__">+ New collection…</option>
+                <select class="form-input" id="galleryCollectionSelect">
+                    <option value="" disabled selected>Add to existing collection (optional)</option>
                 </select>
-                <input type="text" class="form-input" id="newColNameForGallery" placeholder="New collection name" maxlength="200" style="display:none">
                 <button class="btn-primary" id="createBtn" onclick="createGallery()" disabled>Create & copy link</button>
                 <div class="progress-container" id="progressContainer">
                     <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
@@ -1380,6 +1376,10 @@
                     <p>Drop image or click to browse</p>
                 </div>
                 <input type="file" id="colBgInput" accept="image/*" style="display:none">
+                <label id="includeGalleryLabel" style="display:none;align-items:center;gap:8px;margin-top:10px;font-size:13px;color:var(--muted);cursor:pointer">
+                    <input type="checkbox" id="includeInNewCollection" onchange="updateCollectionLink()">
+                    Include the gallery being created
+                </label>
                 <button class="btn-secondary" onclick="createCollection()">Create collection</button>
             </div>
 
@@ -1578,12 +1578,14 @@
             selectedFiles = [...selectedFiles, ...files];
             updateFileList();
             document.getElementById('createBtn').disabled = selectedFiles.length === 0;
+            updateCollectionLink();
         }
 
         function removeFile(index) {
             selectedFiles.splice(index, 1);
             updateFileList();
             document.getElementById('createBtn').disabled = selectedFiles.length === 0;
+            updateCollectionLink();
         }
 
         function formatFileSize(bytes) {
@@ -1614,6 +1616,7 @@
             selectedFiles = [];
             updateFileList();
             document.getElementById('createBtn').disabled = true;
+            updateCollectionLink();
         }
 
         function escapeAttr(str) {
@@ -1774,36 +1777,48 @@
                 // Assign to collection if requested
                 const colSel = document.getElementById('galleryCollectionSelect');
                 const colVal = colSel ? colSel.value : '';
+                const includeInNew = document.getElementById('includeInNewCollection');
                 let refreshCollections = false;
                 if (colVal) {
                     try {
-                        let targetCollectionId;
-                        if (colVal === '__new__') {
-                            const newColName = (document.getElementById('newColNameForGallery').value || '').trim();
-                            if (newColName) {
-                                const colRes = await fetch('/api/collection/create', {
-                                    method: 'POST',
-                                    headers: { 'Content-Type': 'application/json' },
-                                    body: JSON.stringify({ name: newColName })
-                                });
-                                if (colRes.ok) {
-                                    const colData = await colRes.json();
-                                    targetCollectionId = colData.id;
-                                    refreshCollections = true;
-                                }
-                            }
-                        } else {
-                            targetCollectionId = colVal;
-                            refreshCollections = true;
-                        }
-                        if (targetCollectionId) {
-                            await fetch(`/api/collection/${targetCollectionId}/galleries`, {
+                        await fetch(`/api/collection/${colVal}/galleries`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ galleryId })
+                        });
+                        refreshCollections = true;
+                    } catch (_) {}
+                } else if (includeInNew && includeInNew.checked) {
+                    const colName = (document.getElementById('newCollectionName').value || '').trim();
+                    if (colName) {
+                        try {
+                            const colRes = await fetch('/api/collection/create', {
                                 method: 'POST',
                                 headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ galleryId })
+                                body: JSON.stringify({ name: colName })
                             });
-                        }
-                    } catch (_) {}
+                            if (colRes.ok) {
+                                const colData = await colRes.json();
+                                if (selectedColBgFile) {
+                                    const bgFd = new FormData();
+                                    bgFd.append('background', selectedColBgFile);
+                                    await fetch(`/api/collection/${colData.id}/background`, { method: 'POST', body: bgFd }).catch(() => {});
+                                }
+                                await fetch(`/api/collection/${colData.id}/galleries`, {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({ galleryId })
+                                }).catch(() => {});
+                                // Reset collection form
+                                document.getElementById('newCollectionName').value = '';
+                                selectedColBgFile = null;
+                                colBgPreview.style.display = 'none';
+                                colBgPreview.src = '';
+                                colBgInput.value = '';
+                                refreshCollections = true;
+                            }
+                        } catch (_) {}
+                    }
                 }
 
                 // Show result
@@ -1832,9 +1847,14 @@
             document.getElementById('bgPreview').style.display = 'none';
             document.getElementById('bgDropZone').classList.remove('has-image');
             document.getElementById('createBtn').disabled = true;
+            document.getElementById('createBtn').textContent = 'Create & copy link';
             document.getElementById('progressFill').style.width = '0%';
             const colSel = document.getElementById('galleryCollectionSelect');
-            if (colSel) { colSel.value = ''; onCollectionSelectChange(); }
+            if (colSel) colSel.value = '';
+            const cb = document.getElementById('includeInNewCollection');
+            if (cb) cb.checked = false;
+            const cbLabel = document.getElementById('includeGalleryLabel');
+            if (cbLabel) cbLabel.style.display = 'none';
         }
 
         let _errorToastTimer = null;
@@ -3129,27 +3149,29 @@
             const sel = document.getElementById('galleryCollectionSelect');
             if (!sel) return;
             const prev = sel.value;
-            sel.innerHTML = '<option value="">No collection</option>';
+            sel.innerHTML = '<option value="" disabled>Add to existing collection (optional)</option>';
             (_collectionsData || []).forEach(c => {
                 const opt = document.createElement('option');
                 opt.value = c.id;
                 opt.textContent = c.name;
                 sel.appendChild(opt);
             });
-            const newOpt = document.createElement('option');
-            newOpt.value = '__new__';
-            newOpt.textContent = '+ New collection…';
-            sel.appendChild(newOpt);
             if (prev && sel.querySelector(`option[value="${CSS.escape(prev)}"]`)) sel.value = prev;
+            else sel.value = '';
         }
 
-        function onCollectionSelectChange() {
-            const sel = document.getElementById('galleryCollectionSelect');
-            const inp = document.getElementById('newColNameForGallery');
-            const isNew = sel.value === '__new__';
-            inp.style.display = isNew ? 'block' : 'none';
-            sel.classList.toggle('has-new-input', isNew);
-            if (isNew) inp.focus();
+        function updateCollectionLink() {
+            const hasFiles = selectedFiles.length > 0;
+            const label = document.getElementById('includeGalleryLabel');
+            if (label) label.style.display = hasFiles ? 'flex' : 'none';
+            const cb = document.getElementById('includeInNewCollection');
+            const colName = (document.getElementById('newCollectionName').value || '').trim();
+            const btn = document.getElementById('createBtn');
+            if (hasFiles && cb && cb.checked && colName) {
+                btn.textContent = 'Create gallery + collection';
+            } else {
+                btn.textContent = 'Create & copy link';
+            }
         }
 
         async function createCollection() {
@@ -3184,9 +3206,11 @@
         }
 
         document.addEventListener('DOMContentLoaded', () => {
-            document.getElementById('newCollectionName').addEventListener('keypress', e => {
+            const colNameInput = document.getElementById('newCollectionName');
+            colNameInput.addEventListener('keypress', e => {
                 if (e.key === 'Enter') createCollection();
             });
+            colNameInput.addEventListener('input', updateCollectionLink);
         });
 
         function startCollectionRename(collectionId) {
