@@ -2212,6 +2212,7 @@
             exitSelectionMode();
             loadGalleries();
             loadCollections();
+            loadTrash();
         }
 
         async function bulkSetDownloads(enabled) {
@@ -3230,6 +3231,7 @@
                 if (!res.ok) throw new Error('Failed');
                 await loadCollections();
                 await loadGalleries();
+                if (alsoTrash) loadTrash();
             } catch (err) {
                 showError('Could not delete collection: ' + err.message);
             }
