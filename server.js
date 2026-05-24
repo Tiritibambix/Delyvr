@@ -15,8 +15,9 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 // Trust reverse-proxy headers (X-Forwarded-For, X-Forwarded-Proto).
-// Defaults to 1 for deployments behind Nginx/NPM/Caddy. Set TRUST_PROXY=0 to disable.
-const TRUST_PROXY = parseInt(process.env.TRUST_PROXY || '1', 10);
+// Set TRUST_PROXY=1 when running behind Nginx/Caddy/Traefik. Default is 0 (safe for direct exposure).
+// Docker Compose sets this to 1 explicitly via docker-compose.yml.
+const TRUST_PROXY = parseInt(process.env.TRUST_PROXY || '0', 10);
 app.set('trust proxy', TRUST_PROXY);
 
 app.use(express.json());
