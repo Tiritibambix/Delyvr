@@ -1098,6 +1098,29 @@
         .btn-empty-trash:hover { background: var(--error); color: #fff; }
         #trashList { overflow-y: auto; flex: 1; }
 
+        /* ── DELETE COLLECTION MODAL ── */
+        .delete-col-modal {
+            position: fixed; inset: 0;
+            background: rgba(0,0,0,0.85);
+            display: flex; align-items: center; justify-content: center;
+            z-index: 8000; opacity: 0; pointer-events: none;
+            transition: opacity 0.15s; backdrop-filter: blur(6px);
+        }
+        .delete-col-modal.active { opacity: 1; pointer-events: auto; }
+        .delete-col-modal-card {
+            background: var(--bg2); border: 1px solid var(--border);
+            border-radius: 8px; padding: 22px 24px;
+            width: 90%; max-width: 380px;
+        }
+        .delete-col-modal-card h4 { font-size: 15px; font-weight: 600; margin-bottom: 8px; }
+        .delete-col-modal-card p { font-size: 13px; color: var(--muted); margin-bottom: 14px; line-height: 1.5; }
+        .delete-col-modal-check {
+            display: flex; align-items: center; gap: 8px;
+            font-size: 13px; color: var(--text); margin-bottom: 18px; cursor: pointer;
+        }
+        .delete-col-modal-check input { accent-color: var(--error); cursor: pointer; }
+        .delete-col-modal-actions { display: flex; justify-content: flex-end; gap: 8px; }
+
         /* ── OG TOOLTIP ── */
         .og-tooltip-wrap { position: relative; display: inline-flex; }
         .og-tooltip-wrap .og-tooltip {
@@ -1305,6 +1328,22 @@
             <div class="gallery-picker-footer">
                 <button class="gallery-picker-cancel" onclick="closeGalleryPicker()">Cancel</button>
                 <button class="gallery-picker-confirm" id="galleryPickerConfirm" onclick="confirmPickerSelection()" disabled>Add</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Delete Collection Modal -->
+    <div class="delete-col-modal" id="deleteColModal" onclick="if(event.target===this)closeDeleteColModal()">
+        <div class="delete-col-modal-card">
+            <h4>Delete collection?</h4>
+            <p id="deleteColMsg"></p>
+            <label class="delete-col-modal-check" id="deleteColCheckLabel">
+                <input type="checkbox" id="deleteColGalleriesCb">
+                Also move galleries to trash
+            </label>
+            <div class="delete-col-modal-actions">
+                <button class="gallery-picker-cancel" onclick="closeDeleteColModal()">Cancel</button>
+                <button class="btn-purge" onclick="confirmDeleteCollection()">Delete</button>
             </div>
         </div>
     </div>
@@ -2239,6 +2278,7 @@
             exitSelectionMode();
             loadGalleries();
             loadCollections();
+            loadTrash();
         }
 
         async function bulkSetDownloads(enabled) {
@@ -3248,15 +3288,48 @@
             } catch (_) {}
         }
 
-        async function deleteCollection(collectionId) {
-            if (!confirm('Delete this collection? The galleries inside will not be deleted.')) return;
+        let _deleteColId = null;
+
+        function deleteCollection(collectionId) {
+            _deleteColId = collectionId;
+            const col = (_collectionsData || []).find(c => c.id === collectionId);
+            const galleryCount = col ? col.galleryIds.length : 0;
+            const checkLabel = document.getElementById('deleteColCheckLabel');
+            document.getElementById('deleteColGalleriesCb').checked = false;
+            if (galleryCount > 0) {
+                document.getElementById('deleteColMsg').textContent =
+                    `This collection contains ${galleryCount} ${galleryCount === 1 ? 'gallery' : 'galleries'}. They will not be affected unless you check the option below.`;
+                checkLabel.style.display = 'flex';
+            } else {
+                document.getElementById('deleteColMsg').textContent =
+                    'This will remove the collection. It contains no galleries.';
+                checkLabel.style.display = 'none';
+            }
+            document.getElementById('deleteColModal').classList.add('active');
+        }
+
+        function closeDeleteColModal() {
+            document.getElementById('deleteColModal').classList.remove('active');
+            _deleteColId = null;
+        }
+
+        async function confirmDeleteCollection() {
+            if (!_deleteColId) return;
+            const collectionId = _deleteColId;
+            const alsoTrash = document.getElementById('deleteColGalleriesCb').checked;
+            const col = (_collectionsData || []).find(c => c.id === collectionId);
+            closeDeleteColModal();
             try {
-                const res = await fetch(`/api/collection/${collectionId}`, {
-                    method: 'DELETE'
-                });
+                if (alsoTrash && col && col.galleryIds.length > 0) {
+                    await Promise.all(col.galleryIds.map(gId =>
+                        fetch(`/api/gallery/${gId}`, { method: 'DELETE' }).catch(() => {})
+                    ));
+                }
+                const res = await fetch(`/api/collection/${collectionId}`, { method: 'DELETE' });
                 if (!res.ok) throw new Error('Failed');
                 await loadCollections();
-                await loadGalleries(); // refresh collection badges
+                await loadGalleries();
+                if (alsoTrash) loadTrash();
             } catch (err) {
                 showError('Could not delete collection: ' + err.message);
             }
