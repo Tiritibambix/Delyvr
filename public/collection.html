@@ -494,8 +494,7 @@
                     const count = gallery.fileCount || 0;
                     const photoLabel = count === 1 ? t.photo : t.photos;
 
-                    const browseUrl = `/preview/${escapeHtml(gallery.id)}?from=${escapeHtml(collectionId)}${critiqueMode ? '&critique=1' : ''}`;
-                    const customerUrl = `${window.location.origin}/download/${escapeHtml(gallery.id)}`;
+                    const browseUrl = `../preview/${escapeHtml(gallery.id)}?from=${escapeHtml(collectionId)}${critiqueMode ? '&critique=1' : ''}`;
                     const dlUrl = `/api/gallery/${escapeHtml(gallery.id)}/download`;
 
                     const dlBtn = gallery.downloadsEnabled !== false
@@ -533,7 +532,7 @@
         }
 
         function copyGalleryCustomerLink(btn, galleryId) {
-            const url = `${window.location.origin}/download/${galleryId}`;
+            const url = new URL('../download/' + galleryId, window.location.href).href;
             navigator.clipboard.writeText(url).then(() => {
                 btn.classList.add('copied');
                 setTimeout(() => btn.classList.remove('copied'), 1800);
