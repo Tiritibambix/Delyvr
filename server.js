@@ -1017,15 +1017,13 @@ app.get('/api/gallery/:galleryId/photo/:filename', imageLimiter, validateGallery
     if (req.query.preview === '1') {
         const previewPath = safeResolvePath(safeResolvePath(PREVIEWS_DIR, galleryId), filename + '.jpg');
 
-        if (!fs.existsSync(previewPath)) {
-            // Generate on-the-fly if missing
-            await generatePreview(galleryId, filename);
-        }
-
         if (fs.existsSync(previewPath)) {
             return res.sendFile(previewPath);
         }
-        // Fall through to original if preview generation failed
+
+        // Preview missing — serve original immediately and generate in background
+        generatePreview(galleryId, filename).catch(() => {});
+        // Fall through to serve original
     }
 
     const filePath = safeResolvePath(safeResolvePath(path.join(DATA_DIR, 'uploads'), galleryId), filename);
