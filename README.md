@@ -76,7 +76,7 @@ You can also add a cover image (hero photo) to each gallery. This appears as the
 
 **Downloads toggle:** Each gallery has a Downloads switch. Turn it off for draft galleries where you want clients to mark favorites before you release the full files.
 
-**Download stats:** Each gallery shows how many times the ZIP has been downloaded.
+**Gallery stats:** Each gallery shows how many times the ZIP has been downloaded and how many unique visitors have viewed it.
 
 **Favorites:** Click View on a gallery to see which photos were hearted and how many times. Click Reset to clear all votes when you start a new review round. You can also export the full list as a CSV file to process selections in your own tools.
 
@@ -344,6 +344,8 @@ delyvr/
 │   ├── customer.html   # Client download page
 │   ├── preview.html    # Photo browser, justified grid + lightbox
 │   ├── collection.html # Client collection page
+│   ├── favorites.html  # Public favorites ranking page
+│   ├── shared.js       # Shared client JS (theme, social footer)
 │   └── logo.svg        # Default logo
 └── data/               # Runtime data (Docker volume mount)
     ├── uploads/        # Gallery photos, organised by gallery ID
@@ -376,8 +378,7 @@ delyvr/
 | `PATCH` | `/api/gallery/:id/downloads` | ✓ | Enable or disable downloads |
 | `GET` | `/api/gallery/:id/info` | | Gallery metadata |
 | `GET` | `/api/gallery/:id/photos` | | Photo list with URLs and dimensions |
-| `GET` | `/api/gallery/:id/photo/:filename` | | Serve photo; `?thumb=1` for 400px thumbnail |
-| `GET` | `/api/gallery/:id/preview/:filename` | | Serve 1920px lightbox preview |
+| `GET` | `/api/gallery/:id/photo/:filename` | | Serve photo; `?thumb=1` for 400px thumbnail, `?preview=1` for 1920px preview |
 | `GET` | `/api/gallery/:id/download` | | ZIP download |
 | `GET` | `/api/gallery/:id/download/:filename` | | Single photo download |
 | `GET` | `/api/gallery/:id/background` | | Serve background image |
