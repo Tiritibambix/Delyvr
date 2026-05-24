@@ -88,7 +88,9 @@ const SETTINGS_FILE    = path.join(DATA_DIR, 'settings.json');
 function loadSettings() {
     try {
         if (fs.existsSync(SETTINGS_FILE)) return JSON.parse(fs.readFileSync(SETTINGS_FILE, 'utf8'));
-    } catch (e) {}
+    } catch (e) {
+        console.error('[SETTINGS] Failed to parse settings.json, using defaults:', e.message);
+    }
     return { theme: 'dark', website: '', socials: {} };
 }
 function saveSettings(s) {
