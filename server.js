@@ -600,7 +600,7 @@ function requireAuth(req, res, next) {
     const password = req.headers['x-admin-password'];
     if (password === ADMIN_PASSWORD) return next();
 
-    console.log(`[AUTH] Failed auth attempt from ${req.ip}`);
+    console.log(`[AUTH] Failed auth attempt from ${resolveClientIp(req)}`);
     res.status(401).json({ error: 'Unauthorized' });
 }
 
@@ -677,11 +677,11 @@ app.post('/api/auth/verify', authLimiter, requireAllowedIP, (req, res) => {
             `Max-Age=${Math.floor(SESSION_TTL_MS / 1000)}`,
             ...(isHttps ? ['Secure'] : [])
         ].join('; ');
-        console.log(`[AUTH] Login successful from ${req.ip}`);
+        console.log(`[AUTH] Login successful from ${resolveClientIp(req)}`);
         res.setHeader('Set-Cookie', cookieOpts);
         res.json({ success: true });
     } else {
-        console.log(`[AUTH] Failed auth attempt from ${req.ip}`);
+        console.log(`[AUTH] Failed auth attempt from ${resolveClientIp(req)}`);
         res.status(401).json({ error: 'Invalid password' });
     }
 });
@@ -1334,7 +1334,7 @@ app.get('/api/gallery/:galleryId/download', downloadLimiter, validateGalleryId, 
     if (gallery) {
         gallery.downloadCount = (gallery.downloadCount || 0) + 1;
         saveGalleries();
-        console.log(`[DOWNLOAD] Gallery "${gallery.eventName}" (${galleryId}) — #${gallery.downloadCount} from ${req.ip}`);
+        console.log(`[DOWNLOAD] Gallery "${gallery.eventName}" (${galleryId}) — #${gallery.downloadCount} from ${resolveClientIp(req)}`);
     }
 
     const files = fs.readdirSync(galleryPath).filter(f => !f.startsWith('.'));
@@ -1812,7 +1812,7 @@ app.get('/api/collection/:collectionId/download', downloadLimiter, validateColle
 
     const archive = archiver('zip', { store: true });
     archive.on('error', err => res.status(500).send({ error: err.message }));
-    console.log(`[DOWNLOAD] Collection "${collection.name}" (${collectionId}) — ${entries.length} file(s) from ${req.ip}`);
+    console.log(`[DOWNLOAD] Collection "${collection.name}" (${collectionId}) — ${entries.length} file(s) from ${resolveClientIp(req)}`);
     archive.pipe(res);
     entries.forEach(e => archive.file(e.diskPath, { name: e.zipName }));
     archive.finalize();
