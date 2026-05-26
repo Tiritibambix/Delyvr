@@ -17,8 +17,16 @@ const PORT = process.env.PORT || 3000;
 
 // Trust reverse-proxy headers (X-Forwarded-For, X-Forwarded-Proto).
 // Set TRUST_PROXY=1 when running behind Nginx/Caddy/Traefik. Default is 0 (safe for direct exposure).
-// Docker Compose sets this to 1 explicitly via docker-compose.yml.
-const TRUST_PROXY = parseInt(process.env.TRUST_PROXY || '0', 10);
+// Accepts: integer (hop count), IP, CIDR, comma-separated IPs/CIDRs, or 'loopback'/'uniquelocal'.
+// Docker Compose defaults to 1 via docker-compose.yml.
+function parseTrustProxy(raw) {
+    if (!raw || raw === '0' || raw === 'false') return 0;
+    if (raw === 'true') return true;
+    const n = Number(raw);
+    if (Number.isInteger(n) && n >= 0) return n;
+    return raw; // IP, CIDR, 'loopback', comma-separated list — passed through to Express as-is
+}
+const TRUST_PROXY = parseTrustProxy(process.env.TRUST_PROXY);
 app.set('trust proxy', TRUST_PROXY);
 
 app.use(express.json());
@@ -1283,7 +1291,7 @@ app.get('/api/gallery/:galleryId/info', publicReadLimiter, validateGalleryId, (r
 
     // Track unique views via hash of IP + User-Agent
     if (gallery) {
-        const ip = req.ip || req.connection.remoteAddress || '';
+        const ip = resolveClientIp(req);
         const ua = req.headers['user-agent'] || '';
         const hash = crypto.createHash('sha256').update(ip + ua).digest('hex');
         if (!Array.isArray(gallery.viewerHashes)) gallery.viewerHashes = [];

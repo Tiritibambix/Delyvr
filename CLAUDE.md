@@ -75,7 +75,7 @@ delyvr/
 | `MAX_UPLOAD_MB` | `200` | Per-file size limit for photo uploads, in MB |
 | `MAX_BACKGROUND_MB` | `25` | Size limit for background image uploads, in MB |
 | `INSTALL_DIR` | *(project dir)* | Set to `/data` in Docker. Controls where all data files are written. |
-| `TRUST_PROXY` | `0` | Set to `1` behind a reverse proxy for correct IP detection. |
+| `TRUST_PROXY` | `0` | Set to `1` behind a single reverse proxy. Also accepts: integer hop count, IP, CIDR, comma-separated IPs/CIDRs, or `loopback`/`uniquelocal`. |
 | `ADMIN_ALLOWED_IPS` | *(unset — all IPs allowed)* | Comma-separated IPs or CIDR ranges. When set, all admin routes (including login) reject requests from unlisted IPs with 403. |
 
 ---
