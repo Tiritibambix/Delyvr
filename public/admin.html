@@ -1426,7 +1426,7 @@
                     <div class="multi-gallery-note" id="multiGalleryNote" style="display:none"></div>
                     <div id="multiGalleryRows"></div>
                 </div>
-                <select class="form-input" id="galleryCollectionSelect">
+                <select class="form-input" id="galleryCollectionSelect" onchange="updateCollectionLink()">
                     <option value="" disabled selected>Add to existing collection (optional)</option>
                 </select>
                 <button class="btn-primary" id="createBtn" onclick="createGallery()" disabled>Create & copy link</button>
@@ -1703,11 +1703,11 @@
             document.getElementById('bgDropZone').style.display = '';
             document.getElementById('createBtn').style.display = '';
             document.getElementById('createBtn').disabled = selectedFiles.length === 0;
+            updateCollectionLink();
         }
 
         function renderMultiGalleryPanel() {
             const container = document.getElementById('multiGalleryRows');
-            const n = _multiGalleryGroups.length;
             container.innerHTML = _multiGalleryGroups.map((g, i) => `
                 <div class="multi-gallery-row">
                     <input type="text" class="form-input multi-gallery-name" value="${escapeAttr(g.name)}" oninput="updateMultiGalleryName(${i}, this.value)">
@@ -1726,8 +1726,7 @@
                 </div>
             `).join('');
 
-            const createMultiBtn = document.getElementById('createMultiBtn');
-            createMultiBtn.textContent = `Create ${n} ${n === 1 ? 'gallery' : 'galleries'}`;
+            updateCollectionLink();
         }
 
         function updateMultiGalleryName(index, value) {
@@ -3484,15 +3483,27 @@
 
         function updateCollectionLink() {
             const hasFiles = selectedFiles.length > 0;
+            const multiCount = _multiGalleryGroups.length;
             const label = document.getElementById('includeGalleryLabel');
-            if (label) label.style.display = hasFiles ? 'flex' : 'none';
+            if (label) label.style.display = (hasFiles || multiCount > 0) ? 'flex' : 'none';
+
+            const colSel = document.getElementById('galleryCollectionSelect');
+            const colVal = colSel ? colSel.value : '';
             const cb = document.getElementById('includeInNewCollection');
             const colName = (document.getElementById('newCollectionName').value || '').trim();
+            const willAssignCollection = !!colVal || !!(cb && cb.checked && colName);
+
             const btn = document.getElementById('createBtn');
-            if (hasFiles && cb && cb.checked && colName) {
+            if (hasFiles && willAssignCollection) {
                 btn.textContent = 'Create gallery + collection';
             } else {
                 btn.textContent = 'Create & copy link';
+            }
+
+            const multiBtn = document.getElementById('createMultiBtn');
+            if (multiBtn && multiCount > 0) {
+                const base = `Create ${multiCount} ${multiCount === 1 ? 'gallery' : 'galleries'}`;
+                multiBtn.textContent = willAssignCollection ? `${base} + collection` : base;
             }
         }
 
