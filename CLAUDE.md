@@ -330,6 +330,15 @@ Loaded by all client pages via `<script src="/shared.js">` before their inline `
 - Collection pills: drag to reorder (desktop) or ◀ ▶ buttons (visible on mobile via `@media (hover: none)`).
 - `_galleriesData` cache populated in `loadGalleries()`, used by `renderCollections()` for pill labels and gallery picker.
 
+### Gallery creation — multi-folder drop and collection assignment
+
+`#dropZone`'s `handlePhotoDrop` inspects the dropped `DataTransferItemList` synchronously (entries must be captured via `webkitGetAsEntry()` before any `await`, since the list is cleared afterwards). If **2 or more top-level folders** are dropped, `handleMultiFolderDrop` traverses each folder separately with `traverseFileTree` and switches the UI into multi-gallery mode; loose files dropped alongside folders are ignored with an inline note. A single dropped folder (or loose files) keeps the existing single-gallery flow, auto-filling `#eventName` from the folder name.
+
+- **Single-gallery mode** — `selectedFiles`/`selectedBgFile` state, `createGallery()`.
+- **Multi-gallery mode** — `_multiGalleryGroups` array (`{ name, files, bgFile, bgPreviewUrl }`), one entry per dropped folder. `enterMultiGalleryMode()` hides the single-gallery inputs and shows `#multiGalleryPanel`, rendered by `renderMultiGalleryPanel()`: each row has an editable name, a photo count, a per-row `.drop-zone-mini` cover drop/browse zone (`handleMultiBgDrop`/`handleMultiBgSelect`/`setMultiGalleryBgFile`), and a remove button (`removeMultiGalleryGroup`). `cancelMultiGalleryMode()` discards the batch and restores the single-gallery form. `createMultipleGalleries()` creates the galleries sequentially — one `POST /api/gallery/create` plus paginated `/upload` calls per folder, then an optional per-gallery background upload — with one overall progress bar, then shows a success toast via `showMultiGallerySuccess(n)`.
+- **Shared upload/collection helpers** (module scope, used by both flows): `uploadBatchXHR(url, method, batch, extraFields, uploadedSoFar, total, onProgress)` uploads one batch via `XMLHttpRequest` with progress reporting; `resolveCollectionTarget()` resolves `#galleryCollectionSelect` to an existing collection id, or — if `#includeInNewCollection` is checked — creates the new collection **once** (uploading its background if set) and returns its id; `assignGalleryToCollection(collectionId, galleryId)` calls `POST /api/collection/:id/galleries`.
+- **`updateCollectionLink()`** keeps the collection UI in sync for both flows: shows/hides `#includeGalleryLabel`, sets `#includeGalleryLabelText` to "Include the gallery being created" (single) or "Include the galleries being created" (when `_multiGalleryGroups.length > 1`), and updates `#createBtn`/`#createMultiBtn` text to append "+ collection" whenever a collection (existing or new) will be assigned.
+
 ### `public/customer.html`
 
 - `html, body { height: 100%; overflow: hidden }` — fully fixed page, no scroll.

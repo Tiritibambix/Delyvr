@@ -64,6 +64,10 @@ Drop photos or entire folders onto the upload zone. The gallery name is pre-fill
 
 You can also add a cover image (hero photo) to each gallery. This appears as the full-bleed background on the client download page and as the preview thumbnail in collections.
 
+**Multiple galleries at once:** Drop two or more folders together and Delyvr creates one gallery per folder, named after each folder. Each pending gallery gets its own small cover-image drop zone, so you can set a different cover per gallery before creating them — then a single "Create N galleries" button uploads everything with one overall progress bar. Any loose files dropped alongside the folders are ignored, with a note explaining why.
+
+**Assign to a collection on creation:** Whether you're creating one gallery or several at once, you can pick an existing collection from the dropdown, or check "Include the gallery being created" (or "Include the galleries being created" for a multi-folder drop) and name a new collection — it's created once and every new gallery is added to it automatically. The create button updates accordingly, e.g. "Create gallery + collection" or "Create 3 galleries + collection".
+
 ### Managing galleries
 
 **Rename:** Double-click a gallery name to edit it. Press Enter to save, Escape to cancel. On mobile, a pencil icon appears next to the name.
