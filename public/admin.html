@@ -1450,7 +1450,7 @@
                 <input type="file" id="colBgInput" accept="image/*" style="display:none">
                 <label id="includeGalleryLabel" style="display:none;align-items:center;gap:8px;margin-top:10px;font-size:13px;color:var(--muted);cursor:pointer">
                     <input type="checkbox" id="includeInNewCollection" onchange="updateCollectionLink()">
-                    Include the gallery being created
+                    <span id="includeGalleryLabelText">Include the gallery being created</span>
                 </label>
                 <button class="btn-secondary" onclick="createCollection()">Create collection</button>
             </div>
@@ -3486,6 +3486,12 @@
             const multiCount = _multiGalleryGroups.length;
             const label = document.getElementById('includeGalleryLabel');
             if (label) label.style.display = (hasFiles || multiCount > 0) ? 'flex' : 'none';
+            const labelText = document.getElementById('includeGalleryLabelText');
+            if (labelText) {
+                labelText.textContent = multiCount > 1
+                    ? 'Include the galleries being created'
+                    : 'Include the gallery being created';
+            }
 
             const colSel = document.getElementById('galleryCollectionSelect');
             const colVal = colSel ? colSel.value : '';
