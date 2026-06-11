@@ -1611,7 +1611,8 @@ app.get('/api/collections', adminLimiter, requireAuth, (req, res) => {
             created: c.created,
             galleryIds: c.galleryIds,
             collectionUrl: `${baseUrl}/collection/${c.id}`,
-            hasBackground: [...bgFilesC].some(f => f.startsWith(`collection-${c.id}`))
+            hasBackground: [...bgFilesC].some(f => f.startsWith(`collection-${c.id}`)),
+            downloadsEnabled: c.downloadsEnabled !== false
         }));
     res.json(list);
 });
