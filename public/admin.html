@@ -520,6 +520,33 @@
         }
         .file-pill-remove:hover { color: var(--error); }
 
+        /* ── MULTI-GALLERY DROP PANEL ── */
+        .multi-gallery-panel { margin-top: 10px; }
+        .multi-gallery-note { font-size: 11px; color: var(--muted); margin-bottom: 8px; }
+        .multi-gallery-row {
+            display: flex; align-items: center; gap: 8px;
+            padding: 8px; margin-bottom: 6px;
+            background: var(--bg3); border: 1px solid var(--border2); border-radius: 3px;
+        }
+        .multi-gallery-row .multi-gallery-name { flex: 1; min-width: 0; width: auto; }
+        .multi-gallery-count { font-size: 11px; color: var(--muted); white-space: nowrap; }
+        .drop-zone-mini {
+            width: 36px; height: 36px; flex-shrink: 0;
+            background: var(--bg2); border: 1px dashed var(--border2);
+            border-radius: 3px; cursor: pointer; position: relative; overflow: hidden;
+            display: flex; align-items: center; justify-content: center;
+            transition: border-color 0.2s;
+        }
+        .drop-zone-mini:hover, .drop-zone-mini.drag-over { border-color: var(--accent); }
+        .drop-zone-mini svg { width: 16px; height: 16px; color: var(--muted); }
+        .bg-preview-mini { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+        .multi-gallery-remove {
+            background: none; border: none; cursor: pointer;
+            color: var(--muted2); font-size: 16px; line-height: 1;
+            padding: 0 4px; flex-shrink: 0; font-family: inherit;
+        }
+        .multi-gallery-remove:hover { color: var(--error); }
+
         .progress-container { margin-top: 10px; display: none; }
         .progress-container.visible { display: block; }
         .progress-bar { background: var(--bg3); border-radius: 4px; height: 8px; overflow: hidden; }
@@ -1395,10 +1422,16 @@
                     <p>Drop image or click to browse</p>
                 </div>
                 <input type="file" id="bgInput" accept="image/*" style="display:none">
+                <div class="multi-gallery-panel" id="multiGalleryPanel" style="display:none">
+                    <div class="multi-gallery-note" id="multiGalleryNote" style="display:none"></div>
+                    <div id="multiGalleryRows"></div>
+                </div>
                 <select class="form-input" id="galleryCollectionSelect">
                     <option value="" disabled selected>Add to existing collection (optional)</option>
                 </select>
                 <button class="btn-primary" id="createBtn" onclick="createGallery()" disabled>Create & copy link</button>
+                <button class="btn-primary" id="createMultiBtn" onclick="createMultipleGalleries()" style="display:none"></button>
+                <button class="btn-secondary" id="cancelMultiBtn" onclick="cancelMultiGalleryMode()" style="display:none">Cancel</button>
                 <div class="progress-container" id="progressContainer">
                     <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
                     <p class="progress-text" id="progressText">Uploading...</p>
@@ -1480,6 +1513,7 @@
 
         let selectedFiles = [];
         let selectedBgFile = null;
+        let _multiGalleryGroups = [];
 
         // Must match MAX_BACKGROUND_MB in .env (default 25)
         const MAX_BG_MB = 25;
@@ -1568,6 +1602,15 @@
                 if (entry) entries.push(entry);
             }
 
+            const dirEntries = entries.filter(e => e.isDirectory);
+            const fileEntries = entries.filter(e => e.isFile);
+
+            // Multiple folders dropped at once: create one gallery per folder
+            if (dirEntries.length >= 2) {
+                await handleMultiFolderDrop(dirEntries, fileEntries);
+                return;
+            }
+
             // If a single folder was dropped, use its name as the gallery name (if field is empty)
             if (entries.length === 1 && entries[0].isDirectory) {
                 const nameInput = document.getElementById('eventName');
@@ -1605,6 +1648,131 @@
                     resolve();
                 }
             });
+        }
+
+        // ── MULTI-FOLDER DROP → MULTIPLE GALLERIES ──
+
+        async function handleMultiFolderDrop(dirEntries, fileEntries) {
+            const groups = [];
+            for (const entry of dirEntries) {
+                const files = [];
+                await traverseFileTree(entry, files);
+                if (files.length > 0) {
+                    groups.push({ name: entry.name, files, bgFile: null, bgPreviewUrl: null });
+                }
+            }
+
+            if (groups.length === 0) {
+                showError('No images found in the dropped folders.');
+                return;
+            }
+
+            _multiGalleryGroups = groups;
+
+            const note = document.getElementById('multiGalleryNote');
+            if (fileEntries.length > 0) {
+                note.textContent = `${fileEntries.length} file${fileEntries.length > 1 ? 's' : ''} outside folders ${fileEntries.length > 1 ? 'were' : 'was'} ignored.`;
+                note.style.display = 'block';
+            } else {
+                note.style.display = 'none';
+            }
+
+            enterMultiGalleryMode();
+        }
+
+        function enterMultiGalleryMode() {
+            document.getElementById('eventName').style.display = 'none';
+            document.getElementById('fileList').style.display = 'none';
+            document.getElementById('bgDropZone').style.display = 'none';
+            document.getElementById('createBtn').style.display = 'none';
+            document.getElementById('multiGalleryPanel').style.display = 'block';
+            document.getElementById('cancelMultiBtn').style.display = 'block';
+            document.getElementById('createMultiBtn').style.display = 'block';
+            renderMultiGalleryPanel();
+        }
+
+        function cancelMultiGalleryMode() {
+            _multiGalleryGroups = [];
+            document.getElementById('multiGalleryRows').innerHTML = '';
+            document.getElementById('multiGalleryNote').style.display = 'none';
+            document.getElementById('multiGalleryPanel').style.display = 'none';
+            document.getElementById('cancelMultiBtn').style.display = 'none';
+            document.getElementById('createMultiBtn').style.display = 'none';
+            document.getElementById('eventName').style.display = '';
+            document.getElementById('fileList').style.display = '';
+            document.getElementById('bgDropZone').style.display = '';
+            document.getElementById('createBtn').style.display = '';
+            document.getElementById('createBtn').disabled = selectedFiles.length === 0;
+        }
+
+        function renderMultiGalleryPanel() {
+            const container = document.getElementById('multiGalleryRows');
+            const n = _multiGalleryGroups.length;
+            container.innerHTML = _multiGalleryGroups.map((g, i) => `
+                <div class="multi-gallery-row">
+                    <input type="text" class="form-input multi-gallery-name" value="${escapeAttr(g.name)}" oninput="updateMultiGalleryName(${i}, this.value)">
+                    <span class="multi-gallery-count">${g.files.length} photo${g.files.length > 1 ? 's' : ''}</span>
+                    <div class="drop-zone-mini" id="multiBg-${i}" title="Cover image"
+                         onclick="document.getElementById('multiBgInput-${i}').click()"
+                         ondragover="event.preventDefault();event.stopPropagation();this.classList.add('drag-over')"
+                         ondragleave="this.classList.remove('drag-over')"
+                         ondrop="handleMultiBgDrop(event, ${i})">
+                        ${g.bgPreviewUrl
+                            ? `<img class="bg-preview-mini" src="${g.bgPreviewUrl}">`
+                            : `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 16V4m0 0L8 8m4-4l4 4M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2" stroke-linecap="round" stroke-linejoin="round"/></svg>`}
+                    </div>
+                    <input type="file" id="multiBgInput-${i}" accept="image/*" style="display:none" onchange="handleMultiBgSelect(event, ${i})">
+                    <button class="multi-gallery-remove" onclick="removeMultiGalleryGroup(${i})" title="Remove">×</button>
+                </div>
+            `).join('');
+
+            const createMultiBtn = document.getElementById('createMultiBtn');
+            createMultiBtn.textContent = `Create ${n} ${n === 1 ? 'gallery' : 'galleries'}`;
+        }
+
+        function updateMultiGalleryName(index, value) {
+            if (_multiGalleryGroups[index]) _multiGalleryGroups[index].name = value;
+        }
+
+        function removeMultiGalleryGroup(index) {
+            _multiGalleryGroups.splice(index, 1);
+            if (_multiGalleryGroups.length === 0) {
+                cancelMultiGalleryMode();
+            } else {
+                renderMultiGalleryPanel();
+            }
+        }
+
+        function handleMultiBgDrop(e, index) {
+            e.preventDefault();
+            e.stopPropagation();
+            document.getElementById(`multiBg-${index}`).classList.remove('drag-over');
+            const files = e.dataTransfer.files;
+            if (files.length > 0 && files[0].type.startsWith('image/')) {
+                setMultiGalleryBgFile(index, files[0]);
+            }
+        }
+
+        function handleMultiBgSelect(e, index) {
+            if (e.target.files.length > 0) {
+                setMultiGalleryBgFile(index, e.target.files[0]);
+            }
+        }
+
+        function setMultiGalleryBgFile(index, file) {
+            if (file.size > MAX_BG_MB * 1024 * 1024) {
+                showError(`Cover image is too large (${(file.size / 1024 / 1024).toFixed(1)} MB). Maximum size is ${MAX_BG_MB} MB.`);
+                return;
+            }
+            const group = _multiGalleryGroups[index];
+            if (!group) return;
+            group.bgFile = file;
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                group.bgPreviewUrl = e.target.result;
+                renderMultiGalleryPanel();
+            };
+            reader.readAsDataURL(file);
         }
 
         // File input handling
@@ -1730,6 +1898,89 @@
             reader.readAsDataURL(file);
         }
 
+        // Upload one batch of photos via XHR; resolves with parsed JSON response.
+        // `onProgress(batchDone, total)` is called as the upload progresses, where
+        // batchDone is the interpolated count of photos uploaded so far overall.
+        function uploadBatchXHR(url, method, batch, extraFields, uploadedSoFar, total, onProgress) {
+            return new Promise((resolve, reject) => {
+                const fd = new FormData();
+                if (extraFields) Object.entries(extraFields).forEach(([k, v]) => fd.append(k, v));
+                batch.forEach(f => fd.append('photos', f));
+
+                const xhr = new XMLHttpRequest();
+                xhr.open(method, url);
+
+                xhr.upload.onprogress = (e) => {
+                    if (!e.lengthComputable) return;
+                    const batchDone = uploadedSoFar + batch.length * (e.loaded / e.total);
+                    onProgress(batchDone, total);
+                };
+
+                xhr.onload = () => {
+                    if (xhr.status >= 200 && xhr.status < 300) {
+                        try { resolve(JSON.parse(xhr.responseText)); }
+                        catch { resolve({}); }
+                    } else {
+                        let msg = 'Upload failed';
+                        try { msg = JSON.parse(xhr.responseText).error || msg; } catch {}
+                        reject(new Error(msg));
+                    }
+                };
+                xhr.onerror = () => reject(new Error('Network error'));
+                xhr.send(fd);
+            });
+        }
+
+        // Resolves which collection (if any) newly-created galleries should be added to.
+        // If "new collection" is requested, creates it once (with its cover image) and
+        // resets the new-collection form. Returns { collectionId } — collectionId is
+        // null if no collection was selected/requested.
+        async function resolveCollectionTarget() {
+            const colSel = document.getElementById('galleryCollectionSelect');
+            const colVal = colSel ? colSel.value : '';
+            if (colVal) return { collectionId: colVal };
+
+            const includeInNew = document.getElementById('includeInNewCollection');
+            if (includeInNew && includeInNew.checked) {
+                const colName = (document.getElementById('newCollectionName').value || '').trim();
+                if (colName) {
+                    try {
+                        const colRes = await fetch('/api/collection/create', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ name: colName })
+                        });
+                        if (colRes.ok) {
+                            const colData = await colRes.json();
+                            if (selectedColBgFile) {
+                                const bgFd = new FormData();
+                                bgFd.append('background', selectedColBgFile);
+                                await fetch(`/api/collection/${colData.id}/background`, { method: 'POST', body: bgFd }).catch(() => {});
+                            }
+                            // Reset collection form
+                            document.getElementById('newCollectionName').value = '';
+                            selectedColBgFile = null;
+                            colBgPreview.style.display = 'none';
+                            colBgPreview.src = '';
+                            colBgInput.value = '';
+                            return { collectionId: colData.id, isNew: true };
+                        }
+                    } catch (_) {}
+                }
+            }
+            return { collectionId: null };
+        }
+
+        async function assignGalleryToCollection(collectionId, galleryId) {
+            try {
+                await fetch(`/api/collection/${collectionId}/galleries`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ galleryId })
+                });
+            } catch (_) {}
+        }
+
         async function createGallery() {
             const eventName = document.getElementById('eventName').value.trim() || 'Untitled Event';
             const files = [...selectedFiles]; // snapshot before resetForm clears the array
@@ -1746,51 +1997,23 @@
                 document.getElementById('progressText').textContent = label;
             }
 
-            // Upload one batch via XHR; resolves with parsed JSON response.
-            // Within the batch, progress is interpolated into the overall counter.
-            function uploadBatch(url, method, batch, extraFields, uploadedSoFar) {
-                return new Promise((resolve, reject) => {
-                    const fd = new FormData();
-                    if (extraFields) Object.entries(extraFields).forEach(([k, v]) => fd.append(k, v));
-                    batch.forEach(f => fd.append('photos', f));
-
-                    const xhr = new XMLHttpRequest();
-                    xhr.open(method, url);
-
-                    xhr.upload.onprogress = (e) => {
-                        if (!e.lengthComputable) return;
-                        const batchDone = uploadedSoFar + batch.length * (e.loaded / e.total);
-                        const pct = Math.round((batchDone / total) * 100);
-                        setProgress(pct, `Uploading… ${Math.floor(batchDone)} / ${total} photos`);
-                    };
-
-                    xhr.onload = () => {
-                        if (xhr.status >= 200 && xhr.status < 300) {
-                            try { resolve(JSON.parse(xhr.responseText)); }
-                            catch { resolve({}); }
-                        } else {
-                            let msg = 'Upload failed';
-                            try { msg = JSON.parse(xhr.responseText).error || msg; } catch {}
-                            reject(new Error(msg));
-                        }
-                    };
-                    xhr.onerror = () => reject(new Error('Network error'));
-                    xhr.send(fd);
-                });
-            }
+            const onProgress = (done, ttl) => {
+                const pct = Math.round((done / ttl) * 100);
+                setProgress(pct, `Uploading… ${Math.floor(done)} / ${ttl} photos`);
+            };
 
             try {
                 // First batch: create the gallery
                 const firstBatch = files.slice(0, BATCH_SIZE);
                 setProgress(0, `Uploading… 0 / ${total} photos`);
-                const result = await uploadBatch('/api/gallery/create', 'POST', firstBatch, { eventName }, 0);
+                const result = await uploadBatchXHR('/api/gallery/create', 'POST', firstBatch, { eventName }, 0, total, onProgress);
                 const galleryId = result.galleryId;
                 let uploaded = firstBatch.length;
 
                 // Remaining batches: add to the existing gallery
                 for (let i = BATCH_SIZE; i < total; i += BATCH_SIZE) {
                     const batch = files.slice(i, i + BATCH_SIZE);
-                    await uploadBatch(`/api/gallery/${galleryId}/upload`, 'POST', batch, null, uploaded);
+                    await uploadBatchXHR(`/api/gallery/${galleryId}/upload`, 'POST', batch, null, uploaded, total, onProgress);
                     uploaded += batch.length;
                 }
 
@@ -1814,50 +2037,11 @@
                 }
 
                 // Assign to collection if requested
-                const colSel = document.getElementById('galleryCollectionSelect');
-                const colVal = colSel ? colSel.value : '';
-                const includeInNew = document.getElementById('includeInNewCollection');
+                const { collectionId } = await resolveCollectionTarget();
                 let refreshCollections = false;
-                if (colVal) {
-                    try {
-                        await fetch(`/api/collection/${colVal}/galleries`, {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ galleryId })
-                        });
-                        refreshCollections = true;
-                    } catch (_) {}
-                } else if (includeInNew && includeInNew.checked) {
-                    const colName = (document.getElementById('newCollectionName').value || '').trim();
-                    if (colName) {
-                        try {
-                            const colRes = await fetch('/api/collection/create', {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ name: colName })
-                            });
-                            if (colRes.ok) {
-                                const colData = await colRes.json();
-                                if (selectedColBgFile) {
-                                    const bgFd = new FormData();
-                                    bgFd.append('background', selectedColBgFile);
-                                    await fetch(`/api/collection/${colData.id}/background`, { method: 'POST', body: bgFd }).catch(() => {});
-                                }
-                                await fetch(`/api/collection/${colData.id}/galleries`, {
-                                    method: 'POST',
-                                    headers: { 'Content-Type': 'application/json' },
-                                    body: JSON.stringify({ galleryId })
-                                }).catch(() => {});
-                                // Reset collection form
-                                document.getElementById('newCollectionName').value = '';
-                                selectedColBgFile = null;
-                                colBgPreview.style.display = 'none';
-                                colBgPreview.src = '';
-                                colBgInput.value = '';
-                                refreshCollections = true;
-                            }
-                        } catch (_) {}
-                    }
+                if (collectionId) {
+                    await assignGalleryToCollection(collectionId, galleryId);
+                    refreshCollections = true;
                 }
 
                 // Show result
@@ -1875,6 +2059,104 @@
             } finally {
                 document.getElementById('progressContainer').classList.remove('visible');
             }
+        }
+
+        async function createMultipleGalleries() {
+            const groups = _multiGalleryGroups.map(g => ({ ...g, files: [...g.files] }));
+            const n = groups.length;
+            if (n === 0) return;
+
+            const BATCH_SIZE = 20;
+            const grandTotal = groups.reduce((sum, g) => sum + g.files.length, 0);
+
+            const createMultiBtn = document.getElementById('createMultiBtn');
+            const cancelMultiBtn = document.getElementById('cancelMultiBtn');
+            createMultiBtn.disabled = true;
+            cancelMultiBtn.disabled = true;
+            document.getElementById('progressContainer').classList.add('visible');
+
+            function setProgress(pct, label) {
+                document.getElementById('progressFill').style.width = pct + '%';
+                document.getElementById('progressText').textContent = label;
+            }
+
+            let uploadedSoFar = 0;
+            let createdCount = 0;
+            let collectionId = null;
+
+            try {
+                ({ collectionId } = await resolveCollectionTarget());
+
+                for (let gi = 0; gi < n; gi++) {
+                    const g = groups[gi];
+                    const total = g.files.length;
+                    const baseUploaded = uploadedSoFar;
+                    const eventName = (g.name || '').trim() || 'Untitled Event';
+
+                    const onProgress = (done) => {
+                        const pct = Math.round(((baseUploaded + done) / grandTotal) * 100);
+                        setProgress(pct, `Gallery ${gi + 1}/${n} "${eventName}" — ${Math.floor(baseUploaded + done)} / ${grandTotal} photos`);
+                    };
+
+                    onProgress(0);
+                    const firstBatch = g.files.slice(0, BATCH_SIZE);
+                    const result = await uploadBatchXHR('/api/gallery/create', 'POST', firstBatch, { eventName }, 0, total, onProgress);
+                    const galleryId = result.galleryId;
+                    let uploaded = firstBatch.length;
+                    onProgress(uploaded);
+
+                    for (let i = BATCH_SIZE; i < total; i += BATCH_SIZE) {
+                        const batch = g.files.slice(i, i + BATCH_SIZE);
+                        await uploadBatchXHR(`/api/gallery/${galleryId}/upload`, 'POST', batch, null, uploaded, total, onProgress);
+                        uploaded += batch.length;
+                        onProgress(uploaded);
+                    }
+
+                    if (g.bgFile) {
+                        const bgFd = new FormData();
+                        bgFd.append('background', g.bgFile);
+                        await fetch(`/api/gallery/${galleryId}/background`, { method: 'POST', body: bgFd }).catch(() => {});
+                    }
+
+                    if (collectionId) {
+                        await assignGalleryToCollection(collectionId, galleryId);
+                    }
+
+                    uploadedSoFar += total;
+                    createdCount++;
+                    _multiGalleryGroups.shift();
+                }
+
+                setProgress(100, `${createdCount} ${createdCount === 1 ? 'gallery' : 'galleries'} created`);
+                cancelMultiGalleryMode();
+                showMultiGallerySuccess(createdCount);
+
+            } catch (err) {
+                showError(`Failed after creating ${createdCount} of ${n} galleries: ${err.message}`);
+                renderMultiGalleryPanel();
+            } finally {
+                document.getElementById('progressContainer').classList.remove('visible');
+                createMultiBtn.disabled = false;
+                cancelMultiBtn.disabled = false;
+                loadGalleries();
+                if (collectionId) loadCollections();
+            }
+        }
+
+        let _successToastTimer = null;
+        function showMultiGallerySuccess(n) {
+            const toast = document.getElementById('uploadToast');
+            const spinner = document.getElementById('toastSpinner');
+            const successIcon = document.getElementById('toastSuccess');
+            const errorIcon = document.getElementById('toastError');
+            const message = document.getElementById('toastMessage');
+            spinner.style.display = 'none';
+            errorIcon.style.display = 'none';
+            successIcon.style.display = 'block';
+            message.textContent = `${n} ${n === 1 ? 'gallery' : 'galleries'} created`;
+            toast.className = 'upload-toast visible success';
+            clearTimeout(_successToastTimer);
+            _successToastTimer = setTimeout(() => toast.classList.remove('visible', 'success'), 2500);
         }
 
         function resetForm() {
