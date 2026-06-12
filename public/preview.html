@@ -1289,7 +1289,7 @@
                 // Show back-to-collection button if ?from= param is present
                 if (fromCollection) {
                     const backBtn = document.getElementById('backToCollection');
-                    backBtn.href = `/collection/${fromCollection}`;
+                    backBtn.href = `/collection/${fromCollection}${critiqueMode ? '?critique=1' : ''}`;
                     document.getElementById('backToCollectionText').textContent = t.backToCollection;
                     backBtn.style.display = 'inline-flex';
                 }
