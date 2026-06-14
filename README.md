@@ -62,6 +62,8 @@ The admin dashboard is designed to work well on both desktop and mobile. On a co
 
 Drop photos or entire folders onto the upload zone. The gallery name is pre-filled from the folder name. Photos are uploaded in batches so large sessions (150+ photos) work reliably. Progress is shown throughout. If something goes wrong, you get a clear message rather than a silent failure. ICC color profiles (Adobe RGB, Display P3, etc.) are preserved in every generated thumbnail and preview, so what your clients see in the browser matches what you edited in Lightroom.
 
+**Video clips:** You can also drop `.mp4`, `.mov`, and `.webm` video files into a gallery alongside photos. Delyvr automatically generates a poster thumbnail for each video, shows a play badge in the gallery grid, and plays the video with full controls (including seeking) in the lightbox.
+
 You can also add a cover image (hero photo) to each gallery. This appears as the full-bleed background on the client download page and as the preview thumbnail in collections.
 
 **Multiple galleries at once:** Drop two or more folders together and Delyvr creates one gallery per folder, named after each folder. Each pending gallery gets its own small cover-image drop zone, so you can set a different cover per gallery before creating them — then a single "Create N galleries" button uploads everything with one overall progress bar. Any loose files dropped alongside the folders are ignored, with a note explaining why.
@@ -141,6 +143,7 @@ services:
       - INSTALL_DIR=/data
       - ADMIN_PASSWORD=${ADMIN_PASSWORD}
       - MAX_UPLOAD_MB=${MAX_UPLOAD_MB:-200}
+      - MAX_VIDEO_MB=${MAX_VIDEO_MB:-500}
       - MAX_BACKGROUND_MB=${MAX_BACKGROUND_MB:-25}
       - TRUST_PROXY=${TRUST_PROXY:-1}
       # Optional: restrict admin access to specific IPs or CIDR ranges
@@ -182,6 +185,7 @@ All settings live in your `docker-compose.yml` environment block or in a `.env` 
 | `ADMIN_PASSWORD` | *(required)* | Password to access the admin dashboard. Use a long random string. |
 | `PORT` | `3000` | TCP port the server listens on |
 | `MAX_UPLOAD_MB` | `200` | Max size per photo file, in MB |
+| `MAX_VIDEO_MB` | `500` | Max size per video file, in MB |
 | `MAX_BACKGROUND_MB` | `25` | Max size for background images, in MB |
 | `INSTALL_DIR` | *(project dir)* | Set to `/data` in Docker. Do not change this. |
 | `TRUST_PROXY` | `0` | Set to `1` when running behind a reverse proxy (Nginx, Caddy, Traefik). Enables correct client IP detection for rate limiting. |

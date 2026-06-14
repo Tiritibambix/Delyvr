@@ -73,6 +73,7 @@ delyvr/
 | `ADMIN_PASSWORD` | *(none — must be set)* | Password for the admin dashboard |
 | `PORT` | `3000` | TCP port the server listens on |
 | `MAX_UPLOAD_MB` | `200` | Per-file size limit for photo uploads, in MB |
+| `MAX_VIDEO_MB` | `500` | Per-file size limit for video uploads, in MB |
 | `MAX_BACKGROUND_MB` | `25` | Size limit for background image uploads, in MB |
 | `INSTALL_DIR` | *(project dir)* | Set to `/data` in Docker. Controls where all data files are written. |
 | `TRUST_PROXY` | `0` | Set to `1` behind a single reverse proxy. Also accepts: integer hop count, IP, CIDR, comma-separated IPs/CIDRs, or `loopback`/`uniquelocal`. |
@@ -91,7 +92,7 @@ delyvr/
   id: string,
   eventName: string,
   created: string,          // ISO 8601
-  files: string[],          // filenames inside uploads/{id}/
+  files: string[],          // filenames inside uploads/{id}/ — photos and videos
   background: string|null,
   downloadsEnabled: boolean, // default true (missing = true)
   downloadCount: number,    // incremented on every ZIP download (default 0)
@@ -99,6 +100,9 @@ delyvr/
   viewerHashes: string[],   // SHA-256(ip+ua) per unique visitor — not security-sensitive
   favorites: {              // filename → [visitorId, ...]
     [filename: string]: string[]
+  },
+  dimensions: {             // filename → cached dimensions (and duration for videos)
+    [filename: string]: { w: number, h: number, duration?: number }
   }
 }
 ```
@@ -186,6 +190,18 @@ All filesystem paths incorporating user-controlled values go through `safeResolv
 The lightbox uses `previewUrl`. Originals are only served on explicit download via `downloadUrl`.
 
 **ICC color profile preservation:** All Sharp pipelines that write to disk (thumbnails, previews, OG images) use `.withMetadata()` so the original embedded ICC profile (Adobe RGB, Display P3, etc.) is carried through to the derived image. Without this, browsers assume sRGB and colors diverge from Lightroom or the OS file viewer. If existing thumbnails/previews were generated before this was added, delete `data/thumbnails/` and `data/previews/` to force regeneration.
+
+### Video support
+
+Galleries can contain video clips (`.mp4`, `.mov`, `.webm`, `.m4v`) alongside photos. There is no persisted "type" field — videos are detected purely by file extension via `isVideoFile()` (server), `isVideoFilename()`/`isMediaFile()` (admin.html), and `isVideoPhoto()` (preview.html).
+
+- `gallery.dimensions[filename]` gains an optional `duration` (seconds) for videos, captured via `ffprobe`.
+- **Posters**: `generateVideoPoster()` extracts a frame with `ffmpeg` (1s into the clip, falling back to 0s for very short clips) and runs it through the same sharp pipeline as photo thumbnails/previews (400px/1920px JPEG, `.withMetadata()`), writing to `thumbnails/{galleryId}/{filename}.jpg` and `previews/{galleryId}/{filename}.jpg`. Triggered on upload, on startup (missing-preview scan), and on first `?thumb=1`/`?preview=1` request.
+- `ffmpeg`/`ffprobe` must be on `PATH` (installed via `apk add ffmpeg` in the Docker image). If missing, poster/metadata generation fails gracefully (caught and logged) — uploads still succeed, `/photos` returns `width/height/duration: null`, and the grid shows the ▶ badge without a poster image.
+- `?thumb=1`/`?preview=1` for a video filename serve the generated poster JPEG and return 404 if generation failed — they never fall back to the raw video file (an `<img>`/`<video poster>` src can't render a video container).
+- The original video (no query params) is served via `res.sendFile`, which already supports HTTP Range / 206 Partial Content — required for `<video>` seeking. No server change was needed for this.
+- `MAX_VIDEO_MB` (default 500) is enforced separately from `MAX_UPLOAD_MB` (photos) via `enforcePerTypeFileSizeLimits()`, which deletes oversized files post-upload and returns a `rejected` list in the API response.
+- OG image generation (gallery and collection) skips video files when picking a fallback source image, using `files.find(f => !isVideoFile(f))`; if a gallery is all-video, the gallery OG route generates a poster for the first video and uses that.
 
 ### Justified gallery layout
 

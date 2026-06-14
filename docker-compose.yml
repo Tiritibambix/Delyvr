@@ -8,6 +8,7 @@ services:
       - INSTALL_DIR=/data # Needed for container deployment. Do not change this value.
       - ADMIN_PASSWORD=${ADMIN_PASSWORD}
       - MAX_UPLOAD_MB=${MAX_UPLOAD_MB:-200}
+      - MAX_VIDEO_MB=${MAX_VIDEO_MB:-500}
       - MAX_BACKGROUND_MB=${MAX_BACKGROUND_MB:-25}
       - TRUST_PROXY=${TRUST_PROXY:-1}
       # Optional: restrict admin access to specific IPs or CIDR ranges.

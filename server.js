@@ -11,6 +11,7 @@ const sharp = require('sharp');
 const escapeHtml = require('escape-html');
 const crypto = require('crypto');
 const net = require('net');
+const { execFile } = require('child_process');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -52,6 +53,7 @@ const ADMIN_ALLOWED_IPS = (process.env.ADMIN_ALLOWED_IPS || '')
 
 // File size limits (from .env, in MB)
 const MAX_PHOTO_BYTES = parseInt(process.env.MAX_UPLOAD_MB || '200') * 1024 * 1024;
+const MAX_VIDEO_BYTES = parseInt(process.env.MAX_VIDEO_MB || '500') * 1024 * 1024;
 const MAX_BACKGROUND_BYTES = parseInt(process.env.MAX_BACKGROUND_MB || '25') * 1024 * 1024;
 
 // Install directory — where Node.js stores uploads, backgrounds, and galleries.json
@@ -65,6 +67,15 @@ const OG_CACHE_DIR   = path.join(DATA_DIR, 'og-cache');
 
 // UUID v4 validation regex — used by middleware and reconcileGalleries (must be declared early)
 const UUID_V4_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+// Video file extensions accepted for gallery uploads (mp4, mov/quicktime, webm)
+const VIDEO_EXTENSIONS = new Set(['mp4', 'mov', 'webm', 'm4v']);
+const VIDEO_MIME_RE = /^video\/(mp4|quicktime|webm|x-m4v)/i;
+
+function isVideoFile(filename) {
+    const ext = path.extname(filename).toLowerCase().slice(1);
+    return VIDEO_EXTENSIONS.has(ext);
+}
 
 // Admin session tokens — cleared on restart (intentional: forces re-login)
 const sessions = new Map();
@@ -349,6 +360,88 @@ async function readDimensions(srcPath) {
     }
 }
 
+// { w, h, duration } for a video, or null on any failure (missing binary, bad file, timeout)
+function probeVideo(srcPath) {
+    return new Promise((resolve) => {
+        execFile('ffprobe', [
+            '-v', 'error', '-select_streams', 'v:0',
+            '-show_entries', 'stream=width,height:format=duration',
+            '-of', 'json', srcPath
+        ], { timeout: 15000 }, (err, stdout) => {
+            if (err) return resolve(null);
+            try {
+                const data = JSON.parse(stdout);
+                const stream = data.streams && data.streams[0];
+                const duration = data.format && data.format.duration ? Math.round(parseFloat(data.format.duration)) : null;
+                if (!stream) return resolve(null);
+                resolve({ w: stream.width, h: stream.height, duration });
+            } catch (_) { resolve(null); }
+        });
+    });
+}
+
+// Extract one frame as JPEG (1s in, falling back to 0s for short clips). Returns true on success.
+function extractVideoFrame(srcPath, destPath, atSeconds = 1) {
+    return new Promise((resolve) => {
+        execFile('ffmpeg', ['-y', '-ss', String(atSeconds), '-i', srcPath, '-frames:v', '1', '-q:v', '2', destPath],
+            { timeout: 30000 }, (err) => {
+                if (!err && fs.existsSync(destPath)) return resolve(true);
+                if (atSeconds === 0) return resolve(false);
+                execFile('ffmpeg', ['-y', '-i', srcPath, '-frames:v', '1', '-q:v', '2', destPath], { timeout: 30000 },
+                    (err2) => resolve(!err2 && fs.existsSync(destPath)));
+            });
+    });
+}
+
+// Extract a poster frame from a video and run it through the same sharp
+// pipeline as photo thumbnails/previews. Also captures { w, h, duration }
+// into gallery.dimensions[filename].
+async function generateVideoPoster(galleryId, filename) {
+    const src = safeResolvePath(safeResolvePath(path.join(DATA_DIR, 'uploads'), galleryId), filename);
+    const thumbDest = safeResolvePath(safeResolvePath(THUMBNAILS_DIR, galleryId), filename + '.jpg');
+    const previewDest = safeResolvePath(safeResolvePath(PREVIEWS_DIR, galleryId), filename + '.jpg');
+    if (fs.existsSync(thumbDest) && fs.existsSync(previewDest)) return;
+
+    const tmpDir = path.join(DATA_DIR, 'tmp');
+    if (!fs.existsSync(tmpDir)) fs.mkdirSync(tmpDir, { recursive: true });
+    const posterTmp = safeResolvePath(tmpDir, `${galleryId}-${filename}.poster.jpg`);
+
+    try {
+        const gallery = galleries.get(galleryId);
+        if (gallery) {
+            if (!gallery.dimensions) gallery.dimensions = {};
+            if (!gallery.dimensions[filename] || gallery.dimensions[filename].duration == null) {
+                const meta = await probeVideo(src);
+                if (meta) {
+                    gallery.dimensions[filename] = { w: meta.w, h: meta.h, duration: meta.duration };
+                    saveGalleries();
+                }
+            }
+        }
+
+        if (!await extractVideoFrame(src, posterTmp, 1)) {
+            console.warn(`[VIDEO] Poster frame extraction failed for ${galleryId}/${filename}`);
+            return;
+        }
+
+        const thumbDir = safeResolvePath(THUMBNAILS_DIR, galleryId);
+        const previewDir = safeResolvePath(PREVIEWS_DIR, galleryId);
+        if (!fs.existsSync(thumbDir)) fs.mkdirSync(thumbDir, { recursive: true });
+        if (!fs.existsSync(previewDir)) fs.mkdirSync(previewDir, { recursive: true });
+
+        if (!fs.existsSync(thumbDest)) {
+            await sharp(posterTmp).resize(400).withMetadata().jpeg({ quality: 80 }).toFile(thumbDest);
+        }
+        if (!fs.existsSync(previewDest)) {
+            await sharp(posterTmp).resize(1920, null, { withoutEnlargement: true }).withMetadata().jpeg({ quality: 85 }).toFile(previewDest);
+        }
+    } catch (e) {
+        console.warn(`[VIDEO] Poster generation failed for ${galleryId}/${filename}: ${e.message}`);
+    } finally {
+        try { fs.unlinkSync(posterTmp); } catch (_) {}
+    }
+}
+
 // Generate a 400px-wide JPEG thumbnail for a single photo
 async function generateThumbnail(galleryId, filename) {
     const src  = safeResolvePath(safeResolvePath(path.join(DATA_DIR, 'uploads'), galleryId), filename);
@@ -426,18 +519,31 @@ const storage = multer.diskStorage({
 
 const upload = multer({
     storage,
-    limits: { fileSize: MAX_PHOTO_BYTES },
+    limits: { fileSize: Math.max(MAX_PHOTO_BYTES, MAX_VIDEO_BYTES) },
     fileFilter: (req, file, cb) => {
         const allowedTypes = /jpeg|jpg|png|gif|webp|tiff|bmp|raw|cr2|nef|arw/i;
         const ext = path.extname(file.originalname).toLowerCase().slice(1);
         const mime = file.mimetype;
-        if (allowedTypes.test(ext) || mime.startsWith('image/')) {
-            cb(null, true);
-        } else {
-            cb(new Error('Only image files are allowed'), false);
-        }
+        if (allowedTypes.test(ext) || mime.startsWith('image/')) return cb(null, true);
+        if (VIDEO_EXTENSIONS.has(ext) || VIDEO_MIME_RE.test(mime)) return cb(null, true);
+        cb(new Error('Only image or video files are allowed'), false);
     }
 });
+
+// After multer writes files to disk, enforce per-type size limits (photos vs
+// videos have different caps, but multer's limits.fileSize is a single value).
+// Deletes oversized files and returns the rejected list.
+function enforcePerTypeFileSizeLimits(files) {
+    const rejected = [];
+    for (const f of files) {
+        const limit = isVideoFile(f.filename) ? MAX_VIDEO_BYTES : MAX_PHOTO_BYTES;
+        if (f.size > limit) {
+            try { fs.unlinkSync(f.path); } catch (_) {}
+            rejected.push({ filename: f.filename, limit });
+        }
+    }
+    return rejected;
+}
 
 // Background images are stored in memory so sharp can normalise them to JPEG
 const uploadBackground = multer({
@@ -805,12 +911,25 @@ app.post('/api/gallery/create', requireAuth, generateGalleryId, upload.array('ph
         return res.status(400).json({ error: 'No photos were uploaded. Please select at least one image.' });
     }
 
+    const rejected = enforcePerTypeFileSizeLimits(req.files);
+    const rejectedNames = new Set(rejected.map(r => r.filename));
+    const acceptedFiles = req.files.filter(f => !rejectedNames.has(f.filename));
+
+    if (acceptedFiles.length === 0) {
+        galleries.delete(galleryId);
+        saveGalleries();
+        return res.status(413).json({ error: 'All uploaded files exceeded the size limit.', rejected });
+    }
+
     if (gallery) {
-        gallery.files = req.files.map(f => f.filename);
+        gallery.files = acceptedFiles.map(f => f.filename);
         gallery.eventName = (String(Array.isArray(req.body.eventName) ? req.body.eventName[0] : (req.body.eventName || 'Untitled Event'))).trim().substring(0, 200);
         saveGalleries();
-        generateGalleryThumbnails(galleryId, gallery.files).catch(() => {});
-        generateGalleryPreviews(galleryId, gallery.files).catch(() => {});
+        const images = gallery.files.filter(f => !isVideoFile(f));
+        const videos = gallery.files.filter(f => isVideoFile(f));
+        generateGalleryThumbnails(galleryId, images).catch(() => {});
+        generateGalleryPreviews(galleryId, images).catch(() => {});
+        videos.forEach(f => generateVideoPoster(galleryId, f).catch(() => {}));
         console.log(`[GALLERY] Created "${gallery.eventName}" (${galleryId}) — ${gallery.files.length} photo(s)`);
     }
 
@@ -821,7 +940,8 @@ app.post('/api/gallery/create', requireAuth, generateGalleryId, upload.array('ph
         success: true,
         galleryId,
         downloadUrl,
-        fileCount: Array.isArray(req.files) ? req.files.length : 0
+        fileCount: acceptedFiles.length,
+        rejected
     });
 });
 
@@ -834,18 +954,25 @@ app.post('/api/gallery/:galleryId/upload', requireAuth, validateGalleryId, uploa
         return res.status(404).json({ error: 'Gallery not found' });
     }
 
+    let rejected = [];
     if (req.files) {
-        const newFiles = req.files.map(f => f.filename);
+        rejected = enforcePerTypeFileSizeLimits(req.files);
+        const rejectedNames = new Set(rejected.map(r => r.filename));
+        const newFiles = req.files.filter(f => !rejectedNames.has(f.filename)).map(f => f.filename);
         gallery.files.push(...newFiles);
         saveGalleries();
-        generateGalleryThumbnails(galleryId, newFiles).catch(() => {});
-        generateGalleryPreviews(galleryId, newFiles).catch(() => {});
+        const images = newFiles.filter(f => !isVideoFile(f));
+        const videos = newFiles.filter(f => isVideoFile(f));
+        generateGalleryThumbnails(galleryId, images).catch(() => {});
+        generateGalleryPreviews(galleryId, images).catch(() => {});
+        videos.forEach(f => generateVideoPoster(galleryId, f).catch(() => {}));
         console.log(`[UPLOAD] Added ${newFiles.length} photo(s) to "${gallery.eventName}" (${galleryId})`);
     }
 
     res.json({
         success: true,
-        fileCount: gallery.files.length
+        fileCount: gallery.files.length,
+        rejected
     });
 });
 
@@ -1000,6 +1127,12 @@ app.get('/api/gallery/:galleryId/photos', publicReadLimiter, validateGalleryId, 
     if (missing.length > 0) {
         await Promise.all(missing.map(async filename => {
             const src = safeResolvePath(galleryPath, filename);
+            if (isVideoFile(filename)) {
+                const meta = await probeVideo(src);
+                if (meta) gallery.dimensions[filename] = { w: meta.w, h: meta.h, duration: meta.duration };
+                generateVideoPoster(galleryId, filename).catch(() => {}); // legacy videos with no poster yet
+                return;
+            }
             const dims = await readDimensions(src);
             if (dims) {
                 gallery.dimensions[filename] = { w: dims.w, h: dims.h };
@@ -1010,14 +1143,17 @@ app.get('/api/gallery/:galleryId/photos', publicReadLimiter, validateGalleryId, 
 
     const photos = files.map(filename => {
         const dims = gallery && gallery.dimensions ? gallery.dimensions[filename] : null;
+        const video = isVideoFile(filename);
         return {
             filename,
+            type: video ? 'video' : 'image',
             url:         `/api/gallery/${galleryId}/photo/${encodeURIComponent(filename)}`,
             previewUrl:  `/api/gallery/${galleryId}/photo/${encodeURIComponent(filename)}?preview=1`,
             thumbnailUrl:`/api/gallery/${galleryId}/photo/${encodeURIComponent(filename)}?thumb=1`,
             downloadUrl: `/api/gallery/${galleryId}/download/${encodeURIComponent(filename)}`,
             width:  dims ? dims.w : null,
-            height: dims ? dims.h : null
+            height: dims ? dims.h : null,
+            duration: video ? (dims && dims.duration != null ? dims.duration : null) : undefined
         };
     });
 
@@ -1032,18 +1168,22 @@ app.get('/api/gallery/:galleryId/photos', publicReadLimiter, validateGalleryId, 
 // Serve a single photo (original or thumbnail)
 app.get('/api/gallery/:galleryId/photo/:filename', imageLimiter, validateGalleryId, validateFilename, async (req, res) => {
     const { galleryId, filename } = req.params;
+    const isVideo = isVideoFile(filename);
 
     if (req.query.thumb === '1') {
         const thumbPath = safeResolvePath(safeResolvePath(THUMBNAILS_DIR, galleryId), filename + '.jpg');
 
         if (!fs.existsSync(thumbPath)) {
             // Generate on-the-fly if missing
-            await generateThumbnail(galleryId, filename);
+            if (isVideo) await generateVideoPoster(galleryId, filename);
+            else await generateThumbnail(galleryId, filename);
         }
 
         if (fs.existsSync(thumbPath)) {
             return res.sendFile(thumbPath);
         }
+        // Videos: no fallback to the raw file (it won't render as an image) — 404 cleanly
+        if (isVideo) return res.status(404).send('Poster not available');
         // Fall through to original if thumbnail generation failed
     }
 
@@ -1052,6 +1192,12 @@ app.get('/api/gallery/:galleryId/photo/:filename', imageLimiter, validateGallery
 
         if (fs.existsSync(previewPath)) {
             return res.sendFile(previewPath);
+        }
+
+        if (isVideo) {
+            await generateVideoPoster(galleryId, filename);
+            if (fs.existsSync(previewPath)) return res.sendFile(previewPath);
+            return res.status(404).send('Preview not available');
         }
 
         // Preview missing — serve original immediately and generate in background
@@ -1147,7 +1293,17 @@ app.get('/api/gallery/:galleryId/og-image', imageLimiter, validateGalleryId, asy
         if (!fs.existsSync(galleryPath)) return res.status(404).send('Gallery not found');
         const files = fs.readdirSync(galleryPath).filter(f => !f.startsWith('.'));
         if (files.length === 0) return res.status(404).send('No photos');
-        sourceFile = path.join(galleryPath, files[0]);
+
+        const firstImage = files.find(f => !isVideoFile(f));
+        if (firstImage) {
+            sourceFile = path.join(galleryPath, firstImage);
+        } else {
+            const firstVideo = files[0];
+            await generateVideoPoster(galleryId, firstVideo);
+            const posterPath = safeResolvePath(safeResolvePath(PREVIEWS_DIR, galleryId), firstVideo + '.jpg');
+            if (fs.existsSync(posterPath)) sourceFile = posterPath;
+            else return res.status(404).send('No image available');
+        }
     }
 
     try {
@@ -1196,7 +1352,8 @@ app.get('/api/collection/:collectionId/og-image', imageLimiter, validateCollecti
                 const gPath = safeResolvePath(path.join(DATA_DIR, 'uploads'), gid);
                 if (fs.existsSync(gPath)) {
                     const files = fs.readdirSync(gPath).filter(f => !f.startsWith('.'));
-                    if (files.length > 0) sourceFile = path.join(gPath, files[0]);
+                    const firstImage = files.find(f => !isVideoFile(f));
+                    if (firstImage) sourceFile = path.join(gPath, firstImage);
                 }
             }
         }
@@ -1453,12 +1610,15 @@ app.get('/api/gallery/:galleryId/favorites-ranked', publicReadLimiter, validateG
         .sort((a, b) => b.votes - a.votes)
         .map(({ filename, votes }) => {
             const dims = gallery.dimensions?.[filename];
+            const video = isVideoFile(filename);
             return {
                 filename, votes,
+                type: video ? 'video' : 'image',
                 thumbnailUrl: `/api/gallery/${galleryId}/photo/${encodeURIComponent(filename)}?thumb=1`,
                 previewUrl:   `/api/gallery/${galleryId}/photo/${encodeURIComponent(filename)}?preview=1`,
                 width: dims?.w || null,
-                height: dims?.h || null
+                height: dims?.h || null,
+                duration: video ? (dims?.duration ?? null) : undefined
             };
         });
 
@@ -2066,7 +2226,10 @@ app.listen(PORT, () => {
             });
             if (missing.length > 0) {
                 totalMissing += missing.length;
-                generateGalleryPreviews(galleryId, missing).catch(() => {});
+                const images = missing.filter(f => !isVideoFile(f));
+                const videos = missing.filter(f => isVideoFile(f));
+                generateGalleryPreviews(galleryId, images).catch(() => {});
+                videos.forEach(f => generateVideoPoster(galleryId, f).catch(() => {}));
             }
         }
         if (totalMissing > 0) console.log(`[STARTUP] Generating ${totalMissing} missing preview(s) in background`);

@@ -250,6 +250,36 @@
             line-height: 1.6;
             letter-spacing: 0.03em;
         }
+        .video-badge {
+            position: absolute;
+            top: 6px; right: 6px;
+            width: 26px; height: 26px;
+            background: rgba(0,0,0,0.6);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #fff;
+            pointer-events: none;
+            z-index: 4;
+        }
+        .video-badge svg { width: 13px; height: 13px; }
+        .video-duration {
+            position: absolute;
+            bottom: 6px; right: 6px;
+            background: rgba(0,0,0,0.62);
+            color: #fff;
+            font-size: 11px;
+            font-weight: 600;
+            font-variant-numeric: tabular-nums;
+            font-family: 'Instrument Sans', sans-serif;
+            padding: 2px 7px;
+            border-radius: 3px;
+            pointer-events: none;
+            z-index: 4;
+            line-height: 1.6;
+            letter-spacing: 0.03em;
+        }
         .critique-indicator {
             display: inline-flex;
             align-items: center;
@@ -1037,6 +1067,7 @@
         <!-- Photo -->
         <div class="lightbox-content">
             <img class="lightbox-img" id="lightboxImg">
+            <video class="lightbox-img" id="lightboxVideo" controls playsinline style="display:none"></video>
             <div class="lb-critique-num" id="lbCritiqueNum"></div>
         </div>
 
@@ -1189,6 +1220,18 @@
         const critiqueMode = _params.get('critique') === '1';
         let photos = [];
         let currentPhotoIndex = 0;
+
+        // ── VIDEO HELPERS ──
+        const VIDEO_EXTENSIONS = ['mp4', 'mov', 'webm', 'm4v'];
+        function isVideoPhoto(photo) {
+            if (photo.type) return photo.type === 'video';
+            const ext = (photo.filename.split('.').pop() || '').toLowerCase();
+            return VIDEO_EXTENSIONS.includes(ext);
+        }
+        function formatDuration(seconds) {
+            const m = Math.floor(seconds / 60), s = Math.floor(seconds % 60);
+            return `${m}:${String(s).padStart(2, '0')}`;
+        }
 
         // Visitor identity — persisted in localStorage, shared across all galleries
         function getVisitorId() {
@@ -1451,9 +1494,16 @@
                                 </svg>
                             </a>` : '';
 
+                    const isVideo = isVideoPhoto(photo);
+                    const mediaExtra = isVideo
+                        ? `<div class="video-badge"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg></div>
+                           ${photo.duration ? `<span class="video-duration">${formatDuration(photo.duration)}</span>` : ''}`
+                        : '';
+
                     card.innerHTML = `
                         <div class="loading"></div>
                         <img data-src="${photo.thumbnailUrl}" alt="">
+                        ${mediaExtra}
                         ${critiqueMode ? `<span class="photo-number">${index + 1}</span>` : ''}
                         <div class="photo-overlay">
                             <span class="photo-name"></span>
@@ -1568,7 +1618,7 @@
             const offsets = [-1, 1];
             offsets.forEach(offset => {
                 const i = (index + offset + photos.length) % photos.length;
-                if (photos[i]) {
+                if (photos[i] && !isVideoPhoto(photos[i])) {
                     const img = new Image();
                     img.src = photos[i].previewUrl || photos[i].url;
                 }
@@ -1584,7 +1634,23 @@
                 if (num) { num.textContent = `# ${currentPhotoIndex + 1}`; num.style.display = 'block'; }
             }
 
-            document.getElementById('lightboxImg').src = photo.previewUrl || photo.url;
+            const imgEl = document.getElementById('lightboxImg');
+            const videoEl = document.getElementById('lightboxVideo');
+            if (isVideoPhoto(photo)) {
+                imgEl.style.display = 'none';
+                imgEl.src = '';
+                videoEl.style.display = '';
+                videoEl.poster = photo.thumbnailUrl;
+                if (!videoEl.src.endsWith(photo.url)) videoEl.src = photo.url;
+                videoEl.pause();
+            } else {
+                videoEl.style.display = 'none';
+                videoEl.pause();
+                videoEl.removeAttribute('src');
+                videoEl.load();
+                imgEl.style.display = '';
+                imgEl.src = photo.previewUrl || photo.url;
+            }
 
             // Preload neighbours in background
             preloadAdjacentPreviews(currentPhotoIndex);
@@ -1719,6 +1785,7 @@
         lightbox.addEventListener('click', (e) => {
             if (!_isMobileLB()) return;
             if (_wasGesture) { _wasGesture = false; return; }
+            if (e.target.closest('#lightboxVideo')) return;
             if (e.target.closest('.lb-top-bar') || e.target.closest('.lb-bottom-bar')) return;
             if (_lbBarsVisible) {
                 hideLbBars();
@@ -1731,6 +1798,7 @@
 
         lightbox.addEventListener('touchstart', (e) => {
             if (!_isMobileLB()) return;
+            if (isVideoPhoto(photos[currentPhotoIndex])) return;
 
             if (e.touches.length === 2) {
                 _wasGesture = true;
@@ -1766,6 +1834,7 @@
 
         lightbox.addEventListener('touchmove', (e) => {
             if (!_isMobileLB()) return;
+            if (isVideoPhoto(photos[currentPhotoIndex])) return;
 
             if (_isPinching && e.touches.length >= 2) {
                 const dist = Math.hypot(
