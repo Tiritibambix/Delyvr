@@ -1583,6 +1583,8 @@
         function closeLightbox() {
             document.getElementById('lightbox').classList.remove('active');
             document.body.style.overflow = '';
+            const videoEl = document.getElementById('lightboxVideo');
+            if (videoEl) videoEl.pause();
             if (typeof resetZoom === 'function') resetZoom();
             document.getElementById('kbHint').classList.remove('visible');
             // Quitter le plein écran si actif
