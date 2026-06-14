@@ -393,6 +393,34 @@ function extractVideoFrame(srcPath, destPath, atSeconds = 1) {
     });
 }
 
+// Remux MP4/MOV/M4V so the moov atom is at the front of the file ("fast
+// start"). Many cameras/phones write it at the end, which makes <video>
+// stall on first play (stuck/gray frame) until a seek forces a range
+// request that happens to land on the moov atom. -c copy is a container
+// rewrite only — no re-encoding. No-op for webm (no faststart equivalent)
+// and on any failure; the original file is left untouched either way.
+function remuxVideoFastStart(filePath) {
+    return new Promise((resolve) => {
+        const ext = path.extname(filePath).toLowerCase().slice(1);
+        if (!['mp4', 'mov', 'm4v'].includes(ext)) return resolve(false);
+        const tmpPath = filePath + '.faststart.tmp' + path.extname(filePath);
+        execFile('ffmpeg', ['-y', '-i', filePath, '-c', 'copy', '-movflags', '+faststart', tmpPath],
+            { timeout: 120000 }, (err) => {
+                if (err || !fs.existsSync(tmpPath)) {
+                    try { fs.unlinkSync(tmpPath); } catch (_) {}
+                    return resolve(false);
+                }
+                try {
+                    fs.renameSync(tmpPath, filePath);
+                    resolve(true);
+                } catch (_) {
+                    try { fs.unlinkSync(tmpPath); } catch (_) {}
+                    resolve(false);
+                }
+            });
+    });
+}
+
 // Extract a poster frame from a video and run it through the same sharp
 // pipeline as photo thumbnails/previews. Also captures { w, h, duration }
 // into gallery.dimensions[filename].
@@ -440,6 +468,29 @@ async function generateVideoPoster(galleryId, filename) {
     } finally {
         try { fs.unlinkSync(posterTmp); } catch (_) {}
     }
+}
+
+// Post-upload processing for a single video: fast-start remux (before
+// probing/poster extraction, so duration/poster are read from the final file)
+// then poster generation.
+async function processUploadedVideo(galleryId, filename) {
+    const src = safeResolvePath(safeResolvePath(path.join(DATA_DIR, 'uploads'), galleryId), filename);
+    await remuxVideoFastStart(src);
+    await generateVideoPoster(galleryId, filename);
+}
+
+// One-time, fire-and-forget fast-start remux for videos uploaded before this
+// check existed. Marker file (in tmp/) avoids re-running ffmpeg on every
+// request once a video has been checked, whether or not the remux applied.
+function ensureVideoFastStart(galleryId, filename, filePath) {
+    const ext = path.extname(filename).toLowerCase().slice(1);
+    if (!['mp4', 'mov', 'm4v'].includes(ext)) return;
+    const tmpDir = path.join(DATA_DIR, 'tmp');
+    if (!fs.existsSync(tmpDir)) fs.mkdirSync(tmpDir, { recursive: true });
+    const marker = safeResolvePath(tmpDir, `${galleryId}-${filename}.faststart-checked`);
+    if (fs.existsSync(marker)) return;
+    try { fs.writeFileSync(marker, ''); } catch (_) { return; }
+    remuxVideoFastStart(filePath).catch(() => {});
 }
 
 // Generate a 400px-wide JPEG thumbnail for a single photo
@@ -929,7 +980,7 @@ app.post('/api/gallery/create', requireAuth, generateGalleryId, upload.array('ph
         const videos = gallery.files.filter(f => isVideoFile(f));
         generateGalleryThumbnails(galleryId, images).catch(() => {});
         generateGalleryPreviews(galleryId, images).catch(() => {});
-        videos.forEach(f => generateVideoPoster(galleryId, f).catch(() => {}));
+        videos.forEach(f => processUploadedVideo(galleryId, f).catch(() => {}));
         console.log(`[GALLERY] Created "${gallery.eventName}" (${galleryId}) — ${gallery.files.length} photo(s)`);
     }
 
@@ -965,7 +1016,7 @@ app.post('/api/gallery/:galleryId/upload', requireAuth, validateGalleryId, uploa
         const videos = newFiles.filter(f => isVideoFile(f));
         generateGalleryThumbnails(galleryId, images).catch(() => {});
         generateGalleryPreviews(galleryId, images).catch(() => {});
-        videos.forEach(f => generateVideoPoster(galleryId, f).catch(() => {}));
+        videos.forEach(f => processUploadedVideo(galleryId, f).catch(() => {}));
         console.log(`[UPLOAD] Added ${newFiles.length} photo(s) to "${gallery.eventName}" (${galleryId})`);
     }
 
@@ -1209,6 +1260,7 @@ app.get('/api/gallery/:galleryId/photo/:filename', imageLimiter, validateGallery
     if (!fs.existsSync(filePath)) {
         return res.status(404).send('Photo not found');
     }
+    if (isVideo) ensureVideoFastStart(galleryId, filename, filePath);
     res.sendFile(filePath);
 });
 
