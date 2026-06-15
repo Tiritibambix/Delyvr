@@ -1067,7 +1067,7 @@
         <!-- Photo -->
         <div class="lightbox-content">
             <img class="lightbox-img" id="lightboxImg">
-            <video class="lightbox-img" id="lightboxVideo" controls playsinline preload="metadata" style="display:none"></video>
+            <video class="lightbox-img" id="lightboxVideo" controls playsinline preload="metadata" controlsList="nofullscreen noremoteplayback" disablePictureInPicture style="display:none"></video>
             <div class="lb-critique-num" id="lbCritiqueNum"></div>
         </div>
 
@@ -1687,7 +1687,8 @@
             }
         }
 
-        // Keyboard navigation
+        // Keyboard navigation — capture phase so arrows reach us even when a
+        // focused <video> would otherwise intercept them for seeking.
         document.addEventListener('keydown', (e) => {
             const lightbox = document.getElementById('lightbox');
             if (!lightbox.classList.contains('active')) return;
@@ -1695,7 +1696,7 @@
             if (e.key === 'Escape') closeLightbox();
             if (e.key === 'ArrowLeft') navigateLightbox(-1);
             if (e.key === 'ArrowRight') navigateLightbox(1);
-        });
+        }, { capture: true });
 
         // Close lightbox on background click
         document.getElementById('lightbox').addEventListener('click', (e) => {
@@ -1800,9 +1801,9 @@
 
         lightbox.addEventListener('touchstart', (e) => {
             if (!_isMobileLB()) return;
-            if (isVideoPhoto(photos[currentPhotoIndex])) return;
+            const isVideo = isVideoPhoto(photos[currentPhotoIndex]);
 
-            if (e.touches.length === 2) {
+            if (!isVideo && e.touches.length === 2) {
                 _wasGesture = true;
                 _isPinching = true;
                 _isPanning = false;
@@ -1823,9 +1824,11 @@
 
             if (e.touches.length !== 1) return;
             _isPinching = false;
+            // Always record the single-touch start position, even for video —
+            // touchend's swipe-nav calc needs it, and pinch/pan don't apply to video.
             _t0StartX = e.touches[0].clientX;
             _t0StartY = e.touches[0].clientY;
-            if (_isZoomed()) {
+            if (!isVideo && _isZoomed()) {
                 _isPanning = true;
                 _panBaseX = _panX;
                 _panBaseY = _panY;
