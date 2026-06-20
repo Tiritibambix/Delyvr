@@ -3504,6 +3504,22 @@
             }
         }
 
+        async function toggleCollectionComments(collectionId, enabled, checkbox) {
+            try {
+                const res = await fetch(`/api/collection/${collectionId}/comments-enabled`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ enabled })
+                });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.error || 'Error');
+                checkbox.checked = data.commentsEnabled;
+            } catch (e) {
+                checkbox.checked = !enabled;
+                alert('Error: ' + e.message);
+            }
+        }
+
         async function resetViews(galleryId) {
             if (!confirm('Reset view count for this gallery?')) return;
             try {
@@ -3603,6 +3619,14 @@
                                         <span class="toggle-track"></span>
                                     </span>
                                     Downloads
+                                </label>
+                                <label class="downloads-toggle" title="Allow clients to comment on photos">
+                                    <span class="toggle-switch">
+                                        <input type="checkbox" ${c.commentsEnabled !== false ? 'checked' : ''}
+                                               onchange="toggleCollectionComments('${c.id}', this.checked, this)">
+                                        <span class="toggle-track"></span>
+                                    </span>
+                                    Comments
                                 </label>
                             </div>
                         </div>

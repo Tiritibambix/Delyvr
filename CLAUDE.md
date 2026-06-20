@@ -170,7 +170,7 @@ All filesystem paths incorporating user-controlled values go through `safeResolv
 | `authLimiter` | 10 / 15 min | `POST /api/auth/verify` |
 | `imageLimiter` | 600 / min | Photo and OG image serving |
 | `publicReadLimiter` | 300 / min | All public GET routes |
-| `publicWriteLimiter` | 120 / min | `POST /favorites` |
+| `publicWriteLimiter` | 120 / min | `POST /favorites`, `POST /comments` |
 | `downloadLimiter` | 10 / min | ZIP downloads |
 | `adminLimiter` | 60 / min | Admin routes with filesystem access |
 
@@ -248,6 +248,8 @@ Gallery OG images are generated at `GET /api/gallery/:id/og-image`, cached in `o
 
 Clients can leave a text comment on individual photos/videos from the lightbox. Comments are **public** — every visitor of the gallery sees every comment under a given photo (guestbook model, not private feedback-to-photographer), confirmed as the intended behavior. `gallery.commentsEnabled` (default `true`, same `!== false` convention as `downloadsEnabled`) lets the photographer turn this off per gallery via the "Comments" toggle next to "Downloads" on each admin gallery card (`PATCH /api/gallery/:id/comments-enabled`).
 
+**Collection-level toggle**: mirrors the existing `downloadsEnabled`/`isGalleryBlockedByCollection()` pattern exactly. `collection.commentsEnabled` (default `true`) is toggled via `PATCH /api/collection/:id/comments-enabled` and a "Comments" switch next to "Downloads" on each admin collection card (`toggleCollectionComments()`). `isGalleryBlockedByCollectionForComments(galleryId)` checks whether any collection containing the gallery has `commentsEnabled === false`; it's combined with the gallery's own `commentsEnabled` in `GET /api/gallery/:id/info`, `GET /api/gallery/:id/photos` (both consumed by `preview.html` to show/hide the comment button), and enforced server-side as a 403 in `POST /api/gallery/:id/comments`. A gallery's comments can therefore be turned off either directly or by being in a collection with comments disabled — same precedence as downloads.
+
 - **Identification**: reuses the same anonymous `visitorId` (localStorage) already used for favorites — no accounts. Additionally, a self-declared display **name is optional**: the first time a visitor opens the comment drawer, an editable "Your name" field is shown; once they post, the name is saved to `localStorage` (`delyvr_commenter_name`, separate from `visitorId`) and reused for later comments (with a "change name" link to edit it). Empty name → displayed as "Guest". No verification of any kind.
 - **Storage**: `gallery.comments[filename]` is an array of `{ id (uuidv4), visitorId, name, text, createdAt }`, oldest first. `POST /api/gallery/:id/comments` validates and trims `text` (required, max 500 chars) and `name` (optional, max 60 chars), strips control characters, and 403s if `commentsEnabled === false`.
 - **Routes**: `POST .../comments` (public, `publicWriteLimiter`) to add; `GET .../comments-public?filename=X` (public, `publicReadLimiter`) to fetch one photo's thread — fetched lazily only when its drawer is opened, never preloaded for the whole gallery; `GET .../comments` (admin) flattened across all photos; `DELETE .../comments/:filename/:commentId` (admin) removes a single spam comment; `DELETE .../comments` (admin) clears all, mirroring `resetFavorites()`. `GET .../photos` also returns `commentCount` per photo so the grid badge doesn't need an extra request.
@@ -324,6 +326,8 @@ Gallery names use `contenteditable="false"` by default. Double-clicking (or clic
 | `GET` | `/api/collections` | ✓ | List collections |
 | `GET` | `/api/collection/:id` | | Collection info + totalSizeBytes |
 | `POST` | `/api/collection/:id/rename` | ✓ | Rename |
+| `PATCH` | `/api/collection/:id/downloads` | ✓ | Toggle downloads |
+| `PATCH` | `/api/collection/:id/comments-enabled` | ✓ | Toggle comments |
 | `POST` | `/api/collection/:id/background` | ✓ | Upload/replace cover |
 | `GET` | `/api/collection/:id/background` | | Serve cover; `?thumb=1` 200px, `?card=1` 800px |
 | `GET` | `/api/collection/:id/og-image` | | Generate/serve collection OG image |

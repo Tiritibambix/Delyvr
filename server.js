@@ -1234,7 +1234,7 @@ app.get('/api/gallery/:galleryId/photos', publicReadLimiter, validateGalleryId, 
     res.json({
         id: galleryId,
         eventName: gallery ? gallery.eventName : 'Untitled Event',
-        commentsEnabled: gallery ? gallery.commentsEnabled !== false : true,
+        commentsEnabled: gallery ? (gallery.commentsEnabled !== false && !isGalleryBlockedByCollectionForComments(galleryId)) : true,
         photos
     });
 });
@@ -1291,6 +1291,16 @@ app.get('/api/gallery/:galleryId/photo/:filename', imageLimiter, validateGallery
 function isGalleryBlockedByCollection(galleryId) {
     for (const collection of collections.values()) {
         if (collection.galleryIds.includes(galleryId) && collection.downloadsEnabled === false) {
+            return true;
+        }
+    }
+    return false;
+}
+
+// Returns true if any collection containing this gallery has commentsEnabled === false
+function isGalleryBlockedByCollectionForComments(galleryId) {
+    for (const collection of collections.values()) {
+        if (collection.galleryIds.includes(galleryId) && collection.commentsEnabled === false) {
             return true;
         }
     }
@@ -1550,7 +1560,7 @@ app.get('/api/gallery/:galleryId/info', publicReadLimiter, validateGalleryId, (r
         downloadsEnabled: gallery ? (gallery.downloadsEnabled !== false && !isGalleryBlockedByCollection(galleryId)) : true,
         downloadCount: gallery ? (gallery.downloadCount || 0) : 0,
         viewCount: gallery ? (gallery.viewCount || 0) : 0,
-        commentsEnabled: gallery ? gallery.commentsEnabled !== false : true
+        commentsEnabled: gallery ? (gallery.commentsEnabled !== false && !isGalleryBlockedByCollectionForComments(galleryId)) : true
     });
 });
 
@@ -1826,6 +1836,9 @@ app.post('/api/gallery/:galleryId/comments', publicWriteLimiter, validateGallery
     if (gallery.commentsEnabled === false) {
         return res.status(403).json({ error: 'Comments are disabled for this gallery' });
     }
+    if (isGalleryBlockedByCollectionForComments(galleryId)) {
+        return res.status(403).json({ error: 'Comments are disabled for this collection' });
+    }
 
     const cleanText = text.trim().replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, '').substring(0, 500);
     if (cleanText.length === 0) {
@@ -1965,7 +1978,8 @@ app.get('/api/collections', adminLimiter, requireAuth, (req, res) => {
             galleryIds: c.galleryIds,
             collectionUrl: `${baseUrl}/collection/${c.id}`,
             hasBackground: [...bgFilesC].some(f => f.startsWith(`collection-${c.id}`)),
-            downloadsEnabled: c.downloadsEnabled !== false
+            downloadsEnabled: c.downloadsEnabled !== false,
+            commentsEnabled: c.commentsEnabled !== false
         }));
     res.json(list);
 });
@@ -2189,6 +2203,17 @@ app.patch('/api/collection/:collectionId/downloads', adminLimiter, requireAuth, 
     collection.downloadsEnabled = enabled;
     saveCollections();
     res.json({ success: true, downloadsEnabled: collection.downloadsEnabled });
+});
+
+// Toggle comments on/off for a collection
+app.patch('/api/collection/:collectionId/comments-enabled', adminLimiter, requireAuth, validateCollectionId, (req, res) => {
+    const { collectionId } = req.params;
+    const collection = collections.get(collectionId);
+    if (!collection) return res.status(404).json({ error: 'Collection not found' });
+    const enabled = req.body.enabled !== false;
+    collection.commentsEnabled = enabled;
+    saveCollections();
+    res.json({ success: true, commentsEnabled: collection.commentsEnabled });
 });
 
 // Delete a collection (admin only — does NOT delete the galleries)

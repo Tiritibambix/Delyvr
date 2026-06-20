@@ -46,6 +46,8 @@ When you share a gallery link with a client, here is what they get:
 
 **Favorites:** Clients can heart the photos they love, from the grid or inside the lightbox. Each person gets their own anonymous vote, so multiple people reviewing the same gallery don't overwrite each other's picks. You see the results sorted by vote count in your dashboard.
 
+**Comments:** Clients can leave a comment on any photo or video from the lightbox, with an optional name (no account needed — just like favorites, it's all anonymous unless they choose to type a name). Comments are public: everyone viewing the gallery sees the same conversation under each photo, like a guestbook. You can turn comments off for any gallery from your dashboard.
+
 **Language:** The client pages automatically detect the browser language and display in English, French, Spanish, Portuguese, or Italian.
 
 **Branding:** Your logo appears on every page. Your Instagram, website, and other social links appear in the footer. The whole thing looks like yours.
@@ -82,9 +84,13 @@ You can also add a cover image (hero photo) to each gallery. This appears as the
 
 **Downloads toggle:** Each gallery has a Downloads switch. Turn it off for draft galleries where you want clients to mark favorites before you release the full files.
 
+**Comments toggle:** Each gallery also has a Comments switch, on by default. Turn it off for galleries where you don't want a public comment wall — the comment button simply disappears from the lightbox for clients.
+
 **Gallery stats:** Each gallery shows how many times the ZIP has been downloaded and how many unique visitors have viewed it.
 
 **Favorites:** Click View on a gallery to see which photos were hearted and how many times. Click Reset to clear all votes when you start a new review round. You can also export the full list as a CSV file to process selections in your own tools.
+
+**Comments:** Click View on a gallery to open a recap of every commented photo, with each comment's author (or "Guest") and text grouped underneath its thumbnail — the most recently active photo first. Delete individual comments to remove spam, or click Reset to clear the whole gallery.
 
 **Bulk operations:** Click Select in the gallery section header to enter selection mode. Select individual galleries or use Select all. Then enable or disable downloads for all selected galleries at once, add them to a collection, or delete them. Click Cancel or press Escape to exit.
 
@@ -103,6 +109,8 @@ Collections let you group multiple galleries under a single link. The typical se
 Creating a collection: type a name, click Create, then add galleries. There are several ways to do it: use the Add gallery button to open a picker where you can select multiple galleries at once (each shown with its cover photo and count), or drag gallery cards directly from the gallery list and drop them into the collection. Reorder galleries by dragging the pills or using the arrow buttons (always visible on mobile where drag is unreliable).
 
 Each collection can have its own cover image. The collection link shows all galleries with their covers, a total photo count, and a download-all button that packages everything into a ZIP with one subfolder per gallery.
+
+Collections have their own Downloads and Comments toggles, next to each collection's name. Turning either off blocks it for every gallery in the collection, even if that gallery's own toggle is on — useful for disabling comments or downloads across a whole event at once instead of gallery by gallery.
 
 ### Social media previews
 
@@ -219,7 +227,7 @@ The following measures are implemented in the codebase:
 | `authLimiter` | 10 / 15 min | Login endpoint |
 | `imageLimiter` | 600 / min | Photo and OG image serving |
 | `publicReadLimiter` | 300 / min | All public GET routes |
-| `publicWriteLimiter` | 120 / min | Favorites toggle |
+| `publicWriteLimiter` | 120 / min | Favorites toggle, posting comments |
 | `downloadLimiter` | 10 / min | ZIP downloads |
 | `adminLimiter` | 60 / min | Admin routes with filesystem access |
 
@@ -235,6 +243,8 @@ The following measures are implemented in the codebase:
 **Draft workflow:** Create a gallery with Downloads disabled. Share the preview link so clients can mark their favorites. Once you have their picks, enable downloads.
 
 **Critique workflow:** When reviewing photos with fellow photographers, use the critique link (ordered list icon on each gallery card). They see numbered photos and can say "photo 12" instead of describing it. Regular clients use the normal link and never see numbers.
+
+**Comments workflow:** Comments are public to everyone with the gallery link — great for a shared family/wedding gallery where guests react to each other's comments, but turn the Comments toggle off for galleries shared with a single private client if you'd rather they send feedback another way.
 
 **Naming files:** The filename controls sort order in the gallery. Rename files before importing if you want a specific sequence. Accents and special characters in filenames are preserved.
 
@@ -401,6 +411,12 @@ delyvr/
 | `GET` | `/api/gallery/:id/favorites/download` | ✓ | Download favorite photos as ZIP |
 | `GET` | `/api/gallery/:id/favorites-ranked` | | Favorites sorted by votes (used by ranking page) |
 | `GET` | `/favorites/:id` | | Public favorites ranking page |
+| `PATCH` | `/api/gallery/:id/comments-enabled` | ✓ | Enable or disable comments |
+| `POST` | `/api/gallery/:id/comments` | | Add a comment to a photo |
+| `GET` | `/api/gallery/:id/comments-public` | | Comments for one photo (`?filename=`) |
+| `GET` | `/api/gallery/:id/comments` | ✓ | All comments, grouped by photo |
+| `DELETE` | `/api/gallery/:id/comments/:filename/:commentId` | ✓ | Delete a single comment |
+| `DELETE` | `/api/gallery/:id/comments` | ✓ | Delete all comments |
 | `GET` | `/api/galleries` | ✓ | List all active galleries |
 | `DELETE` | `/api/gallery/:id` | ✓ | Move gallery to trash |
 | `GET` | `/api/galleries/trash` | ✓ | List trashed galleries |
@@ -417,6 +433,8 @@ delyvr/
 | `GET` | `/api/collections` | ✓ | List all collections |
 | `GET` | `/api/collection/:id` | | Collection info with galleries |
 | `POST` | `/api/collection/:id/rename` | ✓ | Rename |
+| `PATCH` | `/api/collection/:id/downloads` | ✓ | Enable or disable downloads |
+| `PATCH` | `/api/collection/:id/comments-enabled` | ✓ | Enable or disable comments |
 | `POST` | `/api/collection/:id/background` | ✓ | Upload or replace cover image |
 | `GET` | `/api/collection/:id/background` | | Serve cover image |
 | `GET` | `/api/collection/:id/og-image` | | Serve or generate collection OG image |
