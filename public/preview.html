@@ -280,6 +280,26 @@
             line-height: 1.6;
             letter-spacing: 0.03em;
         }
+        .comment-count-badge {
+            position: absolute;
+            top: 6px; left: 6px;
+            display: flex;
+            align-items: center;
+            gap: 3px;
+            background: rgba(0,0,0,0.62);
+            color: #fff;
+            font-size: 11px;
+            font-weight: 600;
+            font-variant-numeric: tabular-nums;
+            font-family: 'Instrument Sans', sans-serif;
+            padding: 2px 7px;
+            border-radius: 3px;
+            pointer-events: none;
+            z-index: 4;
+            line-height: 1.6;
+            letter-spacing: 0.03em;
+        }
+        .comment-count-badge svg { width: 11px; height: 11px; }
         .critique-indicator {
             display: inline-flex;
             align-items: center;
@@ -554,6 +574,52 @@
             .lightbox-fullscreen-btn { display: none; }
         }
 
+        .lightbox-comment-btn {
+            position: absolute;
+            top: 20px;
+            right: 260px;
+            width: 48px;
+            height: 48px;
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border);
+            border-radius: 50%;
+            color: var(--text-primary);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s;
+            z-index: 1010;
+        }
+        .lightbox-comment-btn svg { width: 18px; height: 18px; }
+        .lightbox-comment-btn:hover {
+            background: var(--bg-secondary);
+            border-color: var(--accent);
+            color: var(--accent);
+        }
+        @media (max-width: 768px) {
+            .lightbox-comment-btn { display: none; }
+        }
+        .lb-comment-count {
+            position: absolute;
+            top: -4px; right: -4px;
+            min-width: 18px;
+            height: 18px;
+            padding: 0 4px;
+            background: var(--accent);
+            color: #1a1a1a;
+            border-radius: 9px;
+            font-size: 10px;
+            font-weight: 700;
+            font-variant-numeric: tabular-nums;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            line-height: 1;
+        }
+        .lb-comment-count.visible { display: flex; }
+        .lb-btn .lb-comment-count { background: var(--accent); color: #1a1a1a; }
+
         .lightbox-favorite-btn.favorited {
             background: #dc3250;
             border-color: #dc3250;
@@ -621,6 +687,7 @@
 
         /* Boutons overlay */
         .lb-btn {
+            position: relative;
             width: 44px; height: 44px;
             border-radius: 50%;
             background: rgba(0,0,0,0.45);
@@ -664,6 +731,178 @@
             background: #fff;
             transform: scale(1.3);
         }
+
+        /* Comment drawer */
+        .comment-drawer-backdrop {
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.5);
+            z-index: 1029;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.25s ease;
+        }
+        .comment-drawer-backdrop.open {
+            opacity: 1;
+            pointer-events: auto;
+        }
+        .comment-drawer {
+            position: fixed;
+            top: 0; right: 0;
+            width: 360px;
+            height: 100vh;
+            background: var(--bg-secondary);
+            border-left: 1px solid var(--border);
+            z-index: 1030;
+            display: flex;
+            flex-direction: column;
+            transform: translateX(100%);
+            transition: transform 0.25s ease;
+        }
+        .comment-drawer.open { transform: translateX(0); }
+        @media (max-width: 768px), (max-height: 500px) {
+            .comment-drawer {
+                top: auto; right: 0; left: 0; bottom: 0;
+                width: 100%;
+                height: 70vh;
+                border-left: none;
+                border-top: 1px solid var(--border);
+                border-radius: 16px 16px 0 0;
+                transform: translateY(100%);
+            }
+            .comment-drawer.open { transform: translateY(0); }
+        }
+        .comment-drawer-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 16px 18px;
+            border-bottom: 1px solid var(--border);
+            flex-shrink: 0;
+        }
+        .comment-drawer-header span {
+            font-weight: 600;
+            font-size: 14px;
+            color: var(--text-primary);
+        }
+        .comment-drawer-close {
+            background: none;
+            border: none;
+            color: var(--text-secondary);
+            font-size: 22px;
+            line-height: 1;
+            cursor: pointer;
+            padding: 0;
+        }
+        .comment-drawer-list {
+            flex: 1;
+            overflow-y: auto;
+            touch-action: pan-y;
+            padding: 16px 18px;
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+        }
+        .comment-row-head {
+            display: flex;
+            align-items: baseline;
+            justify-content: space-between;
+            gap: 8px;
+            margin-bottom: 3px;
+        }
+        .comment-row-name {
+            font-weight: 600;
+            font-size: 12.5px;
+            color: var(--text-primary);
+        }
+        .comment-row-time {
+            font-size: 11px;
+            color: var(--text-secondary);
+            white-space: nowrap;
+            flex-shrink: 0;
+        }
+        .comment-row-text {
+            font-size: 13px;
+            line-height: 1.5;
+            color: var(--text-primary);
+            word-break: break-word;
+            white-space: pre-wrap;
+        }
+        .comment-empty {
+            text-align: center;
+            color: var(--text-secondary);
+            font-size: 13px;
+            padding: 32px 16px;
+        }
+        .comment-drawer-footer {
+            flex-shrink: 0;
+            padding: 12px 16px 16px;
+            border-top: 1px solid var(--border);
+        }
+        .comment-as-row {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 11.5px;
+            color: var(--text-secondary);
+            margin-bottom: 8px;
+        }
+        .comment-as-row strong { color: var(--text-primary); }
+        #commentChangeNameBtn {
+            background: none;
+            border: none;
+            color: var(--accent);
+            font-size: 11.5px;
+            cursor: pointer;
+            padding: 0;
+            text-decoration: underline;
+        }
+        .comment-name-input {
+            width: 100%;
+            box-sizing: border-box;
+            padding: 8px 10px;
+            margin-bottom: 8px;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            background: var(--bg-tertiary);
+            color: var(--text-primary);
+            font-family: inherit;
+            font-size: 12.5px;
+        }
+        .comment-input-row {
+            display: flex;
+            align-items: flex-end;
+            gap: 8px;
+        }
+        .comment-text-input {
+            flex: 1;
+            resize: none;
+            min-height: 38px;
+            max-height: 100px;
+            padding: 9px 12px;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            background: var(--bg-tertiary);
+            color: var(--text-primary);
+            font-family: inherit;
+            font-size: 13px;
+            line-height: 1.4;
+        }
+        .comment-send-btn {
+            flex-shrink: 0;
+            width: 38px;
+            height: 38px;
+            border-radius: 50%;
+            background: var(--accent);
+            border: none;
+            color: #1a1a1a;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+        }
+        .comment-send-btn svg { width: 16px; height: 16px; }
+        .comment-send-btn:disabled { opacity: 0.5; cursor: default; }
 
 
 
@@ -1061,6 +1300,10 @@
                 <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" stroke-linecap="round" stroke-linejoin="round"/>
             </svg>
         </button>
+        <button class="lightbox-comment-btn" id="lightboxCommentBtn" onclick="openCommentDrawer()" title="Comments" aria-label="Comments">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            <span class="lb-comment-count" id="lightboxCommentCount"></span>
+        </button>
         <button class="lightbox-nav lightbox-prev" onclick="navigateLightbox(-1)">‹</button>
         <button class="lightbox-nav lightbox-next" onclick="navigateLightbox(1)">›</button>
 
@@ -1099,6 +1342,33 @@
                 <a class="lb-btn" id="lbMobileDownload" href="#" download aria-label="Télécharger">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 4v12m0 0l-4-4m4 4l4-4M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2" stroke-linecap="round" stroke-linejoin="round"/></svg>
                 </a>
+                <button class="lb-btn" id="lbMobileComment" onclick="openCommentDrawer()" aria-label="Comments">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                    <span class="lb-comment-count" id="lbMobileCommentCount"></span>
+                </button>
+            </div>
+        </div>
+
+        <!-- Comment drawer (desktop: side panel, mobile: bottom sheet) -->
+        <div class="comment-drawer-backdrop" id="commentDrawerBackdrop" onclick="closeCommentDrawer()"></div>
+        <div class="comment-drawer" id="commentDrawer">
+            <div class="comment-drawer-header">
+                <span id="commentDrawerTitle"></span>
+                <button class="comment-drawer-close" onclick="closeCommentDrawer()" aria-label="Close">×</button>
+            </div>
+            <div class="comment-drawer-list" id="commentDrawerList"></div>
+            <div class="comment-drawer-footer">
+                <div class="comment-as-row" id="commentAsRow" style="display:none;">
+                    <span id="commentAsText"></span>
+                    <button type="button" id="commentChangeNameBtn"></button>
+                </div>
+                <input type="text" id="commentNameInput" class="comment-name-input" maxlength="60">
+                <div class="comment-input-row">
+                    <textarea id="commentTextInput" class="comment-text-input" maxlength="500" rows="1"></textarea>
+                    <button class="comment-send-btn" id="commentSendBtn" onclick="submitComment()" aria-label="Send">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                    </button>
+                </div>
             </div>
         </div>
     </div>
@@ -1128,7 +1398,16 @@
                 notFoundText: 'This gallery may have been removed or the link is incorrect.',
                 backToCollection: '← Back to collection',
                 favAdded: '♥ Saved to favorites',
-                favRemoved: 'Removed from favorites'
+                favRemoved: 'Removed from favorites',
+                comments: 'Comments',
+                commentPlaceholder: 'Add a comment...',
+                commentSend: 'Send',
+                commentYourName: 'Your name (optional)',
+                commentChangeName: 'Change name',
+                commentGuest: 'Guest',
+                commentPosted: 'Comment posted',
+                commentError: 'Could not post comment',
+                commentEmpty: 'No comments yet. Be the first!'
             },
             pt: {
                 yourPhotos: 'Suas Fotos',
@@ -1142,7 +1421,16 @@
                 notFoundText: 'Esta galeria pode ter sido removida ou o link está incorreto.',
                 backToCollection: '← Voltar à coleção',
                 favAdded: '♥ Salvo nos favoritos',
-                favRemoved: 'Removido dos favoritos'
+                favRemoved: 'Removido dos favoritos',
+                comments: 'Comentários',
+                commentPlaceholder: 'Adicione um comentário...',
+                commentSend: 'Enviar',
+                commentYourName: 'Seu nome (opcional)',
+                commentChangeName: 'Alterar nome',
+                commentGuest: 'Convidado',
+                commentPosted: 'Comentário publicado',
+                commentError: 'Não foi possível publicar o comentário',
+                commentEmpty: 'Ainda não há comentários. Seja o primeiro!'
             },
             es: {
                 yourPhotos: 'Tus Fotos',
@@ -1156,7 +1444,16 @@
                 notFoundText: 'Esta galería puede haber sido eliminada o el enlace es incorrecto.',
                 backToCollection: '← Volver a la colección',
                 favAdded: '♥ Guardado en favoritos',
-                favRemoved: 'Eliminado de favoritos'
+                favRemoved: 'Eliminado de favoritos',
+                comments: 'Comentarios',
+                commentPlaceholder: 'Añade un comentario...',
+                commentSend: 'Enviar',
+                commentYourName: 'Tu nombre (opcional)',
+                commentChangeName: 'Cambiar nombre',
+                commentGuest: 'Invitado',
+                commentPosted: 'Comentario publicado',
+                commentError: 'No se pudo publicar el comentario',
+                commentEmpty: 'Aún no hay comentarios. ¡Sé el primero!'
             },
             it: {
                 yourPhotos: 'Le Tue Foto',
@@ -1170,7 +1467,16 @@
                 notFoundText: 'Questa galleria potrebbe essere stata rimossa o il link non è corretto.',
                 backToCollection: '← Torna alla collezione',
                 favAdded: '♥ Salvato nei preferiti',
-                favRemoved: 'Rimosso dai preferiti'
+                favRemoved: 'Rimosso dai preferiti',
+                comments: 'Commenti',
+                commentPlaceholder: 'Aggiungi un commento...',
+                commentSend: 'Invia',
+                commentYourName: 'Il tuo nome (opzionale)',
+                commentChangeName: 'Cambia nome',
+                commentGuest: 'Ospite',
+                commentPosted: 'Commento pubblicato',
+                commentError: 'Impossibile pubblicare il commento',
+                commentEmpty: 'Ancora nessun commento. Sii il primo!'
             },
             fr: {
                 yourPhotos: 'Vos Photos',
@@ -1184,7 +1490,16 @@
                 notFoundText: 'Cette galerie a peut-être été supprimée ou le lien est incorrect.',
                 backToCollection: 'Retour à la collection',
                 favAdded: '♥ Ajouté aux favoris',
-                favRemoved: 'Retiré des favoris'
+                favRemoved: 'Retiré des favoris',
+                comments: 'Commentaires',
+                commentPlaceholder: 'Ajouter un commentaire...',
+                commentSend: 'Envoyer',
+                commentYourName: 'Votre nom (optionnel)',
+                commentChangeName: 'Changer de nom',
+                commentGuest: 'Invité',
+                commentPosted: 'Commentaire publié',
+                commentError: 'Impossible de publier le commentaire',
+                commentEmpty: 'Aucun commentaire pour le moment. Soyez le premier !'
             }
         };
 
@@ -1210,6 +1525,14 @@
         document.getElementById('loadingState').textContent = t.loadingGallery;
         document.getElementById('notFoundTitle').textContent = t.notFoundTitle;
         document.getElementById('notFoundText').textContent = t.notFoundText;
+        document.getElementById('commentTextInput').placeholder = t.commentPlaceholder;
+        document.getElementById('commentNameInput').placeholder = t.commentYourName;
+        document.getElementById('commentChangeNameBtn').textContent = t.commentChangeName;
+        document.getElementById('commentSendBtn').title = t.commentSend;
+        document.getElementById('commentSendBtn').setAttribute('aria-label', t.commentSend);
+        document.getElementById('lightboxCommentBtn').title = t.comments;
+        document.getElementById('lightboxCommentBtn').setAttribute('aria-label', t.comments);
+        document.getElementById('lbMobileComment').setAttribute('aria-label', t.comments);
 
 
         applyTheme();
@@ -1244,17 +1567,30 @@
         }
         const visitorId = getVisitorId();
 
+        // Commenter display name — separate from visitorId, optional, self-declared
+        function getCommenterName() {
+            return localStorage.getItem('delyvr_commenter_name') || '';
+        }
+        function setCommenterName(name) {
+            if (name) localStorage.setItem('delyvr_commenter_name', name);
+            else localStorage.removeItem('delyvr_commenter_name');
+        }
+
         // Favorites state — only this visitor's favorites
         let localFavorites = new Set();
+        let commentsEnabled = true;
 
-        let _favToastTimer = null;
-        function showFavToast(added) {
+        let _toastTimer = null;
+        function showToast(message) {
             const el = document.getElementById('favToast');
             if (!el) return;
-            el.textContent = added ? t.favAdded : t.favRemoved;
+            el.textContent = message;
             el.classList.add('visible');
-            clearTimeout(_favToastTimer);
-            _favToastTimer = setTimeout(() => el.classList.remove('visible'), 2000);
+            clearTimeout(_toastTimer);
+            _toastTimer = setTimeout(() => el.classList.remove('visible'), 2000);
+        }
+        function showFavToast(added) {
+            showToast(added ? t.favAdded : t.favRemoved);
         }
 
         async function toggleFavorite(filename) {
@@ -1305,6 +1641,194 @@
             if (photo) toggleFavorite(photo.filename);
         }
 
+        // ── COMMENTS ──
+        let _commentDrawerFilename = null;
+        let _commentDrawerComments = [];
+
+        function setCommentButtonsVisible(visible) {
+            const display = visible ? '' : 'none';
+            document.getElementById('lightboxCommentBtn').style.display = display;
+            const mobileBtn = document.getElementById('lbMobileComment');
+            if (mobileBtn) mobileBtn.style.display = display;
+        }
+
+        function updateCommentButtonBadges(count) {
+            [document.getElementById('lightboxCommentCount'), document.getElementById('lbMobileCommentCount')].forEach(el => {
+                if (!el) return;
+                el.textContent = count > 0 ? (count > 99 ? '99+' : String(count)) : '';
+                el.classList.toggle('visible', count > 0);
+            });
+        }
+
+        // Updates the grid badge, the lightbox button badge (if viewing this photo),
+        // and the in-memory photos[] cache so subsequent re-renders stay correct.
+        function updateCommentBadge(filename, count) {
+            const photo = photos.find(p => p.filename === filename);
+            if (photo) photo.commentCount = count;
+
+            const card = document.querySelector(`.photo-card[data-filename="${CSS.escape(filename)}"]`);
+            if (card) {
+                let badge = card.querySelector('.comment-count-badge');
+                if (count > 0) {
+                    if (!badge) {
+                        badge = document.createElement('div');
+                        badge.className = 'comment-count-badge';
+                        badge.innerHTML = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg><span></span>';
+                        card.appendChild(badge);
+                    }
+                    badge.querySelector('span').textContent = count;
+                } else if (badge) {
+                    badge.remove();
+                }
+            }
+
+            if (photos[currentPhotoIndex] && photos[currentPhotoIndex].filename === filename) {
+                updateCommentButtonBadges(count);
+            }
+        }
+
+        function formatRelativeTime(iso) {
+            const diffMs = Date.now() - new Date(iso).getTime();
+            const mins = Math.floor(diffMs / 60000);
+            if (mins < 1) return locale === 'fr' ? 'À l\'instant' : 'Just now';
+            if (mins < 60) return `${mins}m`;
+            const hours = Math.floor(mins / 60);
+            if (hours < 24) return `${hours}h`;
+            const days = Math.floor(hours / 24);
+            if (days < 7) return `${days}d`;
+            return new Date(iso).toLocaleDateString(locale);
+        }
+
+        // Built via textContent only — comment text/name are free-form user input,
+        // never inserted as innerHTML.
+        function renderCommentRow(c) {
+            const row = document.createElement('div');
+            row.className = 'comment-row';
+            const head = document.createElement('div');
+            head.className = 'comment-row-head';
+            const nameEl = document.createElement('span');
+            nameEl.className = 'comment-row-name';
+            nameEl.textContent = c.name || t.commentGuest;
+            const timeEl = document.createElement('span');
+            timeEl.className = 'comment-row-time';
+            timeEl.textContent = formatRelativeTime(c.createdAt);
+            head.appendChild(nameEl);
+            head.appendChild(timeEl);
+            const textEl = document.createElement('div');
+            textEl.className = 'comment-row-text';
+            textEl.textContent = c.text;
+            row.appendChild(head);
+            row.appendChild(textEl);
+            return row;
+        }
+
+        function refreshCommentNameUI() {
+            const name = getCommenterName();
+            const asRow = document.getElementById('commentAsRow');
+            const nameInput = document.getElementById('commentNameInput');
+            if (name) {
+                document.getElementById('commentAsText').textContent = name;
+                asRow.style.display = 'flex';
+                nameInput.style.display = 'none';
+            } else {
+                asRow.style.display = 'none';
+                nameInput.style.display = '';
+            }
+        }
+        document.getElementById('commentChangeNameBtn').addEventListener('click', () => {
+            document.getElementById('commentAsRow').style.display = 'none';
+            const nameInput = document.getElementById('commentNameInput');
+            nameInput.style.display = '';
+            nameInput.value = getCommenterName();
+            nameInput.focus();
+        });
+        document.getElementById('commentTextInput').addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                submitComment();
+            }
+        });
+
+        function openCommentDrawer() {
+            if (!commentsEnabled) return;
+            const photo = photos[currentPhotoIndex];
+            if (!photo) return;
+            _commentDrawerFilename = photo.filename;
+            document.getElementById('commentDrawer').classList.add('open');
+            document.getElementById('commentDrawerBackdrop').classList.add('open');
+            refreshCommentNameUI();
+            loadCommentsForCurrentPhoto();
+        }
+
+        function closeCommentDrawer() {
+            document.getElementById('commentDrawer').classList.remove('open');
+            document.getElementById('commentDrawerBackdrop').classList.remove('open');
+        }
+
+        function renderCommentDrawerList() {
+            const list = document.getElementById('commentDrawerList');
+            list.innerHTML = '';
+            document.getElementById('commentDrawerTitle').textContent = `${t.comments} (${_commentDrawerComments.length})`;
+            if (_commentDrawerComments.length === 0) {
+                const empty = document.createElement('div');
+                empty.className = 'comment-empty';
+                empty.textContent = t.commentEmpty;
+                list.appendChild(empty);
+                return;
+            }
+            _commentDrawerComments.forEach(c => list.appendChild(renderCommentRow(c)));
+            list.scrollTop = list.scrollHeight;
+        }
+
+        async function loadCommentsForCurrentPhoto() {
+            const filename = _commentDrawerFilename;
+            try {
+                const res = await fetch(`/api/gallery/${galleryId}/comments-public?filename=${encodeURIComponent(filename)}`);
+                const json = res.ok ? await res.json() : { comments: [] };
+                if (_commentDrawerFilename !== filename) return; // navigated away while loading
+                _commentDrawerComments = json.comments || [];
+            } catch (e) {
+                if (_commentDrawerFilename !== filename) return;
+                _commentDrawerComments = [];
+            }
+            renderCommentDrawerList();
+        }
+
+        async function submitComment() {
+            const textInput = document.getElementById('commentTextInput');
+            const text = textInput.value.trim();
+            if (!text || !_commentDrawerFilename) return;
+            const filename = _commentDrawerFilename;
+            const nameInput = document.getElementById('commentNameInput');
+            const name = (nameInput.style.display !== 'none' ? nameInput.value.trim() : getCommenterName()) || '';
+
+            const optimistic = { id: 'tmp-' + Date.now(), name: name || null, text, createdAt: new Date().toISOString() };
+            _commentDrawerComments.push(optimistic);
+            renderCommentDrawerList();
+            textInput.value = '';
+            updateCommentBadge(filename, _commentDrawerComments.length);
+
+            try {
+                const res = await fetch(`/api/gallery/${galleryId}/comments`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ filename, visitorId, name, text })
+                });
+                if (!res.ok) throw new Error('failed');
+                const json = await res.json();
+                const idx = _commentDrawerComments.findIndex(c => c.id === optimistic.id);
+                if (idx !== -1 && json.comment) _commentDrawerComments[idx] = json.comment;
+                if (_commentDrawerFilename === filename) renderCommentDrawerList();
+                if (name) { setCommenterName(name); refreshCommentNameUI(); }
+                showToast(t.commentPosted);
+            } catch (e) {
+                _commentDrawerComments = _commentDrawerComments.filter(c => c.id !== optimistic.id);
+                if (_commentDrawerFilename === filename) renderCommentDrawerList();
+                updateCommentBadge(filename, _commentDrawerComments.length);
+                showToast(t.commentError);
+            }
+        }
+
         async function loadGallery() {
             try {
                 // Get gallery info
@@ -1318,6 +1842,8 @@
                 const data = await photosRes.json();
                 
                 photos = data.photos;
+                commentsEnabled = data.commentsEnabled !== false;
+                setCommentButtonsVisible(commentsEnabled);
 
                 // Hide loading, show content
                 document.getElementById('loadingState').style.display = 'none';
@@ -1481,6 +2007,7 @@
 
                     const card = document.createElement('div');
                     card.className = 'photo-card';
+                    card.dataset.filename = photo.filename;
                     card.style.width = (row.height * ratio) + 'px';
                     card.style.height = row.height + 'px';
                     card.onclick = () => openLightbox(index);
@@ -1499,11 +2026,17 @@
                         ? `<div class="video-badge"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg></div>
                            ${photo.duration ? `<span class="video-duration">${formatDuration(photo.duration)}</span>` : ''}`
                         : '';
+                    const commentBadge = (photo.commentCount > 0) ? `
+                        <div class="comment-count-badge">
+                            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>
+                            ${photo.commentCount}
+                        </div>` : '';
 
                     card.innerHTML = `
                         <div class="loading"></div>
                         <img data-src="${photo.thumbnailUrl}" alt="">
                         ${mediaExtra}
+                        ${commentBadge}
                         ${critiqueMode ? `<span class="photo-number">${index + 1}</span>` : ''}
                         <div class="photo-overlay">
                             <span class="photo-name"></span>
@@ -1585,6 +2118,7 @@
             document.body.style.overflow = '';
             const videoEl = document.getElementById('lightboxVideo');
             if (videoEl) videoEl.pause();
+            closeCommentDrawer();
             if (typeof resetZoom === 'function') resetZoom();
             document.getElementById('kbHint').classList.remove('visible');
             // Quitter le plein écran si actif
@@ -1630,6 +2164,9 @@
         function updateLightbox() {
             const photo = photos[currentPhotoIndex];
             const downloadUrl = `/api/gallery/${galleryId}/download/${encodeURIComponent(photo.filename)}`;
+
+            closeCommentDrawer();
+            updateCommentButtonBadges(photo.commentCount || 0);
 
             if (critiqueMode) {
                 const num = document.getElementById('lbCritiqueNum');
@@ -1692,6 +2229,12 @@
         document.addEventListener('keydown', (e) => {
             const lightbox = document.getElementById('lightbox');
             if (!lightbox.classList.contains('active')) return;
+            // Let arrow/Escape keys behave normally while typing in the comment drawer
+            // (cursor movement, dismissing an IME, etc.) instead of navigating/closing.
+            if (e.target.closest('#commentDrawer')) {
+                if (e.key === 'Escape') closeCommentDrawer();
+                return;
+            }
 
             if (e.key === 'Escape') closeLightbox();
             if (e.key === 'ArrowLeft') navigateLightbox(-1);
@@ -1790,6 +2333,7 @@
             if (_wasGesture) { _wasGesture = false; return; }
             if (e.target.closest('#lightboxVideo')) return;
             if (e.target.closest('.lb-top-bar') || e.target.closest('.lb-bottom-bar')) return;
+            if (e.target.closest('#commentDrawer')) return;
             if (_lbBarsVisible) {
                 hideLbBars();
                 clearTimeout(_lbHideTimer);
@@ -1801,6 +2345,7 @@
 
         lightbox.addEventListener('touchstart', (e) => {
             if (!_isMobileLB()) return;
+            if (e.target.closest('#commentDrawer')) return;
             const isVideo = isVideoPhoto(photos[currentPhotoIndex]);
 
             if (!isVideo && e.touches.length === 2) {
@@ -1839,6 +2384,7 @@
 
         lightbox.addEventListener('touchmove', (e) => {
             if (!_isMobileLB()) return;
+            if (e.target.closest('#commentDrawer')) return;
             if (isVideoPhoto(photos[currentPhotoIndex])) return;
 
             if (_isPinching && e.touches.length >= 2) {
@@ -1869,6 +2415,7 @@
 
         lightbox.addEventListener('touchend', (e) => {
             if (!_isMobileLB()) return;
+            if (e.target.closest('#commentDrawer')) return;
 
             if (_isPinching) {
                 if (e.touches.length < 2) {

@@ -103,6 +103,10 @@ delyvr/
   },
   dimensions: {             // filename → cached dimensions (and duration for videos)
     [filename: string]: { w: number, h: number, duration?: number }
+  },
+  commentsEnabled: boolean, // default true (missing = true) — per-gallery toggle
+  comments: {               // filename → comments, oldest first
+    [filename: string]: { id: string, visitorId: string, name: string|null, text: string, createdAt: string }[]
   }
 }
 ```
@@ -240,6 +244,17 @@ Gallery OG images are generated at `GET /api/gallery/:id/og-image`, cached in `o
 
 `preview.html` reads `?critique=1` from the URL at load. When set: each photo card shows a numbered badge (bottom-left), the lightbox shows `# N` in the top-left, and a "Critique" indicator appears in the actions bar. The admin copies the critique link (`/preview/:id?critique=1`) using the ordered-list icon button on each gallery card. Regular clients use the plain preview URL and never see numbers.
 
+### Comments
+
+Clients can leave a text comment on individual photos/videos from the lightbox. Comments are **public** — every visitor of the gallery sees every comment under a given photo (guestbook model, not private feedback-to-photographer), confirmed as the intended behavior. `gallery.commentsEnabled` (default `true`, same `!== false` convention as `downloadsEnabled`) lets the photographer turn this off per gallery via the "Comments" toggle next to "Downloads" on each admin gallery card (`PATCH /api/gallery/:id/comments-enabled`).
+
+- **Identification**: reuses the same anonymous `visitorId` (localStorage) already used for favorites — no accounts. Additionally, a self-declared display **name is optional**: the first time a visitor opens the comment drawer, an editable "Your name" field is shown; once they post, the name is saved to `localStorage` (`delyvr_commenter_name`, separate from `visitorId`) and reused for later comments (with a "change name" link to edit it). Empty name → displayed as "Guest". No verification of any kind.
+- **Storage**: `gallery.comments[filename]` is an array of `{ id (uuidv4), visitorId, name, text, createdAt }`, oldest first. `POST /api/gallery/:id/comments` validates and trims `text` (required, max 500 chars) and `name` (optional, max 60 chars), strips control characters, and 403s if `commentsEnabled === false`.
+- **Routes**: `POST .../comments` (public, `publicWriteLimiter`) to add; `GET .../comments-public?filename=X` (public, `publicReadLimiter`) to fetch one photo's thread — fetched lazily only when its drawer is opened, never preloaded for the whole gallery; `GET .../comments` (admin) flattened across all photos for the moderation modal; `DELETE .../comments/:filename/:commentId` (admin) removes a single spam comment; `DELETE .../comments` (admin) clears all, mirroring `resetFavorites()`. `GET .../photos` also returns `commentCount` per photo so the grid badge doesn't need an extra request.
+- **UI**: a speech-bubble button (with an unread-style count badge) sits next to the favorite/download buttons in both the desktop cluster and the mobile bottom bar, opening a drawer — a fixed side panel on desktop, a bottom sheet on mobile — with the thread, an optional name field, and a textarea (Enter to send, Shift+Enter for newline). Posting is optimistic, matching `toggleFavorite()`'s update/revert-on-error shape, with a toast reusing the `#favToast` element (`showToast()` was generalized from `showFavToast()`).
+- **XSS safety**: `preview.html` has no `escapeHtml()` helper and intentionally doesn't need one for this feature — comment rows are built via `document.createElement` + `textContent` only, never `innerHTML`, since comment text is long-form and free-form. `admin.html` already has `escapeHtml()` (used for `eventName`/filenames elsewhere) and reuses it for the moderation modal's `innerHTML` rows.
+- The comment drawer is a child of `.lightbox`, so its own touch/click/keydown handling must opt out of the lightbox's swipe-to-navigate, pinch-zoom, and tap-to-toggle-bars listeners (guarded via `e.target.closest('#commentDrawer')`) and the capture-phase arrow-key navigation listener, otherwise scrolling the comment list or typing would trigger photo navigation.
+
 ### ZIP downloads
 
 Both gallery and collection ZIPs use `archiver` with `store: true` (no compression — JPEGs are already compressed, so this saves CPU without meaningfully increasing size). Content-Disposition uses RFC 5987 encoding (`filename*=UTF-8''...`) with an ASCII fallback for full Unicode support in filenames containing accents, spaces, or special characters. Content-Length is intentionally NOT set because archiver adds variable ZIP metadata during streaming that makes pre-calculation unreliable.
@@ -286,6 +301,12 @@ Gallery names use `contenteditable="false"` by default. Double-clicking (or clic
 | `GET` | `/api/gallery/:id/favorites/download` | ✓ | Download favorite photos as ZIP |
 | `GET` | `/api/gallery/:id/favorites-ranked` | | Public favorites sorted by votes |
 | `GET` | `/favorites/:id` | | Public favorites ranking page |
+| `PATCH` | `/api/gallery/:id/comments-enabled` | ✓ | Toggle comments |
+| `POST` | `/api/gallery/:id/comments` | | Add a comment (public, guestbook-visible) |
+| `GET` | `/api/gallery/:id/comments-public` | | Comments for one photo (`?filename=`) |
+| `GET` | `/api/gallery/:id/comments` | ✓ | All comments, flattened (admin) |
+| `DELETE` | `/api/gallery/:id/comments/:filename/:commentId` | ✓ | Delete one comment |
+| `DELETE` | `/api/gallery/:id/comments` | ✓ | Clear all comments |
 | `GET` | `/api/galleries` | ✓ | List active galleries (excludes deleted) |
 | `DELETE` | `/api/gallery/:id` | ✓ | Soft-delete (move to trash) |
 | `GET` | `/api/galleries/trash` | ✓ | List trashed galleries with daysLeft |

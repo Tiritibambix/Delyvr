@@ -1137,6 +1137,26 @@ app.patch('/api/gallery/:galleryId/downloads', requireAuth, validateGalleryId, (
     res.json({ success: true, downloadsEnabled: gallery.downloadsEnabled });
 });
 
+// Toggle comments on/off for a gallery
+app.patch('/api/gallery/:galleryId/comments-enabled', requireAuth, validateGalleryId, (req, res) => {
+    const { galleryId } = req.params;
+    const gallery = galleries.get(galleryId);
+
+    if (!gallery) {
+        return res.status(404).json({ error: 'Gallery not found' });
+    }
+
+    const enabled = req.body.enabled;
+    if (enabled !== true && enabled !== false) {
+        return res.status(400).json({ error: 'enabled must be a boolean' });
+    }
+
+    gallery.commentsEnabled = enabled;
+    saveGalleries();
+
+    res.json({ success: true, commentsEnabled: gallery.commentsEnabled });
+});
+
 // Rename a gallery
 app.post('/api/gallery/:galleryId/rename', requireAuth, validateGalleryId, (req, res) => {
     const { galleryId } = req.params;
@@ -1192,6 +1212,7 @@ app.get('/api/gallery/:galleryId/photos', publicReadLimiter, validateGalleryId, 
         saveGalleries();
     }
 
+    const comments = gallery && gallery.comments ? gallery.comments : {};
     const photos = files.map(filename => {
         const dims = gallery && gallery.dimensions ? gallery.dimensions[filename] : null;
         const video = isVideoFile(filename);
@@ -1204,7 +1225,8 @@ app.get('/api/gallery/:galleryId/photos', publicReadLimiter, validateGalleryId, 
             downloadUrl: `/api/gallery/${galleryId}/download/${encodeURIComponent(filename)}`,
             width:  dims ? dims.w : null,
             height: dims ? dims.h : null,
-            duration: video ? (dims && dims.duration != null ? dims.duration : null) : undefined
+            duration: video ? (dims && dims.duration != null ? dims.duration : null) : undefined,
+            commentCount: (comments[filename] || []).length
         };
     });
 
@@ -1212,6 +1234,7 @@ app.get('/api/gallery/:galleryId/photos', publicReadLimiter, validateGalleryId, 
     res.json({
         id: galleryId,
         eventName: gallery ? gallery.eventName : 'Untitled Event',
+        commentsEnabled: gallery ? gallery.commentsEnabled !== false : true,
         photos
     });
 });
@@ -1526,7 +1549,8 @@ app.get('/api/gallery/:galleryId/info', publicReadLimiter, validateGalleryId, (r
         totalSizeBytes,
         downloadsEnabled: gallery ? (gallery.downloadsEnabled !== false && !isGalleryBlockedByCollection(galleryId)) : true,
         downloadCount: gallery ? (gallery.downloadCount || 0) : 0,
-        viewCount: gallery ? (gallery.viewCount || 0) : 0
+        viewCount: gallery ? (gallery.viewCount || 0) : 0,
+        commentsEnabled: gallery ? gallery.commentsEnabled !== false : true
     });
 });
 
@@ -1778,6 +1802,123 @@ app.get('/api/gallery/:galleryId/favorites/download', downloadLimiter, requireAu
         if (fs.existsSync(filePath)) archive.file(filePath, { name: filename });
     });
     archive.finalize();
+});
+
+// Add a comment to a photo (public, no auth) — visible to all visitors (guestbook style)
+app.post('/api/gallery/:galleryId/comments', publicWriteLimiter, validateGalleryId, (req, res) => {
+    const { galleryId } = req.params;
+    const { filename, visitorId, name, text } = req.body;
+
+    if (typeof filename !== 'string' || !SAFE_FILENAME_RE.test(filename)) {
+        return res.status(400).json({ error: 'Invalid filename' });
+    }
+    if (typeof visitorId !== 'string' || visitorId.length < 4 || visitorId.length > 64 || !/^[a-zA-Z0-9_-]+$/.test(visitorId)) {
+        return res.status(400).json({ error: 'Invalid visitorId' });
+    }
+    if (typeof text !== 'string') {
+        return res.status(400).json({ error: 'Comment text is required' });
+    }
+
+    const gallery = galleries.get(galleryId);
+    if (!gallery) {
+        return res.status(404).json({ error: 'Gallery not found' });
+    }
+    if (gallery.commentsEnabled === false) {
+        return res.status(403).json({ error: 'Comments are disabled for this gallery' });
+    }
+
+    const cleanText = text.trim().replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, '').substring(0, 500);
+    if (cleanText.length === 0) {
+        return res.status(400).json({ error: 'Comment text is required' });
+    }
+    const trimmedName = typeof name === 'string' ? name.trim().replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, '').substring(0, 60) : '';
+    const cleanName = trimmedName.length > 0 ? trimmedName : null;
+
+    if (!gallery.comments || Array.isArray(gallery.comments)) gallery.comments = {};
+    if (!gallery.comments[filename]) gallery.comments[filename] = [];
+
+    const comment = {
+        id: uuidv4(),
+        visitorId,
+        name: cleanName,
+        text: cleanText,
+        createdAt: new Date().toISOString()
+    };
+    gallery.comments[filename].push(comment);
+    saveGalleries();
+
+    res.json({ success: true, comment, commentCount: gallery.comments[filename].length });
+});
+
+// Get comments for a single photo (public — used by the lightbox comment drawer)
+app.get('/api/gallery/:galleryId/comments-public', publicReadLimiter, validateGalleryId, (req, res) => {
+    const { galleryId } = req.params;
+    const { filename } = req.query;
+
+    if (typeof filename !== 'string' || !SAFE_FILENAME_RE.test(filename)) {
+        return res.status(400).json({ error: 'Invalid filename' });
+    }
+
+    const gallery = galleries.get(galleryId);
+    if (!gallery) {
+        return res.status(404).json({ error: 'Gallery not found' });
+    }
+
+    const comments = (gallery.comments && gallery.comments[filename]) || [];
+    res.json({ comments });
+});
+
+// Get all comments for a gallery (admin only) — flattened across photos, newest first
+app.get('/api/gallery/:galleryId/comments', requireAuth, validateGalleryId, (req, res) => {
+    const { galleryId } = req.params;
+    const gallery = galleries.get(galleryId);
+    if (!gallery) {
+        return res.status(404).json({ error: 'Gallery not found' });
+    }
+
+    const all = gallery.comments || {};
+    const flattened = Object.entries(all)
+        .flatMap(([filename, items]) => items.map(c => ({
+            ...c,
+            filename,
+            thumbnailUrl: `/api/gallery/${galleryId}/photo/${encodeURIComponent(filename)}?thumb=1`
+        })))
+        .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+
+    res.json({ comments: flattened });
+});
+
+// Delete a single comment (admin only) — spam removal
+app.delete('/api/gallery/:galleryId/comments/:filename/:commentId', requireAuth, validateGalleryId, validateFilename, (req, res) => {
+    const { galleryId, filename, commentId } = req.params;
+    const gallery = galleries.get(galleryId);
+    if (!gallery) {
+        return res.status(404).json({ error: 'Gallery not found' });
+    }
+
+    const list = gallery.comments && gallery.comments[filename];
+    const idx = list ? list.findIndex(c => c.id === commentId) : -1;
+    if (idx === -1) {
+        return res.status(404).json({ error: 'Comment not found' });
+    }
+
+    list.splice(idx, 1);
+    if (list.length === 0) delete gallery.comments[filename];
+    saveGalleries();
+    res.json({ success: true });
+});
+
+// Clear all comments for a gallery (admin only)
+app.delete('/api/gallery/:galleryId/comments', requireAuth, validateGalleryId, (req, res) => {
+    const { galleryId } = req.params;
+    const gallery = galleries.get(galleryId);
+    if (!gallery) {
+        return res.status(404).json({ error: 'Gallery not found' });
+    }
+    gallery.comments = {};
+    saveGalleries();
+    console.log(`[GALLERY] Comments reset for "${gallery.eventName}" (${galleryId})`);
+    res.json({ success: true });
 });
 
 // --- Collection routes ---
@@ -2141,10 +2282,12 @@ app.get('/api/galleries', adminLimiter, requireAuth, (req, res) => {
                     hasBackground,
                     downloadUrl: `${baseUrl}/download/${galleryId}`,
                     favoritesCount: Object.keys(gallery.favorites || {}).length,
+                    commentsCount: Object.values(gallery.comments || {}).reduce((sum, arr) => sum + arr.length, 0),
                     viewCount: gallery.viewCount || 0,
                     downloadCount: gallery.downloadCount || 0,
                     collectionId,
-                    downloadsEnabled: gallery.downloadsEnabled !== false
+                    downloadsEnabled: gallery.downloadsEnabled !== false,
+                    commentsEnabled: gallery.commentsEnabled !== false
                 });
             }
         });
