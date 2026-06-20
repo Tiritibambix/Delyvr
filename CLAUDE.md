@@ -257,7 +257,7 @@ All client pages (`customer.html`, `preview.html`, `collection.html`) call `GET 
 
 ### OG images
 
-Gallery OG images are generated at `GET /api/gallery/:id/og-image`, cached in `og-cache/{galleryId}.jpg`. Collection OG images are at `GET /api/collection/:id/og-image`, cached as `og-cache/collection-{collectionId}.jpg`. Both use the background image if set, then fall back to the first photo. The cache is invalidated on background upload, on photo deletion, and via `DELETE /api/gallery/:id/og-image` (admin). The admin "regenerate" button uses the rotate-ccw Lucide icon with a hover tooltip explaining what share previews are.
+Gallery OG images are generated at `GET /api/gallery/:id/og-image`, cached in `og-cache/{galleryId}.jpg`. Collection OG images are at `GET /api/collection/:id/og-image`, cached as `og-cache/collection-{collectionId}.jpg`. Both use the background image if set, then fall back to the first photo. The cache is invalidated on background upload, on photo deletion, and via `DELETE /api/gallery/:id/og-image` / `DELETE /api/collection/:id/og-image` (admin). The admin "regenerate" button uses the rotate-ccw Lucide icon with a hover tooltip explaining what share previews are — present on both gallery cards (`regenerateOG()`) and collection cards (`regenerateCollectionOG()`).
 
 ### Critique mode
 

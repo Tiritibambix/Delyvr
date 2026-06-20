@@ -1666,6 +1666,7 @@
                 copyClientLink: 'Copy client link', copyCritiqueLink: 'Copy critique link (numbered photos)',
                 managePhotos: 'Manage photos', regenerateShare: 'Regenerate share preview',
                 ogTooltip: 'Regenerate the preview image shown when this gallery link is shared on WhatsApp, iMessage or social media.',
+                ogTooltipCollection: 'Regenerate the preview image shown when this collection link is shared on WhatsApp, iMessage or social media.',
                 moveToTrash: 'Move to trash', gallerySingular: 'gallery', galleryPlural: 'galleries',
                 photoSingular: 'photo', photoPlural: 'photos',
                 commentSingular: 'comment', commentPlural: 'comments',
@@ -1780,6 +1781,7 @@
                 copyClientLink: 'Copier le lien client', copyCritiqueLink: 'Copier le lien de critique (photos numérotées)',
                 managePhotos: 'Gérer les photos', regenerateShare: 'Régénérer l\'aperçu de partage',
                 ogTooltip: 'Régénère l\'image d\'aperçu affichée lorsque ce lien de galerie est partagé sur WhatsApp, iMessage ou les réseaux sociaux.',
+                ogTooltipCollection: 'Régénère l\'image d\'aperçu affichée lorsque ce lien de collection est partagé sur WhatsApp, iMessage ou les réseaux sociaux.',
                 moveToTrash: 'Déplacer vers la corbeille', gallerySingular: 'galerie', galleryPlural: 'galeries',
                 photoSingular: 'photo', photoPlural: 'photos',
                 commentSingular: 'commentaire', commentPlural: 'commentaires',
@@ -1894,6 +1896,7 @@
                 copyClientLink: 'Copiar enlace de cliente', copyCritiqueLink: 'Copiar enlace de crítica (fotos numeradas)',
                 managePhotos: 'Gestionar fotos', regenerateShare: 'Regenerar vista previa de compartir',
                 ogTooltip: 'Regenera la imagen de vista previa que se muestra al compartir este enlace de galería en WhatsApp, iMessage o redes sociales.',
+                ogTooltipCollection: 'Regenera la imagen de vista previa que se muestra al compartir este enlace de colección en WhatsApp, iMessage o redes sociales.',
                 moveToTrash: 'Mover a la papelera', gallerySingular: 'galería', galleryPlural: 'galerías',
                 photoSingular: 'foto', photoPlural: 'fotos',
                 commentSingular: 'comentario', commentPlural: 'comentarios',
@@ -2008,6 +2011,7 @@
                 copyClientLink: 'Copiar link do cliente', copyCritiqueLink: 'Copiar link de crítica (fotos numeradas)',
                 managePhotos: 'Gerenciar fotos', regenerateShare: 'Regenerar pré-visualização de compartilhamento',
                 ogTooltip: 'Regenera a imagem de pré-visualização exibida ao compartilhar este link da galeria no WhatsApp, iMessage ou redes sociais.',
+                ogTooltipCollection: 'Regenera a imagem de pré-visualização exibida ao compartilhar este link da coleção no WhatsApp, iMessage ou redes sociais.',
                 moveToTrash: 'Mover para a lixeira', gallerySingular: 'galeria', galleryPlural: 'galerias',
                 photoSingular: 'foto', photoPlural: 'fotos',
                 commentSingular: 'comentário', commentPlural: 'comentários',
@@ -2122,6 +2126,7 @@
                 copyClientLink: 'Copia link cliente', copyCritiqueLink: 'Copia link di critica (foto numerate)',
                 managePhotos: 'Gestisci foto', regenerateShare: 'Rigenera anteprima di condivisione',
                 ogTooltip: 'Rigenera l\'immagine di anteprima mostrata quando questo link della galleria viene condiviso su WhatsApp, iMessage o sui social media.',
+                ogTooltipCollection: 'Rigenera l\'immagine di anteprima mostrata quando questo link della collezione viene condiviso su WhatsApp, iMessage o sui social media.',
                 moveToTrash: 'Sposta nel cestino', gallerySingular: 'galleria', galleryPlural: 'gallerie',
                 photoSingular: 'foto', photoPlural: 'foto',
                 commentSingular: 'commento', commentPlural: 'commenti',
@@ -4402,6 +4407,12 @@
                             <button class="btn-icon" onclick="copyCollectionCritiqueLink('${c.id}', this)" title="${t.copyCritiqueLink}">
                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="10" y1="6" x2="21" y2="6"/><line x1="10" y1="12" x2="21" y2="12"/><line x1="10" y1="18" x2="21" y2="18"/><path d="M4 6h1v4M4 10h2M6 18H4c0-1 2-2 2-3s-1-1.5-2-1" stroke-linecap="round" stroke-linejoin="round"/></svg>
                             </button>
+                            <div class="og-tooltip-wrap">
+                                <button class="btn-icon" onclick="regenerateCollectionOG('${c.id}')" title="${t.regenerateShare}">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
+                                </button>
+                                <div class="og-tooltip">${t.ogTooltipCollection}</div>
+                            </div>
                             <button class="btn-icon btn-icon-danger" onclick="deleteCollection('${c.id}')" title="${t.delete}">
                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
                             </button>
@@ -4963,6 +4974,24 @@
             try {
                 await fetch(`/api/gallery/${galleryId}/og-image`, { method: 'DELETE' });
                 // Show brief confirmation via toast reuse
+                const toast = document.getElementById('uploadToast');
+                const spinner = document.getElementById('toastSpinner');
+                const successIcon = document.getElementById('toastSuccess');
+                const errorIcon = document.getElementById('toastError');
+                const message = document.getElementById('toastMessage');
+                spinner.style.display = 'none'; errorIcon.style.display = 'none';
+                successIcon.style.display = 'block';
+                message.textContent = t.sharePreviewRegenerated;
+                toast.className = 'upload-toast visible success';
+                setTimeout(() => toast.classList.remove('visible', 'success'), 3000);
+            } catch (err) {
+                showError(t.couldNotResetSharePreview);
+            }
+        }
+
+        async function regenerateCollectionOG(collectionId) {
+            try {
+                await fetch(`/api/collection/${collectionId}/og-image`, { method: 'DELETE' });
                 const toast = document.getElementById('uploadToast');
                 const spinner = document.getElementById('toastSpinner');
                 const successIcon = document.getElementById('toastSuccess');
