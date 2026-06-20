@@ -1068,6 +1068,7 @@
             display: flex; align-items: center; gap: 6px;
             font-size: 11px; color: var(--muted); cursor: pointer;
         }
+        .downloads-toggle.blocked-by-collection { opacity: 0.45; }
 
         .lang-select {
             height: 22px; font-size: 11px; color: var(--muted);
@@ -1656,6 +1657,8 @@
                 noGalleriesYet: 'No galleries yet. Create your first one above!',
                 dropOrClick: 'Drop or click', rename: 'Rename',
                 allowDownloads: 'Allow clients to download', allowComments: 'Allow clients to comment on photos',
+                downloadsBlockedByCollection: name => `Downloads are turned off for the collection "${name}". This gallery's own setting will apply again once the collection re-enables downloads.`,
+                commentsBlockedByCollection: name => `Comments are turned off for the collection "${name}". This gallery's own setting will apply again once the collection re-enables comments.`,
                 downloads: 'Downloads', comments: 'Comments', uniqueViews: 'Unique views',
                 reset: 'Reset', totalDownloads: 'Total downloads', view: 'View',
                 inCollection: 'In collection', moveUp: 'Move up', moveDown: 'Move down',
@@ -1768,6 +1771,8 @@
                 noGalleriesYet: 'Aucune galerie pour le moment. Créez la première ci-dessus !',
                 dropOrClick: 'Déposer ou cliquer', rename: 'Renommer',
                 allowDownloads: 'Autoriser les clients à télécharger', allowComments: 'Autoriser les clients à commenter les photos',
+                downloadsBlockedByCollection: name => `Les téléchargements sont désactivés pour la collection « ${name} ». Le réglage propre à cette galerie reprendra effet dès que la collection réactivera les téléchargements.`,
+                commentsBlockedByCollection: name => `Les commentaires sont désactivés pour la collection « ${name} ». Le réglage propre à cette galerie reprendra effet dès que la collection réactivera les commentaires.`,
                 downloads: 'Téléchargements', comments: 'Commentaires', uniqueViews: 'Vues uniques',
                 reset: 'Réinitialiser', totalDownloads: 'Téléchargements totaux', view: 'Voir',
                 inCollection: 'Dans une collection', moveUp: 'Monter', moveDown: 'Descendre',
@@ -1880,6 +1885,8 @@
                 noGalleriesYet: '¡Todavía no hay galerías. Crea la primera arriba!',
                 dropOrClick: 'Soltar o hacer clic', rename: 'Renombrar',
                 allowDownloads: 'Permitir que los clientes descarguen', allowComments: 'Permitir que los clientes comenten las fotos',
+                downloadsBlockedByCollection: name => `Las descargas están desactivadas para la colección "${name}". El ajuste propio de esta galería volverá a aplicarse cuando la colección reactive las descargas.`,
+                commentsBlockedByCollection: name => `Los comentarios están desactivados para la colección "${name}". El ajuste propio de esta galería volverá a aplicarse cuando la colección reactive los comentarios.`,
                 downloads: 'Descargas', comments: 'Comentarios', uniqueViews: 'Visitas únicas',
                 reset: 'Restablecer', totalDownloads: 'Descargas totales', view: 'Ver',
                 inCollection: 'En una colección', moveUp: 'Subir', moveDown: 'Bajar',
@@ -1992,6 +1999,8 @@
                 noGalleriesYet: 'Ainda não há galerias. Crie a primeira acima!',
                 dropOrClick: 'Soltar ou clicar', rename: 'Renomear',
                 allowDownloads: 'Permitir que os clientes baixem', allowComments: 'Permitir que os clientes comentem as fotos',
+                downloadsBlockedByCollection: name => `Os downloads estão desativados para a coleção "${name}". A configuração própria desta galeria voltará a se aplicar quando a coleção reativar os downloads.`,
+                commentsBlockedByCollection: name => `Os comentários estão desativados para a coleção "${name}". A configuração própria desta galeria voltará a se aplicar quando a coleção reativar os comentários.`,
                 downloads: 'Downloads', comments: 'Comentários', uniqueViews: 'Visualizações únicas',
                 reset: 'Redefinir', totalDownloads: 'Downloads totais', view: 'Ver',
                 inCollection: 'Em uma coleção', moveUp: 'Mover para cima', moveDown: 'Mover para baixo',
@@ -2104,6 +2113,8 @@
                 noGalleriesYet: 'Nessuna galleria per il momento. Crea la prima qui sopra!',
                 dropOrClick: 'Trascina o clicca', rename: 'Rinomina',
                 allowDownloads: 'Consenti ai clienti di scaricare', allowComments: 'Consenti ai clienti di commentare le foto',
+                downloadsBlockedByCollection: name => `I download sono disattivati per la collezione "${name}". L'impostazione di questa galleria verrà di nuovo applicata quando la collezione riattiverà i download.`,
+                commentsBlockedByCollection: name => `I commenti sono disattivati per la collezione "${name}". L'impostazione di questa galleria verrà di nuovo applicata quando la collezione riattiverà i commenti.`,
                 downloads: 'Download', comments: 'Commenti', uniqueViews: 'Visualizzazioni univoche',
                 reset: 'Ripristina', totalDownloads: 'Download totali', view: 'Visualizza',
                 inCollection: 'In una collezione', moveUp: 'Sposta su', moveDown: 'Sposta giù',
@@ -3149,7 +3160,11 @@
                     : `<div class="empty-state">${t.noGalleriesYet}</div>`;
                 return;
             }
-            container.innerHTML = items.map(g => `
+            container.innerHTML = items.map(g => {
+                const _col = g.collectionId ? (_collectionsData || []).find(c => c.id === g.collectionId) : null;
+                const _dlBlocked = !!(_col && _col.downloadsEnabled === false);
+                const _cmBlocked = !!(_col && _col.commentsEnabled === false);
+                return `
                 <div class="gallery-item" draggable="true"
                      id="gallery-item-${g.id}"
                      ondragstart="handleGalleryDragStart(event, '${g.id}')"
@@ -3193,7 +3208,7 @@
                         </div>
                         <div class="gallery-meta">${g.fileCount} ${t.photoPlural} · ${new Date(g.created).toLocaleDateString()}${g.collectionId ? ` · <span class="in-collection">${t.inCollection}</span>` : ''}</div>
                         <div class="gallery-bottom">
-                            <label class="downloads-toggle" title="${t.allowDownloads}">
+                            <label class="downloads-toggle ${_dlBlocked ? 'blocked-by-collection' : ''}" title="${_dlBlocked ? t.downloadsBlockedByCollection(_col.name) : t.allowDownloads}">
                                 <span class="toggle-switch">
                                     <input type="checkbox" ${g.downloadsEnabled !== false ? 'checked' : ''}
                                            onchange="toggleDownloads('${g.id}', this.checked, this)">
@@ -3201,7 +3216,7 @@
                                 </span>
                                 ${t.downloads}
                             </label>
-                            <label class="downloads-toggle" title="${t.allowComments}">
+                            <label class="downloads-toggle ${_cmBlocked ? 'blocked-by-collection' : ''}" title="${_cmBlocked ? t.commentsBlockedByCollection(_col.name) : t.allowComments}">
                                 <span class="toggle-switch">
                                     <input type="checkbox" ${g.commentsEnabled !== false ? 'checked' : ''}
                                            onchange="toggleComments('${g.id}', this.checked, this)">
@@ -3258,7 +3273,8 @@
                         </button>
                     </div>
                 </div>
-            `).join('');
+            `;
+            }).join('');
         }
 
         async function setGalleryClientLanguage(galleryId, language) {
@@ -4229,6 +4245,9 @@
                 const data = await res.json();
                 if (!res.ok) throw new Error(data.error || 'Error');
                 checkbox.checked = data.downloadsEnabled;
+                const col = (_collectionsData || []).find(c => c.id === collectionId);
+                if (col) col.downloadsEnabled = data.downloadsEnabled;
+                filterGalleries(document.getElementById('gallerySearch').value);
             } catch (e) {
                 checkbox.checked = !enabled;
                 showError(t.couldNotUpdateDownloadSetting(e.message));
@@ -4245,6 +4264,9 @@
                 const data = await res.json();
                 if (!res.ok) throw new Error(data.error || 'Error');
                 checkbox.checked = data.commentsEnabled;
+                const col = (_collectionsData || []).find(c => c.id === collectionId);
+                if (col) col.commentsEnabled = data.commentsEnabled;
+                filterGalleries(document.getElementById('gallerySearch').value);
             } catch (e) {
                 checkbox.checked = !enabled;
                 showError(t.couldNotUpdateCommentsSetting(e.message));
@@ -4287,6 +4309,9 @@
                 _collectionsData = await res.json();
                 renderCollections(_collectionsData);
                 populateCollectionSelect();
+                if (_galleriesData && _galleriesData.length) {
+                    filterGalleries(document.getElementById('gallerySearch').value);
+                }
             } catch (err) {
                 console.error('Error loading collections:', err);
             }
