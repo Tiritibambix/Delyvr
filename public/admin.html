@@ -189,14 +189,28 @@
         .comments-modal-header { display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; }
         .comments-modal-header h3 { font-size: 15px; font-weight: 600; }
         .comments-modal-close { background: none; border: none; color: var(--muted); font-size: 1.4rem; cursor: pointer; line-height: 1; }
-        .comments-list { overflow-y: auto; flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 10px; }
+        .comments-list { overflow-y: auto; flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 12px; }
         .comments-empty { color: var(--muted); font-size: 13px; text-align: center; padding: 20px 0; }
+        .comment-photo-group {
+            border: 1px solid var(--border); border-radius: 6px; overflow: hidden;
+        }
+        .comment-photo-header {
+            display: flex; align-items: center; gap: 10px;
+            padding: 10px; background: var(--bg3);
+        }
+        .comment-photo-thumb {
+            width: 48px; height: 48px; border-radius: 4px; object-fit: cover; flex-shrink: 0; background: var(--bg3);
+        }
+        .comment-photo-meta { min-width: 0; }
+        .comment-photo-filename {
+            display: block; font-size: 12.5px; font-weight: 600;
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        }
+        .comment-photo-count { font-size: 11px; color: var(--muted); }
+        .comment-photo-items { display: flex; flex-direction: column; }
         .comment-admin-row {
             display: flex; gap: 10px; align-items: flex-start;
-            padding: 10px; border: 1px solid var(--border); border-radius: 6px;
-        }
-        .comment-admin-thumb {
-            width: 44px; height: 44px; border-radius: 4px; object-fit: cover; flex-shrink: 0; background: var(--bg3);
+            padding: 10px; border-top: 1px solid var(--border);
         }
         .comment-admin-body { flex: 1; min-width: 0; }
         .comment-admin-head { display: flex; align-items: baseline; gap: 8px; margin-bottom: 2px; }
@@ -3371,7 +3385,7 @@
                     list.innerHTML = '<p class="comments-empty">No comments yet.</p>';
                     clearBtn.style.display = 'none';
                 } else {
-                    _renderCommentRows(galleryId, data.comments, list);
+                    _renderCommentGroups(galleryId, data.comments, list);
                     clearBtn.style.display = 'inline';
                 }
 
@@ -3381,29 +3395,71 @@
             }
         }
 
-        function _renderCommentRows(galleryId, comments, list) {
-            list.innerHTML = comments.map(c => `
-                <div class="comment-admin-row" id="comment-row-${escapeAttr(c.id)}">
-                    <img class="comment-admin-thumb" src="${c.thumbnailUrl}" alt="" loading="lazy">
-                    <div class="comment-admin-body">
-                        <div class="comment-admin-head">
-                            <span class="comment-admin-name">${escapeHtml(c.name || 'Guest')}</span>
-                            <span class="comment-admin-date">${new Date(c.createdAt).toLocaleString()}</span>
+        // Groups flattened comments by photo so the modal recaps "which photos got
+        // commented, with what" rather than a flat list — photo with the most
+        // recent comment activity shown first.
+        function _renderCommentGroups(galleryId, comments, list) {
+            const groups = new Map();
+            comments.forEach(c => {
+                if (!groups.has(c.filename)) groups.set(c.filename, { thumbnailUrl: c.thumbnailUrl, items: [] });
+                groups.get(c.filename).items.push(c);
+            });
+
+            const filenames = [...groups.keys()].sort((a, b) => {
+                const latest = items => Math.max(...items.map(c => new Date(c.createdAt).getTime()));
+                return latest(groups.get(b).items) - latest(groups.get(a).items);
+            });
+
+            list.innerHTML = filenames.map(filename => {
+                const group = groups.get(filename);
+                const items = [...group.items].sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+                return `
+                <div class="comment-photo-group">
+                    <div class="comment-photo-header">
+                        <img class="comment-photo-thumb" src="${group.thumbnailUrl}" alt="" loading="lazy">
+                        <div class="comment-photo-meta">
+                            <span class="comment-photo-filename">${escapeHtml(filename)}</span>
+                            <span class="comment-photo-count">${items.length} comment${items.length > 1 ? 's' : ''}</span>
                         </div>
-                        <div class="comment-admin-text">${escapeHtml(c.text)}</div>
                     </div>
-                    <button class="comment-admin-delete" onclick="deleteComment('${galleryId}', '${escapeAttr(c.filename)}', '${escapeAttr(c.id)}')" title="Delete">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
-                    </button>
-                </div>`).join('');
+                    <div class="comment-photo-items">
+                        ${items.map(c => `
+                        <div class="comment-admin-row" id="comment-row-${escapeAttr(c.id)}">
+                            <div class="comment-admin-body">
+                                <div class="comment-admin-head">
+                                    <span class="comment-admin-name">${escapeHtml(c.name || 'Guest')}</span>
+                                    <span class="comment-admin-date">${new Date(c.createdAt).toLocaleString()}</span>
+                                </div>
+                                <div class="comment-admin-text">${escapeHtml(c.text)}</div>
+                            </div>
+                            <button class="comment-admin-delete" onclick="deleteComment('${galleryId}', '${escapeAttr(filename)}', '${escapeAttr(c.id)}')" title="Delete">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
+                            </button>
+                        </div>`).join('')}
+                    </div>
+                </div>`;
+            }).join('');
         }
 
         async function deleteComment(galleryId, filename, commentId) {
             try {
                 const res = await fetch(`/api/gallery/${galleryId}/comments/${encodeURIComponent(filename)}/${encodeURIComponent(commentId)}`, { method: 'DELETE' });
                 if (!res.ok) throw new Error('Failed');
+
                 const row = document.getElementById(`comment-row-${CSS.escape(commentId)}`);
+                const group = row ? row.closest('.comment-photo-group') : null;
                 if (row) row.remove();
+
+                if (group) {
+                    const remainingInGroup = group.querySelectorAll('.comment-admin-row').length;
+                    if (remainingInGroup === 0) {
+                        group.remove();
+                    } else {
+                        const countEl = group.querySelector('.comment-photo-count');
+                        if (countEl) countEl.textContent = `${remainingInGroup} comment${remainingInGroup > 1 ? 's' : ''}`;
+                    }
+                }
+
                 const remaining = document.querySelectorAll('#commentsList .comment-admin-row').length;
                 document.getElementById('commentsModalTitle').textContent = `Comments (${remaining})`;
                 if (remaining === 0) {
