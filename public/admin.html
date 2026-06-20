@@ -1071,9 +1071,10 @@
         .downloads-toggle.blocked-by-collection { opacity: 0.45; }
 
         .lang-select {
-            height: 22px; font-size: 11px; color: var(--muted);
+            width: 42px; height: 22px; font-size: 11px; color: var(--muted);
             background: var(--bg3); border: 1px solid var(--border2);
-            border-radius: 3px; padding: 0 4px; font-family: inherit; cursor: pointer;
+            border-radius: 3px; padding: 0 2px; font-family: inherit; cursor: pointer;
+            text-align: center;
         }
 
         .toggle-switch {
@@ -3225,12 +3226,12 @@
                                 ${t.comments}
                             </label>
                             <select class="lang-select" title="${t.clientLanguageTitle}" onchange="setGalleryClientLanguage('${g.id}', this.value)">
-                                <option value="auto" ${g.clientLanguage === 'auto' ? 'selected' : ''}>${t.autoLanguage}</option>
-                                <option value="en" ${g.clientLanguage === 'en' ? 'selected' : ''}>English</option>
-                                <option value="fr" ${g.clientLanguage === 'fr' ? 'selected' : ''}>Français</option>
-                                <option value="es" ${g.clientLanguage === 'es' ? 'selected' : ''}>Español</option>
-                                <option value="pt" ${g.clientLanguage === 'pt' ? 'selected' : ''}>Português</option>
-                                <option value="it" ${g.clientLanguage === 'it' ? 'selected' : ''}>Italiano</option>
+                                <option value="auto" title="${t.autoLanguage}" ${g.clientLanguage === 'auto' ? 'selected' : ''}>🌐</option>
+                                <option value="en" title="English" ${g.clientLanguage === 'en' ? 'selected' : ''}>En</option>
+                                <option value="fr" title="Français" ${g.clientLanguage === 'fr' ? 'selected' : ''}>Fr</option>
+                                <option value="es" title="Español" ${g.clientLanguage === 'es' ? 'selected' : ''}>Es</option>
+                                <option value="pt" title="Português" ${g.clientLanguage === 'pt' ? 'selected' : ''}>Pt</option>
+                                <option value="it" title="Italiano" ${g.clientLanguage === 'it' ? 'selected' : ''}>It</option>
                             </select>
                             <div class="fav-info" title="${t.uniqueViews}">
                                 👁 ${g.viewCount || 0}
@@ -4385,12 +4386,12 @@
                                     ${t.comments}
                                 </label>
                                 <select class="lang-select" title="${t.clientLanguageTitle}" onchange="setCollectionClientLanguage('${c.id}', this.value)">
-                                    <option value="auto" ${c.clientLanguage === 'auto' ? 'selected' : ''}>${t.autoLanguage}</option>
-                                    <option value="en" ${c.clientLanguage === 'en' ? 'selected' : ''}>English</option>
-                                    <option value="fr" ${c.clientLanguage === 'fr' ? 'selected' : ''}>Français</option>
-                                    <option value="es" ${c.clientLanguage === 'es' ? 'selected' : ''}>Español</option>
-                                    <option value="pt" ${c.clientLanguage === 'pt' ? 'selected' : ''}>Português</option>
-                                    <option value="it" ${c.clientLanguage === 'it' ? 'selected' : ''}>Italiano</option>
+                                    <option value="auto" title="${t.autoLanguage}" ${c.clientLanguage === 'auto' ? 'selected' : ''}>🌐</option>
+                                    <option value="en" title="English" ${c.clientLanguage === 'en' ? 'selected' : ''}>En</option>
+                                    <option value="fr" title="Français" ${c.clientLanguage === 'fr' ? 'selected' : ''}>Fr</option>
+                                    <option value="es" title="Español" ${c.clientLanguage === 'es' ? 'selected' : ''}>Es</option>
+                                    <option value="pt" title="Português" ${c.clientLanguage === 'pt' ? 'selected' : ''}>Pt</option>
+                                    <option value="it" title="Italiano" ${c.clientLanguage === 'it' ? 'selected' : ''}>It</option>
                                 </select>
                             </div>
                         </div>
