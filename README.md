@@ -48,7 +48,7 @@ When you share a gallery link with a client, here is what they get:
 
 **Comments:** Clients can leave a comment on any photo or video from the lightbox, with an optional name (no account needed — just like favorites, it's all anonymous unless they choose to type a name). Comments are public: everyone viewing the gallery sees the same conversation under each photo, like a guestbook. You can turn comments off for any gallery from your dashboard.
 
-**Language:** The client pages automatically detect the browser language and display in English, French, Spanish, Portuguese, or Italian.
+**Language:** Client pages display in English, French, Spanish, Portuguese, or Italian. By default the language follows the visitor's browser, but you can force a specific language — globally, per collection, or per gallery (a gallery's own setting always wins over its collection's, which in turn wins over your global default). This also controls the language of the link-preview text shown when a gallery or collection is shared on WhatsApp, iMessage, or social media.
 
 **Branding:** Your logo appears on every page. Your Instagram, website, and other social links appear in the footer. The whole thing looks like yours.
 
@@ -121,6 +121,10 @@ When you or a client shares a gallery or collection link on WhatsApp, iMessage, 
 Upload your logo from the admin header. It appears on every page including the client-facing ones. You can revert to the default logo at any time.
 
 The Profile modal (top of the admin header) lets you set your website URL and social links. Instagram, Facebook, Pinterest, TikTok, LinkedIn, 500px, Flickr, and Behance are supported. Only links you fill in appear on client pages.
+
+The Profile modal also has two language pickers: **Dashboard language** changes the admin interface itself (saving reloads the page), and **Default client language** sets the site-wide fallback used by client pages and link previews when a gallery or collection doesn't have its own override. To override the language for a single gallery or collection, use the small language dropdown on its card in the dashboard — "Auto" inherits from the collection or the global default.
+
+Native browser confirmation popups are never used — every destructive action (delete, reset, empty trash) shows an in-app confirmation dialog styled like the rest of the dashboard.
 
 Light and dark mode can be toggled from the admin header. The theme applies instantly to every visitor.
 
@@ -394,6 +398,7 @@ delyvr/
 | `POST` | `/api/gallery/:id/background` | ✓ | Upload or replace background image |
 | `POST` | `/api/gallery/:id/rename` | ✓ | Rename a gallery |
 | `PATCH` | `/api/gallery/:id/downloads` | ✓ | Enable or disable downloads |
+| `PATCH` | `/api/gallery/:id/client-language` | ✓ | Set the gallery's client-language override (`auto` clears it) |
 | `GET` | `/api/gallery/:id/info` | | Gallery metadata |
 | `GET` | `/api/gallery/:id/photos` | | Photo list with URLs and dimensions |
 | `GET` | `/api/gallery/:id/photo/:filename` | | Serve photo; `?thumb=1` for 400px thumbnail, `?preview=1` for 1920px preview |
@@ -435,6 +440,7 @@ delyvr/
 | `POST` | `/api/collection/:id/rename` | ✓ | Rename |
 | `PATCH` | `/api/collection/:id/downloads` | ✓ | Enable or disable downloads |
 | `PATCH` | `/api/collection/:id/comments-enabled` | ✓ | Enable or disable comments |
+| `PATCH` | `/api/collection/:id/client-language` | ✓ | Set the collection's client-language override (`auto` clears it) |
 | `POST` | `/api/collection/:id/background` | ✓ | Upload or replace cover image |
 | `GET` | `/api/collection/:id/background` | | Serve cover image |
 | `GET` | `/api/collection/:id/og-image` | | Serve or generate collection OG image |
@@ -450,7 +456,7 @@ delyvr/
 | Method | Endpoint | Auth | Description |
 |--------|----------|------|-------------|
 | `GET` | `/api/settings` | | Get site settings |
-| `POST` | `/api/settings` | ✓ | Update theme, website, and social links |
+| `POST` | `/api/settings` | ✓ | Update theme, website, social links, dashboard language, and default client language |
 | `PATCH` | `/api/settings/theme` | ✓ | Update theme only |
 
 Authenticated endpoints require the `X-Admin-Password` header.

@@ -103,10 +103,50 @@ const collections = new Map();
 const COLLECTIONS_FILE = path.join(DATA_DIR, 'collections.json');
 const SETTINGS_FILE    = path.join(DATA_DIR, 'settings.json');
 
+const SUPPORTED_LANGUAGES = ['en', 'fr', 'es', 'pt', 'it'];
+
+// OG share-preview descriptions, localized — 'auto' (no browser to detect from) falls back to English
+const OG_DESCRIPTIONS = {
+    download: {
+        en: 'Your photos are ready to download.',
+        fr: 'Vos photos sont prêtes à télécharger.',
+        es: 'Tus fotos están listas para descargar.',
+        pt: 'Suas fotos estão prontas para download.',
+        it: 'Le tue foto sono pronte per il download.'
+    },
+    preview: {
+        en: 'Browse and download individual photos.',
+        fr: 'Parcourez et téléchargez vos photos individuellement.',
+        es: 'Explora y descarga fotos individuales.',
+        pt: 'Navegue e baixe fotos individuais.',
+        it: 'Sfoglia e scarica le singole foto.'
+    },
+    collection: {
+        en: 'Your photo galleries are ready.',
+        fr: 'Vos galeries photos sont prêtes.',
+        es: 'Tus galerías de fotos están listas.',
+        pt: 'Suas galerias de fotos estão prontas.',
+        it: 'Le tue gallerie fotografiche sono pronte.'
+    },
+    favorites: {
+        en: 'Client favorite photos from',
+        fr: 'Photos préférées du client pour',
+        es: 'Fotos favoritas del cliente de',
+        pt: 'Fotos favoritas do cliente de',
+        it: 'Foto preferite del cliente da'
+    }
+};
+function ogDescription(key, language) {
+    const lang = SUPPORTED_LANGUAGES.includes(language) ? language : 'en';
+    return OG_DESCRIPTIONS[key][lang];
+}
+
 const SETTINGS_DEFAULTS = {
     theme: 'dark',
     website: '',
-    socials: {}
+    socials: {},
+    adminLanguage: 'en',
+    clientLanguage: 'auto'
 };
 
 // Load/save settings
@@ -127,6 +167,26 @@ function loadSettings() {
 }
 function saveSettings(s) {
     fs.writeFileSync(SETTINGS_FILE, JSON.stringify(s, null, 2));
+}
+
+// Resolves the effective client-facing language for a gallery: its own
+// override, else its (first) containing collection's override, else the
+// global default from settings. Returns 'auto' if nothing overrides it.
+function resolveGalleryClientLanguage(galleryId) {
+    const gallery = galleries.get(galleryId);
+    if (gallery && gallery.clientLanguage) return gallery.clientLanguage;
+    for (const collection of collections.values()) {
+        if (collection.galleryIds.includes(galleryId) && collection.clientLanguage) {
+            return collection.clientLanguage;
+        }
+    }
+    return loadSettings().clientLanguage || 'auto';
+}
+
+function resolveCollectionClientLanguage(collectionId) {
+    const collection = collections.get(collectionId);
+    if (collection && collection.clientLanguage) return collection.clientLanguage;
+    return loadSettings().clientLanguage || 'auto';
 }
 
 // Load galleries from file on startup
@@ -621,7 +681,7 @@ app.get('/api/settings', (req, res) => {
 // POST /api/settings — admin only
 app.post('/api/settings', requireAuth, (req, res) => {
     const current = loadSettings();
-    const { theme, website, socials } = req.body;
+    const { theme, website, socials, adminLanguage, clientLanguage } = req.body;
     if (theme === 'light' || theme === 'dark') current.theme = theme;
     if (typeof website === 'string') current.website = website.trim().substring(0, 500);
     if (socials && typeof socials === 'object') {
@@ -630,6 +690,8 @@ app.post('/api/settings', requireAuth, (req, res) => {
             if (typeof v === 'string') current.socials[k] = v.trim().substring(0, 500);
         }
     }
+    if (SUPPORTED_LANGUAGES.includes(adminLanguage)) current.adminLanguage = adminLanguage;
+    if (clientLanguage === 'auto' || SUPPORTED_LANGUAGES.includes(clientLanguage)) current.clientLanguage = clientLanguage;
     saveSettings(current);
     res.json(current);
 });
@@ -1157,6 +1219,26 @@ app.patch('/api/gallery/:galleryId/comments-enabled', requireAuth, validateGalle
     res.json({ success: true, commentsEnabled: gallery.commentsEnabled });
 });
 
+// Set the client-facing language override for a gallery ('auto' clears the override)
+app.patch('/api/gallery/:galleryId/client-language', requireAuth, validateGalleryId, (req, res) => {
+    const { galleryId } = req.params;
+    const gallery = galleries.get(galleryId);
+
+    if (!gallery) {
+        return res.status(404).json({ error: 'Gallery not found' });
+    }
+
+    const { language } = req.body;
+    if (language !== 'auto' && !SUPPORTED_LANGUAGES.includes(language)) {
+        return res.status(400).json({ error: 'Invalid language' });
+    }
+
+    gallery.clientLanguage = language === 'auto' ? null : language;
+    saveGalleries();
+
+    res.json({ success: true, clientLanguage: gallery.clientLanguage || 'auto' });
+});
+
 // Rename a gallery
 app.post('/api/gallery/:galleryId/rename', requireAuth, validateGalleryId, (req, res) => {
     const { galleryId } = req.params;
@@ -1476,7 +1558,7 @@ app.get('/download/:galleryId', publicReadLimiter, validateGalleryId, (req, res)
 
     const ogTags = [
         `<meta property="og:title" content="${escapeHtml(eventName)}">`,
-        `<meta property="og:description" content="Your photos are ready to download.">`,
+        `<meta property="og:description" content="${escapeHtml(ogDescription('download', resolveGalleryClientLanguage(galleryId)))}">`,
         `<meta property="og:image" content="${escapeHtml(baseUrl)}/api/gallery/${escapeHtml(galleryId)}/og-image">`,
         `<meta property="og:type" content="website">`,
         `<meta property="og:url" content="${escapeHtml(baseUrl)}/download/${escapeHtml(galleryId)}">`
@@ -1501,7 +1583,7 @@ app.get('/preview/:galleryId', publicReadLimiter, validateGalleryId, (req, res) 
 
     const ogTags = [
         `<meta property="og:title" content="${escapeHtml(eventName)}">`,
-        `<meta property="og:description" content="Browse and download individual photos.">`,
+        `<meta property="og:description" content="${escapeHtml(ogDescription('preview', resolveGalleryClientLanguage(galleryId)))}">`,
         `<meta property="og:image" content="${escapeHtml(baseUrl)}/api/gallery/${escapeHtml(galleryId)}/og-image">`,
         `<meta property="og:type" content="website">`,
         `<meta property="og:url" content="${escapeHtml(baseUrl)}/preview/${escapeHtml(galleryId)}">`
@@ -1560,7 +1642,8 @@ app.get('/api/gallery/:galleryId/info', publicReadLimiter, validateGalleryId, (r
         downloadsEnabled: gallery ? (gallery.downloadsEnabled !== false && !isGalleryBlockedByCollection(galleryId)) : true,
         downloadCount: gallery ? (gallery.downloadCount || 0) : 0,
         viewCount: gallery ? (gallery.viewCount || 0) : 0,
-        commentsEnabled: gallery ? (gallery.commentsEnabled !== false && !isGalleryBlockedByCollectionForComments(galleryId)) : true
+        commentsEnabled: gallery ? (gallery.commentsEnabled !== false && !isGalleryBlockedByCollectionForComments(galleryId)) : true,
+        clientLanguage: resolveGalleryClientLanguage(galleryId)
     });
 });
 
@@ -1674,7 +1757,7 @@ app.get('/favorites/:galleryId', publicReadLimiter, validateGalleryId, (req, res
     const baseUrl = `${req.protocol}://${req.get('host')}`;
     const ogTags = [
         `<meta property="og:title" content="${escapeHtml(eventName)} — Favorites">`,
-        `<meta property="og:description" content="Client favorite photos from ${escapeHtml(eventName)}.">`,
+        `<meta property="og:description" content="${escapeHtml(ogDescription('favorites', resolveGalleryClientLanguage(galleryId)))} ${escapeHtml(eventName)}.">`,
         `<meta property="og:image" content="${escapeHtml(baseUrl)}/api/gallery/${escapeHtml(galleryId)}/og-image">`,
         `<meta property="og:type" content="website">`,
         `<meta property="og:url" content="${escapeHtml(baseUrl)}/favorites/${escapeHtml(galleryId)}">`
@@ -1979,7 +2062,8 @@ app.get('/api/collections', adminLimiter, requireAuth, (req, res) => {
             collectionUrl: `${baseUrl}/collection/${c.id}`,
             hasBackground: [...bgFilesC].some(f => f.startsWith(`collection-${c.id}`)),
             downloadsEnabled: c.downloadsEnabled !== false,
-            commentsEnabled: c.commentsEnabled !== false
+            commentsEnabled: c.commentsEnabled !== false,
+            clientLanguage: c.clientLanguage || 'auto'
         }));
     res.json(list);
 });
@@ -2029,7 +2113,8 @@ app.get('/api/collection/:collectionId', publicReadLimiter, validateCollectionId
         background: collHasBg ? `/api/collection/${collectionId}/background` : null,
         downloadsEnabled: collection.downloadsEnabled !== false,
         totalSizeBytes,
-        galleries: galleriesData
+        galleries: galleriesData,
+        clientLanguage: resolveCollectionClientLanguage(collectionId)
     });
 });
 
@@ -2174,6 +2259,7 @@ app.get('/api/collection/:collectionId/download', downloadLimiter, validateColle
 
     // Pre-scan files for Content-Length and folder names (store mode)
     const entries = [];
+    const includedGalleries = [];
     for (const galleryId of collection.galleryIds) {
         const gallery = galleries.get(galleryId);
         const galleryPath = safeResolvePath(path.join(DATA_DIR, 'uploads'), galleryId);
@@ -2181,6 +2267,14 @@ app.get('/api/collection/:collectionId/download', downloadLimiter, validateColle
         const folderName = (gallery ? gallery.eventName : galleryId).substring(0, 80) || galleryId;
         const files = fs.readdirSync(galleryPath).filter(f => !f.startsWith('.'));
         files.forEach(file => entries.push({ diskPath: path.join(galleryPath, file), zipName: `${folderName}/${file}` }));
+        if (gallery) includedGalleries.push(gallery);
+    }
+
+    if (includedGalleries.length) {
+        includedGalleries.forEach(gallery => {
+            gallery.downloadCount = (gallery.downloadCount || 0) + 1;
+        });
+        saveGalleries();
     }
 
     res.setHeader('Content-Type', 'application/zip');
@@ -2216,6 +2310,22 @@ app.patch('/api/collection/:collectionId/comments-enabled', adminLimiter, requir
     res.json({ success: true, commentsEnabled: collection.commentsEnabled });
 });
 
+// Set the client-facing language override for a collection ('auto' clears the override)
+app.patch('/api/collection/:collectionId/client-language', adminLimiter, requireAuth, validateCollectionId, (req, res) => {
+    const { collectionId } = req.params;
+    const collection = collections.get(collectionId);
+    if (!collection) return res.status(404).json({ error: 'Collection not found' });
+
+    const { language } = req.body;
+    if (language !== 'auto' && !SUPPORTED_LANGUAGES.includes(language)) {
+        return res.status(400).json({ error: 'Invalid language' });
+    }
+
+    collection.clientLanguage = language === 'auto' ? null : language;
+    saveCollections();
+    res.json({ success: true, clientLanguage: collection.clientLanguage || 'auto' });
+});
+
 // Delete a collection (admin only — does NOT delete the galleries)
 app.delete('/api/collection/:collectionId', adminLimiter, requireAuth, validateCollectionId, (req, res) => {
     const { collectionId } = req.params;
@@ -2246,7 +2356,7 @@ app.get('/collection/:collectionId', publicReadLimiter, validateCollectionId, (r
     const baseUrl = `${req.protocol}://${req.get('host')}`;
     const ogTags = [
         `<meta property="og:title" content="${escapeHtml(collection.name)}">`,
-        `<meta property="og:description" content="Your photo galleries are ready.">`,
+        `<meta property="og:description" content="${escapeHtml(ogDescription('collection', resolveCollectionClientLanguage(collectionId)))}">`,
         `<meta property="og:image" content="${escapeHtml(baseUrl)}/api/collection/${escapeHtml(collectionId)}/og-image">`,
         `<meta property="og:type" content="website">`,
         `<meta property="og:url" content="${escapeHtml(baseUrl)}/collection/${escapeHtml(collectionId)}">`
@@ -2312,7 +2422,8 @@ app.get('/api/galleries', adminLimiter, requireAuth, (req, res) => {
                     downloadCount: gallery.downloadCount || 0,
                     collectionId,
                     downloadsEnabled: gallery.downloadsEnabled !== false,
-                    commentsEnabled: gallery.commentsEnabled !== false
+                    commentsEnabled: gallery.commentsEnabled !== false,
+                    clientLanguage: gallery.clientLanguage || 'auto'
                 });
             }
         });

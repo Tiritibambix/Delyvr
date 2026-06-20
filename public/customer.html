@@ -314,19 +314,20 @@
             fr: { yourPhotos:'Vos Photos', photo:'photo', photos:'photos', downloadAll:'Télécharger', browseIndividually:'Voir les photos', browseOnly:'Voir les photos', ready:'Vos photos sont prêtes', notFoundTitle:'Galerie Introuvable', notFoundText:'Cette galerie a peut-être été supprimée ou le lien est incorrect.', backToCollection:'← Retour à la collection' }
         };
 
-        function getLocale() {
-            const lang = (navigator.language || navigator.userLanguage || 'en').split('-')[0].toLowerCase();
-            return ['pt','es','it','fr'].includes(lang) ? lang : 'en';
-        }
+        // locale/t are finalized once the gallery's resolved clientLanguage is
+        // known (see loadGallery()) — these are just safe defaults until then.
+        let locale = 'en';
+        let t = translations.en;
 
-        const locale = getLocale();
-        const t = translations[locale];
-        document.documentElement.lang = locale;
-        document.getElementById('downloadAllText').textContent = t.downloadAll;
-        document.getElementById('browseText').textContent = t.browseIndividually;
-        document.getElementById('notFoundTitle').textContent = t.notFoundTitle;
-        document.getElementById('notFoundText').textContent = t.notFoundText;
-        document.getElementById('eyebrowText').textContent = t.ready;
+        function applyStaticTranslations() {
+            document.documentElement.lang = locale;
+            document.getElementById('downloadAllText').textContent = t.downloadAll;
+            document.getElementById('browseText').textContent = t.browseIndividually;
+            document.getElementById('notFoundTitle').textContent = t.notFoundTitle;
+            document.getElementById('notFoundText').textContent = t.notFoundText;
+            document.getElementById('eyebrowText').textContent = t.ready;
+        }
+        applyStaticTranslations();
 
         applyTheme();
 
@@ -344,6 +345,10 @@
                 const res = await fetch(`/api/gallery/${galleryId}/info`);
                 if (!res.ok) throw new Error('Not found');
                 const data = await res.json();
+
+                locale = resolveClientLocale(data.clientLanguage);
+                t = translations[locale];
+                applyStaticTranslations();
 
                 document.getElementById('content').classList.add('visible');
 

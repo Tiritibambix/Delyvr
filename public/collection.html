@@ -409,17 +409,18 @@
             it: { loading:'Caricamento...', photos:'foto', photo:'foto', galleries:'gallerie', gallery:'galleria', downloadAll:'Scarica Tutto', browse:'Sfoglia', download:'Scarica', copyLink:'Copia link', copied:'Copiato!', notFoundTitle:'Collezione Non Trovata', notFoundText:'Questa collezione potrebbe essere stata rimossa o il link non è corretto.' }
         };
 
-        function getLocale() {
-            const lang = (navigator.language || 'en').split('-')[0].toLowerCase();
-            return ['fr','es','pt','it'].includes(lang) ? lang : 'en';
-        }
+        // locale/t are finalized once the collection's resolved clientLanguage
+        // is known (see loadCollection()) — these are just safe defaults until then.
+        let locale = 'en';
+        let t = translations.en;
 
-        const locale = getLocale();
-        const t = translations[locale];
-        document.documentElement.lang = locale;
-        document.getElementById('loadingState').textContent = t.loading;
-        document.getElementById('notFoundTitle').textContent = t.notFoundTitle;
-        document.getElementById('notFoundText').textContent = t.notFoundText;
+        function applyStaticTranslations() {
+            document.documentElement.lang = locale;
+            document.getElementById('loadingState').textContent = t.loading;
+            document.getElementById('notFoundTitle').textContent = t.notFoundTitle;
+            document.getElementById('notFoundText').textContent = t.notFoundText;
+        }
+        applyStaticTranslations();
 
         applyTheme();
 
@@ -449,6 +450,10 @@
                 const res = await fetch(`/api/collection/${collectionId}`);
                 if (!res.ok) throw new Error('Not found');
                 const data = await res.json();
+
+                locale = resolveClientLocale(data.clientLanguage);
+                t = translations[locale];
+                applyStaticTranslations();
 
                 document.getElementById('loadingState').style.display = 'none';
                 document.getElementById('mainContent').style.display = 'block';

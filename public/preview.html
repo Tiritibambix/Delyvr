@@ -1503,37 +1503,27 @@
             }
         };
 
-        function getLocale() {
-            const lang = navigator.language || navigator.userLanguage;
-            const shortLang = lang.split('-')[0].toLowerCase();
-            
-            if (shortLang === 'pt') return 'pt';
-            if (shortLang === 'es') return 'es';
-            if (shortLang === 'it') return 'it';
-            if (shortLang === 'fr') return 'fr';
-            return 'en';
+        // locale/t are finalized once the gallery's resolved clientLanguage is
+        // known (see loadGallery()) — these are just safe defaults until then.
+        let locale = 'en';
+        let t = translations.en;
+
+        function applyStaticTranslations() {
+            document.documentElement.lang = locale;
+            document.getElementById('downloadAllText').textContent = t.downloadAll;
+            document.getElementById('loadingState').textContent = t.loadingGallery;
+            document.getElementById('notFoundTitle').textContent = t.notFoundTitle;
+            document.getElementById('notFoundText').textContent = t.notFoundText;
+            document.getElementById('commentTextInput').placeholder = t.commentPlaceholder;
+            document.getElementById('commentNameInput').placeholder = t.commentYourName;
+            document.getElementById('commentChangeNameBtn').textContent = t.commentChangeName;
+            document.getElementById('commentSendBtn').title = t.commentSend;
+            document.getElementById('commentSendBtn').setAttribute('aria-label', t.commentSend);
+            document.getElementById('lightboxCommentBtn').title = t.comments;
+            document.getElementById('lightboxCommentBtn').setAttribute('aria-label', t.comments);
+            document.getElementById('lbMobileComment').setAttribute('aria-label', t.comments);
         }
-
-        const locale = getLocale();
-        const t = translations[locale];
-
-        // Set HTML lang attribute
-        document.documentElement.lang = locale;
-
-        // Set static translations
-        document.getElementById('downloadAllText').textContent = t.downloadAll;
-        document.getElementById('loadingState').textContent = t.loadingGallery;
-        document.getElementById('notFoundTitle').textContent = t.notFoundTitle;
-        document.getElementById('notFoundText').textContent = t.notFoundText;
-        document.getElementById('commentTextInput').placeholder = t.commentPlaceholder;
-        document.getElementById('commentNameInput').placeholder = t.commentYourName;
-        document.getElementById('commentChangeNameBtn').textContent = t.commentChangeName;
-        document.getElementById('commentSendBtn').title = t.commentSend;
-        document.getElementById('commentSendBtn').setAttribute('aria-label', t.commentSend);
-        document.getElementById('lightboxCommentBtn').title = t.comments;
-        document.getElementById('lightboxCommentBtn').setAttribute('aria-label', t.comments);
-        document.getElementById('lbMobileComment').setAttribute('aria-label', t.comments);
-
+        applyStaticTranslations();
 
         applyTheme();
 
@@ -1835,6 +1825,11 @@
                 const infoRes = await fetch(`/api/gallery/${galleryId}/info`);
                 if (!infoRes.ok) throw new Error('Not found');
                 const info = await infoRes.json();
+
+                // Finalize locale from the gallery's resolved client language
+                locale = resolveClientLocale(info.clientLanguage);
+                t = translations[locale];
+                applyStaticTranslations();
 
                 // Get photos list
                 const photosRes = await fetch(`/api/gallery/${galleryId}/photos`);

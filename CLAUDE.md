@@ -107,7 +107,8 @@ delyvr/
   commentsEnabled: boolean, // default true (missing = true) — per-gallery toggle
   comments: {               // filename → comments, oldest first
     [filename: string]: { id: string, visitorId: string, name: string|null, text: string, createdAt: string }[]
-  }
+  },
+  clientLanguage: string|null // optional override: 'en'|'fr'|'es'|'pt'|'it', null/absent = inherit (see "Language settings")
 }
 ```
 
@@ -120,7 +121,8 @@ delyvr/
   created: string,
   galleryIds: string[],     // ordered — order is the client display order
   background: string|null,
-  downloadsEnabled: boolean // default true (missing = true)
+  downloadsEnabled: boolean, // default true (missing = true)
+  clientLanguage: string|null // optional override: 'en'|'fr'|'es'|'pt'|'it', null/absent = inherit
 }
 ```
 
@@ -139,7 +141,9 @@ delyvr/
     '500px': string,
     flickr: string,
     behance: string
-  }
+  },
+  adminLanguage: 'en'|'fr'|'es'|'pt'|'it', // default 'en' — admin dashboard UI language
+  clientLanguage: 'auto'|'en'|'fr'|'es'|'pt'|'it' // default 'auto' — global fallback for client pages/OG tags
 }
 ```
 
@@ -180,9 +184,24 @@ All filesystem paths incorporating user-controlled values go through `safeResolv
 
 `GET /api/settings` is public — all client pages call it on load to apply the theme and render the social footer.
 
-`POST /api/settings` is admin-only — accepts `{ theme, website, socials }` and saves the merged result.
+`POST /api/settings` is admin-only — accepts `{ theme, website, socials, adminLanguage, clientLanguage }` and saves the merged result.
 
 `PATCH /api/settings/theme` is used by the admin theme toggle.
+
+### Language settings
+
+Two independent language concerns, with different scopes:
+
+- **Admin dashboard language** (`settings.adminLanguage`) — a single global preference, one of `en`/`fr`/`es`/`pt`/`it`. Set via the "Dashboard language" `<select>` in `admin.html`'s Profile modal (`POST /api/settings`). `admin.html` holds a full `adminTranslations` object (5 locales) and a global `t` reference reassigned by `applyAdminTranslations(lang)`, which also re-runs `loadGalleries()`/`loadCollections()`/`loadTrash()` so dynamically-rendered card templates pick up the new language. **Saving a language change triggers `location.reload()`** rather than attempting to live-retranslate every render call site — simpler and more robust given the size of the file.
+- **Client-facing language** (for `preview.html`, `customer.html`, `collection.html`, and the OG share-preview text) — resolved per gallery/collection through a 3-tier cascade, **most specific wins**: the gallery's own `clientLanguage` override, else the first collection containing it that has a `clientLanguage` override, else the global default `settings.clientLanguage` (`'auto'` = browser-detected, like before this feature existed). Implemented by two resolver functions reused everywhere a language decision is needed (OG tags, `/info`, `/api/collection/:id`):
+  ```js
+  function resolveGalleryClientLanguage(galleryId) { /* gallery.clientLanguage → containing collection's → settings.clientLanguage */ }
+  function resolveCollectionClientLanguage(collectionId) { /* collection.clientLanguage → settings.clientLanguage */ }
+  ```
+  Set via `PATCH /api/gallery/:id/client-language` / `PATCH /api/collection/:id/client-language` (body `{ language }`, `'auto'` stored as `null`). The admin UI exposes this as a compact `<select>` on each gallery/collection card's `.gallery-bottom` row, plus a "Default client language" `<select>` (global) in the Profile modal.
+
+  Client pages no longer detect the browser language themselves. `GET /api/gallery/:id/info` and `GET /api/collection/:id` both include the resolved `clientLanguage` (`'auto'` or a specific code) in their response; each page reads `locale = resolveClientLocale(info.clientLanguage)` (defined in `shared.js`) only after that fetch resolves, then re-applies its static translations via an `applyStaticTranslations()` helper. `resolveClientLocale()` only handles the final `'auto'` → browser-detection step — the gallery/collection/global precedence itself lives server-side as the single source of truth, shared with the OG-tag generation below. `favorites.html` has no client-side i18n today and was left untouched.
+- **OG share-preview localization**: `OG_DESCRIPTIONS` (server.js) is a 4-key × 5-language map (`download`, `preview`, `collection`, `favorites`) read via `ogDescription(key, language)`, applied at all 4 OG injection sites using the resolver functions above (gallery routes use `resolveGalleryClientLanguage`, the collection route uses `resolveCollectionClientLanguage`). `'auto'` falls back to English since OG crawlers have no browser to detect from.
 
 ### Preview generation
 
@@ -365,9 +384,11 @@ Loaded by all client pages via `<script src="/shared.js">` before their inline `
 
 - Login via in-memory `adminPassword` variable only, not persisted to sessionStorage or localStorage.
 - Password field has an eye toggle button (`.password-toggle`).
-- `applyTheme()` called on load. `toggleTheme()` uses optimistic update.
+- `applyTheme()` called on load — it also reads `settings.adminLanguage` and calls `applyAdminTranslations(lang)` (see "Language settings"). `toggleTheme()` uses optimistic update.
+- **Full i18n** (en/fr/es/pt/it): `adminTranslations` holds every locale; the module-scope `let t` is reassigned by `applyAdminTranslations(lang)` to the active locale and read by every render function and toast/error message. Static chrome (login, header, both columns, every modal) carries `id`s set directly by `applyAdminTranslations`; dynamic templates (`renderGalleryItems`, `renderCollections`, the photos/favorites/comments/trash/picker modals, the bulk action bar) read `t.xxx` at render time.
+- **`confirmDialog(message, okLabel)`** — page-level async confirmation modal (`#confirmDialogOverlay`/`.confirm-dialog-card`, styled like the other modals, `z-index: 8500` so it can be triggered from inside another open modal) replacing every native `confirm()` in the file. Returns a Promise resolved by `confirmDialogResolve(result)`; default `okLabel` is `t.delete`. All 10 call sites await it: `resetLogo`, `bulkDelete`, `deleteSelectedPhotos`, `deletePhoto`, `resetComments`, `resetViews`, `resetFavorites`, `deleteGallery`, `purgeGallery`, `emptyTrash`.
 - Gallery list: `renderGalleryItems(items)` renders gallery cards; `filterGalleries(query)` filters client-side on `_galleriesData` cache. Search input in section header.
-- Gallery cards support: inline rename (double-click), cover image drag/drop, downloads toggle, favorites view/reset, manage photos modal, critique link copy, OG regenerate, soft-delete, drag reorder, bulk selection.
+- Gallery cards support: inline rename (double-click), cover image drag/drop, downloads toggle, comments toggle, **client-language `<select>`** (`setGalleryClientLanguage`), favorites view/reset, manage photos modal, critique link copy, OG regenerate, soft-delete, drag reorder, bulk selection. Collection cards have the same downloads/comments toggles plus their own client-language `<select>` (`setCollectionClientLanguage`).
 - **Bulk selection mode:** toggled via "Select" button in gallery section header. `_selectionMode` + `_selectedGalleries` Set. `#bulkActionBar` slides up from bottom. Actions: enable/disable downloads, add to collection, delete. Escape exits.
 - **Trash modal:** opened via trash icon button (with count badge) in gallery section header. Shows trashed galleries with daysLeft, Restore and "Delete now" buttons, Empty trash button.
 - **Photo management modal:** `openPhotosModal(galleryId)` loads photos via `GET /api/gallery/:id/photos`, renders as 3-column grid. Delete button visible on hover (desktop) or always (mobile). `squarePhotoGridCells()` called after render to force square cells via JS measurement.
@@ -391,6 +412,7 @@ Loaded by all client pages via `<script src="/shared.js">` before their inline `
 - Social footer `position: fixed; bottom: 0` on all screen sizes with backdrop-filter blur.
 - Download button shows total size (`totalSizeBytes` from `/api/gallery/:id/info`).
 - `applyTheme()` and `renderSocialFooter()` called on load.
+- Locale is finalized inside `loadGallery()`, not at page load: `let locale = 'en'; let t = translations.en;` defaults are replaced once `info.clientLanguage` comes back from `GET /api/gallery/:id/info`, via `resolveClientLocale()` (see "Language settings"). `applyStaticTranslations()` is called once with the defaults and again after resolution.
 
 ### `public/preview.html`
 
@@ -402,11 +424,13 @@ Loaded by all client pages via `<script src="/shared.js">` before their inline `
 - Favorites toast: `showFavToast(added)` shown on toggle, localized in all 5 languages, auto-dismisses after 2s.
 - Social footer `position: fixed; bottom: 0` on all screen sizes.
 - `applyTheme()` and `renderSocialFooter()` called on load.
+- Same deferred-locale pattern as `customer.html`: resolved from `info.clientLanguage` via `resolveClientLocale()` inside `loadGallery()`, not browser-detected at parse time.
 
 ### `public/collection.html`
 
 - `applyTheme()` and `renderSocialFooter()` called on load.
 - Full i18n: EN, FR, ES, PT, IT — including `gallery`/`galleries` keys (no hardcoded French strings).
+- Locale resolved from `data.clientLanguage` (the collection's own resolved value, server-side precedence already applied) via `resolveClientLocale()` inside `loadCollection()`, same deferred pattern as the other client pages.
 - Gallery covers use `?card=1` (800px) instead of full resolution.
 - Download button shows total size (`totalSizeBytes` from `/api/collection/:id`).
 - Browse and customer-link URLs are page-relative (`../preview/...`, `../download/...`) for subpath deployment compatibility.

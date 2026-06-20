@@ -10,6 +10,17 @@ const SOCIAL_ICONS = {
     behance:   { label: 'Behance',   svg: '<svg viewBox="0 0 24 24"><path d="M6.938 4.503c.702 0 1.34.06 1.92.188.577.13 1.07.33 1.485.61.41.28.733.65.96 1.12.225.47.34 1.05.34 1.73 0 .74-.17 1.36-.507 1.86-.338.5-.837.9-1.502 1.22.906.26 1.576.72 2.022 1.37.448.66.665 1.45.665 2.36 0 .75-.13 1.39-.41 1.93-.28.55-.67 1-1.16 1.35-.48.348-1.05.6-1.69.747-.64.152-1.31.227-2.02.227H0V4.51h6.938v-.007zM16.94 16.665c.44.428 1.073.643 1.894.643.59 0 1.1-.148 1.53-.447.424-.29.68-.604.77-.93h2.717c-.434 1.348-1.1 2.31-1.997 2.884-.9.576-1.983.864-3.254.864-1.08 0-2.07-.166-2.96-.5a6.17 6.17 0 0 1-2.19-1.42 6.11 6.11 0 0 1-1.35-2.19c-.31-.853-.462-1.79-.462-2.806 0-.985.16-1.9.48-2.74a6.16 6.16 0 0 1 1.37-2.17 6.35 6.35 0 0 1 2.19-1.42c.86-.35 1.82-.52 2.88-.52 1.17 0 2.19.225 3.04.67a5.9 5.9 0 0 1 2.09 1.79 7.27 7.27 0 0 1 1.17 2.58c.22.96.295 1.96.23 3.01h-8.13c.048 1.01.344 1.74.78 2.17zm-10.24-.05c.574 0 1.05-.15 1.44-.46.39-.31.583-.79.583-1.44 0-.66-.192-1.14-.583-1.45-.39-.31-.866-.46-1.44-.46H3.24v3.81h3.46zm14.348-5.96c-.36-.4-.92-.6-1.67-.6-.488 0-.895.08-1.22.26-.324.17-.586.38-.78.63-.19.25-.32.51-.39.78-.07.27-.11.52-.12.74h4.96c-.09-.75-.38-1.41-.78-1.81zM6.39 10.4c.55 0 .993-.13 1.33-.39.34-.26.505-.67.505-1.22 0-.3-.053-.55-.16-.75a1.2 1.2 0 0 0-.44-.49 1.86 1.86 0 0 0-.63-.27 3.38 3.38 0 0 0-.77-.08H3.24v3.2H6.39zm9.87-4.49h5.49v1.42h-5.49V5.91z"/></svg>' }
 };
 
+// Resolves a server-provided language ('auto' or a specific code) into the
+// locale used to render a client page. Precedence (gallery > collection >
+// global default) is already baked into the resolved value by the server —
+// this only handles the final 'auto' -> browser-detection fallback.
+function resolveClientLocale(resolvedLanguage) {
+    const supported = ['en', 'fr', 'es', 'pt', 'it'];
+    if (supported.includes(resolvedLanguage)) return resolvedLanguage;
+    const short = ((navigator.language || navigator.userLanguage || 'en').split('-')[0]).toLowerCase();
+    return supported.includes(short) ? short : 'en';
+}
+
 async function applyTheme() {
     try {
         const res = await fetch('/api/settings');

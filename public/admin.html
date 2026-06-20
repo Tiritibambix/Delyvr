@@ -263,20 +263,24 @@
         }
         #photosGrid.selection-mode .photos-grid-card { cursor: pointer; }
 
-        /* In-app confirm dialog */
-        .photos-confirm-overlay {
-            position: absolute; inset: 0;
-            background: rgba(0,0,0,0.6);
+        /* In-app confirm dialog — page-level, usable from anywhere (incl. inside other modals) */
+        .confirm-dialog-overlay {
+            position: fixed; inset: 0;
+            background: rgba(0,0,0,0.85);
+            backdrop-filter: blur(6px);
             display: flex; align-items: center; justify-content: center;
-            border-radius: 8px; z-index: 10;
+            z-index: 8500;
+            opacity: 0; pointer-events: none;
+            transition: opacity 0.2s;
         }
-        .photos-confirm-card {
+        .confirm-dialog-overlay.active { opacity: 1; pointer-events: auto; }
+        .confirm-dialog-card {
             background: var(--bg2); border: 1px solid var(--border);
-            border-radius: 6px; padding: 20px 24px;
+            border-radius: 8px; padding: 20px 24px;
             max-width: 320px; width: 90%; text-align: center;
         }
-        .photos-confirm-msg { font-size: 14px; margin-bottom: 16px; line-height: 1.5; }
-        .photos-confirm-actions { display: flex; gap: 10px; justify-content: center; }
+        .confirm-dialog-msg { font-size: 14px; margin-bottom: 16px; line-height: 1.5; white-space: pre-line; }
+        .confirm-dialog-actions { display: flex; gap: 10px; justify-content: center; }
         .photos-modal-meta { font-size: 12px; color: var(--muted); flex-shrink: 0; }
 
         /* Drop zone */
@@ -406,6 +410,15 @@
         }
         .profile-field input:focus { border-color: var(--accent); }
         .profile-field input::placeholder { color: var(--muted2); }
+
+        .profile-field select {
+            flex: 1; height: 32px;
+            background: var(--bg3); border: 1px solid var(--border2);
+            border-radius: 3px; padding: 0 10px;
+            font-size: 13px; color: var(--text); font-family: inherit;
+            outline: none; transition: border-color 0.2s; cursor: pointer;
+        }
+        .profile-field select:focus { border-color: var(--accent); }
 
         .profile-save-btn {
             margin-top: 20px; width: 100%; height: 34px;
@@ -1056,6 +1069,12 @@
             font-size: 11px; color: var(--muted); cursor: pointer;
         }
 
+        .lang-select {
+            height: 22px; font-size: 11px; color: var(--muted);
+            background: var(--bg3); border: 1px solid var(--border2);
+            border-radius: 3px; padding: 0 4px; font-family: inherit; cursor: pointer;
+        }
+
         .toggle-switch {
             position: relative; width: 28px; height: 16px; flex-shrink: 0;
         }
@@ -1262,18 +1281,18 @@
     <!-- Login Modal -->
     <div class="login-modal" id="loginModal">
         <div class="login-card">
-            <h2>Welcome Back</h2>
-            <p>Enter your password to access the dashboard</p>
+            <h2 id="loginTitle">Welcome Back</h2>
+            <p id="loginSubtitle">Enter your password to access the dashboard</p>
             <div class="password-wrap">
                 <input type="password" id="passwordInput" placeholder="Password" autofocus>
-                <button class="password-toggle" type="button" onclick="togglePasswordVisibility()" aria-label="Show password" tabindex="-1">
+                <button class="password-toggle" type="button" onclick="togglePasswordVisibility()" aria-label="Show password" id="passwordToggleBtn" tabindex="-1">
                     <svg id="eyeIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                         <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
                         <circle cx="12" cy="12" r="3"/>
                     </svg>
                 </button>
             </div>
-            <button onclick="login()">Sign In</button>
+            <button onclick="login()" id="loginSubmitBtn">Sign In</button>
             <p class="login-error" id="loginError"></p>
         </div>
     </div>
@@ -1301,8 +1320,8 @@
             <!-- Bulk delete bar (selection mode) -->
             <div class="photos-bulk-bar" id="photosBulkBar" style="display:none">
                 <span id="photosSelectedCount">0 selected</span>
-                <button class="bulk-select-all" onclick="selectAllPhotos()">Select all</button>
-                <button class="bulk-btn bulk-btn-cancel" onclick="togglePhotoSelection()">Cancel</button>
+                <button class="bulk-select-all" id="photosSelectAllBtn" onclick="selectAllPhotos()">Select all</button>
+                <button class="bulk-btn bulk-btn-cancel" id="photosCancelSelectBtn" onclick="togglePhotoSelection()">Cancel</button>
                 <button class="bulk-btn bulk-btn-danger" id="photosDeleteSelectedBtn" onclick="deleteSelectedPhotos()" disabled>Delete selected</button>
             </div>
 
@@ -1312,7 +1331,7 @@
             <!-- Drop zone -->
             <div class="photos-add-zone" id="photosAddZone" onclick="document.getElementById('photosAddInput').click()">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="16" height="16" style="vertical-align:middle;margin-right:6px"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-                Drop photos here or <button class="zone-browse" onclick="event.stopPropagation(); document.getElementById('photosAddInput').click()">browse</button>
+                <span id="photosDropText">Drop photos here or</span> <button class="zone-browse" id="photosBrowseBtn" onclick="event.stopPropagation(); document.getElementById('photosAddInput').click()">browse</button>
             </div>
             <input type="file" id="photosAddInput" multiple accept="image/*,video/mp4,video/quicktime,video/webm,video/x-m4v" style="display:none" onchange="handlePhotosAddInput(event)">
 
@@ -1332,15 +1351,15 @@
             <!-- Photos grid -->
             <div class="photos-grid" id="photosGrid"></div>
         </div>
+    </div>
 
-        <!-- In-app confirm dialog -->
-        <div class="photos-confirm-overlay" id="photosConfirmOverlay" style="display:none">
-            <div class="photos-confirm-card">
-                <p class="photos-confirm-msg" id="photosConfirmMsg"></p>
-                <div class="photos-confirm-actions">
-                    <button class="bulk-btn bulk-btn-cancel" onclick="photosConfirmResolve(false)">Cancel</button>
-                    <button class="bulk-btn bulk-btn-danger" onclick="photosConfirmResolve(true)" id="photosConfirmOkBtn">Delete</button>
-                </div>
+    <!-- Page-level in-app confirm dialog, reused by confirmDialog() everywhere -->
+    <div class="confirm-dialog-overlay" id="confirmDialogOverlay">
+        <div class="confirm-dialog-card">
+            <p class="confirm-dialog-msg" id="confirmDialogMsg"></p>
+            <div class="confirm-dialog-actions">
+                <button class="bulk-btn bulk-btn-cancel" id="confirmDialogCancelBtn" onclick="confirmDialogResolve(false)">Cancel</button>
+                <button class="bulk-btn bulk-btn-danger" onclick="confirmDialogResolve(true)" id="confirmDialogOkBtn">Delete</button>
             </div>
         </div>
     </div>
@@ -1352,12 +1371,12 @@
                 <div style="display:flex;align-items:center;gap:8px;">
                     <button class="btn-fav-action" id="favCopyRankingBtn" onclick="copyFavoritesRankingLink(this)" style="display:none" title="Copy public ranking link">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12" style="vertical-align:middle;margin-right:3px"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
-                        Copy ranking link
+                        <span id="favCopyRankingBtnText">Copy ranking link</span>
                     </button>
                     <a class="btn-fav-action" id="favExportBtn" href="#" download style="display:none">Export CSV</a>
                     <a class="btn-fav-action" id="favDownloadBtn" href="#" download style="display:none">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12" style="vertical-align:middle;margin-right:3px"><path d="M12 4v12m0 0l-4-4m4 4l4-4M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-                        Download photos
+                        <span id="favDownloadBtnText">Download photos</span>
                     </a>
                     <button class="favorites-modal-close" onclick="closeFavoritesModal()">×</button>
                 </div>
@@ -1372,7 +1391,7 @@
             <div class="comments-modal-header">
                 <h3 id="commentsModalTitle">Comments</h3>
                 <div style="display:flex;align-items:center;gap:8px;">
-                    <button class="btn-fav-action" id="commentsClearAllBtn" onclick="resetComments(_commentsGalleryId)" style="display:none">Clear all</button>
+                    <button class="btn-fav-action" id="commentsClearAllBtn" onclick="resetComments(_commentsGalleryId)" style="display:none"><span id="commentsClearAllBtnText">Clear all</span></button>
                     <button class="comments-modal-close" onclick="closeCommentsModal()">×</button>
                 </div>
             </div>
@@ -1384,15 +1403,15 @@
     <div class="profile-modal" id="profileModal" onclick="if(event.target===this) closeProfileModal()">
         <div class="profile-modal-card">
             <div class="profile-modal-header">
-                <h3>Profile &amp; Social Links</h3>
+                <h3 id="profileModalTitle">Profile &amp; Social Links</h3>
                 <button class="profile-modal-close" onclick="closeProfileModal()">&#x2715;</button>
             </div>
-            <div class="profile-section-label">Website</div>
+            <div class="profile-section-label" id="profileWebsiteLabel">Website</div>
             <div class="profile-field">
                 <span class="profile-field-icon"><svg viewBox="0 0 64 64"><path d="M32 2C15.459 2 2 15.459 2 32c0 16.543 13.459 30 30 30c16.542 0 30-13.457 30-30C62 15.459 48.543 2 32 2m20.047 46.204a30.013 30.013 0 0 0-3.793-2.923a30.03 30.03 0 0 0 3.012-10.859h6.41a25.678 25.678 0 0 1-5.629 13.782M6.326 34.422h6.297a30.071 30.071 0 0 0 3.039 10.914a30.24 30.24 0 0 0-3.709 2.868a25.66 25.66 0 0 1-5.627-13.782m5.627-18.625a29.749 29.749 0 0 0 3.709 2.867a30.02 30.02 0 0 0-3.084 11.547H6.273a25.67 25.67 0 0 1 5.68-14.414m17.942-6.238v9.648a25.472 25.472 0 0 1-8.367-2.125a25.825 25.825 0 0 1 8.367-7.523m0 13.869v6.783H16.797a25.589 25.589 0 0 1 2.557-9.488a29.666 29.666 0 0 0 10.541 2.705m0 10.994v6.15a29.667 29.667 0 0 0-10.574 2.723a25.727 25.727 0 0 1-2.473-8.873h13.047m0 10.373v9.668a25.508 25.508 0 0 1-8.412-7.523a25.428 25.428 0 0 1 8.412-2.145m4.21 9.58v-9.58c2.895.23 5.682.938 8.277 2.084a25.864 25.864 0 0 1-8.277 7.496m0-13.803v-6.15h12.934a25.584 25.584 0 0 1-2.488 8.812a29.692 29.692 0 0 0-10.446-2.662m0-10.361v-6.783a29.665 29.665 0 0 0 10.451-2.662a25.598 25.598 0 0 1 2.535 9.445H34.105m0-11.004V9.623a25.862 25.862 0 0 1 8.283 7.496a25.45 25.45 0 0 1-8.283 2.088m10.428-6.241a30.08 30.08 0 0 0-6.918-6.138a25.73 25.73 0 0 1 11.523 5.92a25.575 25.575 0 0 1-3.016 2.333a28.674 28.674 0 0 0-1.589-2.115m-25.178.001A29.522 29.522 0 0 0 17.8 15.03a25.816 25.816 0 0 1-2.939-2.281a25.746 25.746 0 0 1 11.355-5.883a30.021 30.021 0 0 0-6.861 6.101m-1.554 36.004c.408.594.838 1.174 1.291 1.738a30.048 30.048 0 0 0 7.129 6.428a25.736 25.736 0 0 1-11.359-5.884a25.687 25.687 0 0 1 2.939-2.282m26.773 2.013a30.121 30.121 0 0 0 1.551-2.064a25.72 25.72 0 0 1 3.014 2.333a25.746 25.746 0 0 1-11.523 5.92a30.077 30.077 0 0 0 6.958-6.189m6.737-20.773a29.967 29.967 0 0 0-3.057-11.492a29.912 29.912 0 0 0 3.793-2.922a25.66 25.66 0 0 1 5.68 14.414h-6.416" fill="currentColor"/></svg></span>
                 <input type="url" id="profileWebsite" placeholder="https://yoursite.com">
             </div>
-            <div class="profile-section-label">Social Networks</div>
+            <div class="profile-section-label" id="profileSocialLabel">Social Networks</div>
             <div class="profile-field"><span class="profile-field-icon"><svg viewBox="0 0 24 24"><path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zM12 0C8.741 0 8.333.014 7.053.072 2.695.272.273 2.69.073 7.052.014 8.333 0 8.741 0 12c0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98C8.333 23.986 8.741 24 12 24c3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98C15.668.014 15.259 0 12 0zm0 5.838a6.162 6.162 0 1 0 0 12.324 6.162 6.162 0 0 0 0-12.324zM12 16a4 4 0 1 1 0-8 4 4 0 0 1 0 8zm6.406-11.845a1.44 1.44 0 1 0 0 2.881 1.44 1.44 0 0 0 0-2.881z"/></svg></span><input type="url" id="profileInstagram" placeholder="https://instagram.com/yourhandle"></div>
             <div class="profile-field"><span class="profile-field-icon"><svg viewBox="0 0 24 24"><path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/></svg></span><input type="url" id="profileFacebook" placeholder="https://facebook.com/yourpage"></div>
             <div class="profile-field"><span class="profile-field-icon"><svg viewBox="0 0 24 24"><path d="M12 0C5.373 0 0 5.373 0 12c0 5.084 3.163 9.426 7.627 11.174-.105-.949-.2-2.405.042-3.441.218-.937 1.407-5.965 1.407-5.965s-.359-.719-.359-1.782c0-1.668.967-2.914 2.171-2.914 1.023 0 1.518.769 1.518 1.69 0 1.029-.655 2.568-.994 3.995-.283 1.194.599 2.169 1.777 2.169 2.133 0 3.772-2.249 3.772-5.495 0-2.873-2.064-4.882-5.012-4.882-3.414 0-5.418 2.561-5.418 5.207 0 1.031.397 2.138.893 2.738a.36.36 0 0 1 .083.345l-.333 1.36c-.053.22-.174.267-.402.161-1.499-.698-2.436-2.889-2.436-4.649 0-3.785 2.75-7.262 7.929-7.262 4.163 0 7.398 2.967 7.398 6.931 0 4.136-2.607 7.464-6.227 7.464-1.216 0-2.359-.632-2.75-1.378l-.748 2.853c-.271 1.043-1.002 2.35-1.492 3.146C9.57 23.812 10.763 24 12 24c6.627 0 12-5.373 12-12S18.627 0 12 0z"/></svg></span><input type="url" id="profilePinterest" placeholder="https://pinterest.com/yourprofile"></div>
@@ -1401,7 +1420,31 @@
             <div class="profile-field"><span class="profile-field-icon"><svg viewBox="0 0 24 24"><path d="M8.716 7.601C6.775 7.601 5.2 9.2 5.2 11.168s1.575 3.567 3.516 3.567c1.942 0 3.517-1.599 3.517-3.567 0-1.968-1.575-3.567-3.517-3.567zm0 5.533c-1.07 0-1.94-.88-1.94-1.966 0-1.085.87-1.966 1.94-1.966 1.071 0 1.94.881 1.94 1.966 0 1.086-.869 1.966-1.94 1.966zm11.59-5.39l-1.18-.678a.553.553 0 0 0-.756.204l-2.13 3.72-2.13-3.72a.553.553 0 0 0-.756-.204l-1.18.678a.558.558 0 0 0-.203.76l2.862 4.997-2.862 4.998a.558.558 0 0 0 .203.76l1.18.678a.553.553 0 0 0 .756-.204l2.13-3.72 2.13 3.72a.553.553 0 0 0 .756.204l1.18-.678a.558.558 0 0 0 .203-.76l-2.862-4.998 2.862-4.997a.558.558 0 0 0-.203-.76zM12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm0 22.286C6.29 22.286 1.714 17.71 1.714 12 1.714 6.29 6.29 1.714 12 1.714c5.71 0 10.286 4.576 10.286 10.286 0 5.71-4.576 10.286-10.286 10.286z"/></svg></span><input type="url" id="profile500px" placeholder="https://500px.com/yourprofile"></div>
             <div class="profile-field"><span class="profile-field-icon"><svg viewBox="0 0 24 24"><path d="M0 12c0 3.074 2.494 5.568 5.568 5.568 3.075 0 5.569-2.494 5.569-5.568 0-3.075-2.494-5.569-5.569-5.569C2.494 6.431 0 8.925 0 12zm12.863 0c0 3.074 2.494 5.568 5.568 5.568C21.505 17.568 24 15.074 24 12c0-3.075-2.495-5.569-5.569-5.569-3.074 0-5.568 2.494-5.568 5.569z"/></svg></span><input type="url" id="profileFlickr" placeholder="https://flickr.com/photos/yourprofile"></div>
             <div class="profile-field"><span class="profile-field-icon"><svg viewBox="0 0 24 24"><path d="M6.938 4.503c.702 0 1.34.06 1.92.188.577.13 1.07.33 1.485.61.41.28.733.65.96 1.12.225.47.34 1.05.34 1.73 0 .74-.17 1.36-.507 1.86-.338.5-.837.9-1.502 1.22.906.26 1.576.72 2.022 1.37.448.66.665 1.45.665 2.36 0 .75-.13 1.39-.41 1.93-.28.55-.67 1-1.16 1.35-.48.348-1.05.6-1.69.747-.64.152-1.31.227-2.02.227H0V4.51h6.938v-.007zM16.94 16.665c.44.428 1.073.643 1.894.643.59 0 1.1-.148 1.53-.447.424-.29.68-.604.77-.93h2.717c-.434 1.348-1.1 2.31-1.997 2.884-.9.576-1.983.864-3.254.864-1.08 0-2.07-.166-2.96-.5a6.17 6.17 0 0 1-2.19-1.42 6.11 6.11 0 0 1-1.35-2.19c-.31-.853-.462-1.79-.462-2.806 0-.985.16-1.9.48-2.74a6.16 6.16 0 0 1 1.37-2.17 6.35 6.35 0 0 1 2.19-1.42c.86-.35 1.82-.52 2.88-.52 1.17 0 2.19.225 3.04.67a5.9 5.9 0 0 1 2.09 1.79 7.27 7.27 0 0 1 1.17 2.58c.22.96.295 1.96.23 3.01h-8.13c.048 1.01.344 1.74.78 2.17zm-10.24-.05c.574 0 1.05-.15 1.44-.46.39-.31.583-.79.583-1.44 0-.66-.192-1.14-.583-1.45-.39-.31-.866-.46-1.44-.46H3.24v3.81h3.46zm14.348-5.96c-.36-.4-.92-.6-1.67-.6-.488 0-.895.08-1.22.26-.324.17-.586.38-.78.63-.19.25-.32.51-.39.78-.07.27-.11.52-.12.74h4.96c-.09-.75-.38-1.41-.78-1.81zM6.39 10.4c.55 0 .993-.13 1.33-.39.34-.26.505-.67.505-1.22 0-.3-.053-.55-.16-.75a1.2 1.2 0 0 0-.44-.49 1.86 1.86 0 0 0-.63-.27 3.38 3.38 0 0 0-.77-.08H3.24v3.2H6.39zm9.87-4.49h5.49v1.42h-5.49V5.91z"/></svg></span><input type="url" id="profileBehance" placeholder="https://behance.net/yourprofile"></div>
-            <button class="profile-save-btn" onclick="saveProfile()">Save</button>
+
+            <div class="profile-section-label" id="profileLanguageLabel">Language</div>
+            <div class="profile-field">
+                <span class="profile-field-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg></span>
+                <select id="profileAdminLanguage" title="Dashboard language">
+                    <option value="en">English</option>
+                    <option value="fr">Français</option>
+                    <option value="es">Español</option>
+                    <option value="pt">Português</option>
+                    <option value="it">Italiano</option>
+                </select>
+            </div>
+            <div class="profile-field">
+                <span class="profile-field-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></span>
+                <select id="profileClientLanguage" title="Default client language">
+                    <option value="auto" id="profileClientLanguageAutoOpt">Auto (visitor's browser)</option>
+                    <option value="en">English</option>
+                    <option value="fr">Français</option>
+                    <option value="es">Español</option>
+                    <option value="pt">Português</option>
+                    <option value="it">Italiano</option>
+                </select>
+            </div>
+
+            <button class="profile-save-btn" id="profileSaveBtn" onclick="saveProfile()">Save</button>
             <div class="profile-save-feedback" id="profileFeedback"></div>
         </div>
     </div>
@@ -1411,13 +1454,13 @@
     <div class="trash-modal" id="trashModal" onclick="if(event.target===this) closeTrashModal()">
         <div class="trash-modal-card">
             <div class="trash-modal-header">
-                <h3>Trash</h3>
+                <h3 id="trashModalTitle">Trash</h3>
                 <div style="display:flex;gap:8px;align-items:center;">
                     <button class="btn-empty-trash" id="emptyTrashBtn" onclick="emptyTrash()">Empty trash</button>
                     <button class="trash-modal-close" onclick="closeTrashModal()">&#x2715;</button>
                 </div>
             </div>
-            <p class="trash-modal-hint">Galleries are permanently deleted after 3 days.</p>
+            <p class="trash-modal-hint" id="trashModalHint">Galleries are permanently deleted after 3 days.</p>
             <div id="trashList"></div>
         </div>
     </div>
@@ -1425,12 +1468,12 @@
     <div class="gallery-picker-modal" id="galleryPickerModal" onclick="if(event.target===this) closeGalleryPicker()">
         <div class="gallery-picker-card">
             <div class="gallery-picker-header">
-                <h3>Add galleries to collection</h3>
+                <h3 id="galleryPickerTitle">Add galleries to collection</h3>
                 <button class="gallery-picker-close" onclick="closeGalleryPicker()">&#x2715;</button>
             </div>
             <div class="gallery-picker-list" id="galleryPickerList"></div>
             <div class="gallery-picker-footer">
-                <button class="gallery-picker-cancel" onclick="closeGalleryPicker()">Cancel</button>
+                <button class="gallery-picker-cancel" id="galleryPickerCancelBtn" onclick="closeGalleryPicker()">Cancel</button>
                 <button class="gallery-picker-confirm" id="galleryPickerConfirm" onclick="confirmPickerSelection()" disabled>Add</button>
             </div>
         </div>
@@ -1439,26 +1482,26 @@
     <!-- Delete Collection Modal -->
     <div class="delete-col-modal" id="deleteColModal" onclick="if(event.target===this)closeDeleteColModal()">
         <div class="delete-col-modal-card">
-            <h4>Delete collection?</h4>
+            <h4 id="deleteColTitle">Delete collection?</h4>
             <p id="deleteColMsg"></p>
             <label class="delete-col-modal-check" id="deleteColCheckLabel">
                 <input type="checkbox" id="deleteColGalleriesCb">
-                Also move galleries to trash
+                <span id="deleteColCheckLabelText">Also move galleries to trash</span>
             </label>
             <div class="delete-col-modal-actions">
-                <button class="gallery-picker-cancel" onclick="closeDeleteColModal()">Cancel</button>
-                <button class="btn-purge" onclick="confirmDeleteCollection()">Delete</button>
+                <button class="gallery-picker-cancel" id="deleteColCancelBtn" onclick="closeDeleteColModal()">Cancel</button>
+                <button class="btn-purge" id="deleteColConfirmBtn" onclick="confirmDeleteCollection()">Delete</button>
             </div>
         </div>
     </div>
 
     <!-- Site Header -->
     <header class="site-header">
-        <div class="logo-wrap" onclick="document.getElementById('logoInput').click()" title="Click to change logo — PNG, SVG or JPG, min 200px wide">
+        <div class="logo-wrap" onclick="document.getElementById('logoInput').click()" title="Click to change logo — PNG, SVG or JPG, min 200px wide" id="logoWrap">
             <img src="/api/logo" alt="Logo" id="adminLogo">
             <span class="logo-hint">
-                Change logo
-                <span class="logo-hint-sub">PNG · SVG · JPG — min 200px</span>
+                <span id="logoHintText">Change logo</span>
+                <span class="logo-hint-sub" id="logoHintSub">PNG · SVG · JPG — min 200px</span>
             </span>
         </div>
         <input type="file" id="logoInput" accept="image/*,.svg" style="display:none">
@@ -1466,14 +1509,14 @@
         <div class="header-nav">
             <button class="btn-nav" id="logoResetBtn" onclick="resetLogo()" style="display:none">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
-                Reset logo
+                <span id="logoResetBtnText">Reset logo</span>
             </button>
             <button class="btn-nav" onclick="openProfileModal()">
                 <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 12c2.7 0 4.8-2.1 4.8-4.8S14.7 2.4 12 2.4 7.2 4.5 7.2 7.2 9.3 12 12 12zm0 2.4c-3.2 0-9.6 1.6-9.6 4.8v2.4h19.2v-2.4c0-3.2-6.4-4.8-9.6-4.8z"/></svg>
-                Profile
+                <span id="headerProfileBtnText">Profile</span>
             </button>
             <button class="btn-nav-outline" id="themeToggleBtn" onclick="toggleTheme()">☀️ Light</button>
-            <button class="btn-nav-outline" onclick="logout()" title="Log out" style="padding:8px 10px;">
+            <button class="btn-nav-outline" onclick="logout()" title="Log out" id="logoutBtn" style="padding:8px 10px;">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
             </button>
         </div>
@@ -1486,17 +1529,17 @@
         <div class="left-col">
 
             <div id="uploadSection">
-                <div class="form-section-label">New gallery</div>
+                <div class="form-section-label" id="newGalleryLabel">New gallery</div>
                 <input type="text" class="form-input" id="eventName" placeholder="Event name">
                 <div class="drop-zone" id="dropZone">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 16V4m0 0L8 8m4-4l4 4M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-                    <p>Drop photos or folders · click to browse</p>
+                    <p id="dropZonePhotosText">Drop photos or folders · click to browse</p>
                 </div>
                 <input type="file" id="fileInput" multiple accept="image/*,video/mp4,video/quicktime,video/webm,video/x-m4v" style="display:none">
                 <div class="file-list" id="fileList"></div>
                 <div class="drop-zone-small" id="bgDropZone">
                     <img class="bg-preview-small" id="bgPreview">
-                    <p>Drop image or click to browse</p>
+                    <p id="bgDropZoneText">Drop image or click to browse</p>
                 </div>
                 <input type="file" id="bgInput" accept="image/*" style="display:none">
                 <div class="multi-gallery-panel" id="multiGalleryPanel" style="display:none">
@@ -1504,7 +1547,7 @@
                     <div id="multiGalleryRows"></div>
                 </div>
                 <select class="form-input" id="galleryCollectionSelect" onchange="updateCollectionLink()">
-                    <option value="" disabled selected>Add to existing collection (optional)</option>
+                    <option value="" disabled selected id="collectionSelectPlaceholder">Add to existing collection (optional)</option>
                 </select>
                 <button class="btn-primary" id="createBtn" onclick="createGallery()" disabled>Create & copy link</button>
                 <button class="btn-primary" id="createMultiBtn" onclick="createMultipleGalleries()" style="display:none"></button>
@@ -1518,18 +1561,18 @@
             <div class="col-divider"></div>
 
             <div>
-                <div class="form-section-label">New collection</div>
+                <div class="form-section-label" id="newCollectionLabel">New collection</div>
                 <input type="text" class="form-input" id="newCollectionName" placeholder="Collection name" maxlength="200">
                 <div class="drop-zone-small" id="colBgDropZone">
                     <img class="bg-preview-small" id="colBgPreview">
-                    <p>Drop image or click to browse</p>
+                    <p id="colBgDropZoneText">Drop image or click to browse</p>
                 </div>
                 <input type="file" id="colBgInput" accept="image/*" style="display:none">
                 <label id="includeGalleryLabel" style="display:none;align-items:center;gap:8px;margin-top:10px;font-size:13px;color:var(--muted);cursor:pointer">
                     <input type="checkbox" id="includeInNewCollection" onchange="updateCollectionLink()">
                     <span id="includeGalleryLabelText">Include the gallery being created</span>
                 </label>
-                <button class="btn-secondary" onclick="createCollection()">Create collection</button>
+                <button class="btn-secondary" id="createCollectionBtn" onclick="createCollection()">Create collection</button>
             </div>
 
         </div>
@@ -1538,25 +1581,25 @@
         <div class="right-col">
 
             <div class="result-section" id="resultSection">
-                <h3>Gallery created</h3>
+                <h3 id="resultTitle">Gallery created</h3>
                 <p id="resultEventName"></p>
                 <div class="link-row">
                     <input type="text" id="downloadLinkInput" readonly>
                     <button class="copy-btn" onclick="copyLink('downloadLinkInput')">Copy</button>
                 </div>
-                <button class="new-upload-btn" onclick="document.getElementById('resultSection').classList.remove('visible')">Dismiss</button>
+                <button class="new-upload-btn" id="dismissResultBtn" onclick="document.getElementById('resultSection').classList.remove('visible')">Dismiss</button>
             </div>
 
             <div>
                 <div class="section-header">
-                    <span class="section-label">Collections</span>
+                    <span class="section-label" id="collectionsSectionLabel">Collections</span>
                 </div>
-                <div id="collectionList"><div class="empty-state">No collections yet.</div></div>
+                <div id="collectionList"><div class="empty-state" id="noCollectionsYetMsg">No collections yet.</div></div>
             </div>
 
             <div>
                 <div class="section-header">
-                    <span class="section-label">Galleries</span>
+                    <span class="section-label" id="galleriesSectionLabel">Galleries</span>
                     <div class="section-header-right">
                         <input class="gallery-search" id="gallerySearch" type="search" placeholder="Search…" oninput="filterGalleries(this.value)">
                         <button class="section-select-btn" id="selectionModeBtn" onclick="toggleSelectionMode()">Select</button>
@@ -1584,15 +1627,684 @@
             return f.type.startsWith('image/') || f.type.startsWith('video/') || isVideoFilename(f.name);
         }
 
+        // ── ADMIN UI TRANSLATIONS ──
+        const adminTranslations = {
+            en: {
+                loginTitle: 'Welcome Back', loginSubtitle: 'Enter your password to access the dashboard',
+                loginPasswordPlaceholder: 'Password', loginSignIn: 'Sign In',
+                loginErrorDenied: 'Access denied — your IP address is not authorised',
+                loginErrorInvalid: 'Invalid password', loginErrorNetwork: 'Could not reach the server',
+                logoHint: 'Change logo', logoHintSub: 'PNG · SVG · JPG — min 200px',
+                logoTitle: 'Click to change logo — PNG, SVG or JPG, min 200px wide',
+                resetLogo: 'Reset logo', headerProfile: 'Profile', logout: 'Log out',
+                themeLight: '☀️ Light mode', themeDark: '🌙 Dark mode',
+                newGallery: 'New gallery', eventNamePlaceholder: 'Event name',
+                dropPhotosOrFolders: 'Drop photos or folders · click to browse',
+                dropImage: 'Drop image or click to browse',
+                addToExistingCollection: 'Add to existing collection (optional)',
+                createAndCopyLink: 'Create & copy link', createGalleryAndCollection: 'Create gallery + collection',
+                cancel: 'Cancel', uploadingDots: 'Uploading...',
+                newCollection: 'New collection', collectionNamePlaceholder: 'Collection name',
+                includeGallerySingle: 'Include the gallery being created',
+                includeGalleryMulti: 'Include the galleries being created',
+                createCollection: 'Create collection',
+                galleryCreated: 'Gallery created', copy: 'Copy', dismiss: 'Dismiss',
+                collections: 'Collections', noCollectionsYet: 'No collections yet.',
+                galleries: 'Galleries', searchPlaceholder: 'Search…', select: 'Select',
+                trash: 'Trash', loading: 'Loading...',
+                noGalleriesMatch: q => `No galleries match "${q}".`,
+                noGalleriesYet: 'No galleries yet. Create your first one above!',
+                dropOrClick: 'Drop or click', rename: 'Rename',
+                allowDownloads: 'Allow clients to download', allowComments: 'Allow clients to comment on photos',
+                downloads: 'Downloads', comments: 'Comments', uniqueViews: 'Unique views',
+                reset: 'Reset', totalDownloads: 'Total downloads', view: 'View',
+                inCollection: 'In collection', moveUp: 'Move up', moveDown: 'Move down',
+                copyClientLink: 'Copy client link', copyCritiqueLink: 'Copy critique link (numbered photos)',
+                managePhotos: 'Manage photos', regenerateShare: 'Regenerate share preview',
+                ogTooltip: 'Regenerate the preview image shown when this gallery link is shared on WhatsApp, iMessage or social media.',
+                moveToTrash: 'Move to trash', gallerySingular: 'gallery', galleryPlural: 'galleries',
+                photoSingular: 'photo', photoPlural: 'photos',
+                commentSingular: 'comment', commentPlural: 'comments',
+                addGallery: '+ Add gallery', changeCoverTitle: 'Drop image or click to change cover',
+                moveLeft: 'Move left', moveRight: 'Move right', remove: 'Remove', delete: 'Delete',
+                clientLanguageTitle: 'Client language',
+                gallerySelectedCount: (n, g) => `${n} ${g} selected`,
+                photoSelectedCount: (n, p) => `${n} ${p} selected`,
+                selectAll: 'Select all', deselectAll: 'Deselect all',
+                enableDownloads: 'Enable downloads', disableDownloads: 'Disable downloads',
+                addToCollectionPlaceholder: 'Add to collection…',
+                managePhotosTitle: 'Manage Photos', deleteSelected: 'Delete selected',
+                dropPhotosHereOr: 'Drop photos here or', browse: 'browse', upload: 'Upload',
+                noPhotosLeft: 'No photos left.',
+                confirmResetLogo: 'Reset logo to the built-in default?',
+                confirmBulkDelete: (n, g) => `Delete ${n} ${g}? This cannot be undone.`,
+                confirmDeletePhotos: (n, p) => `Delete ${n} ${p}? This cannot be undone.`,
+                confirmDeletePhoto: f => `Delete "${f}"?\nThis cannot be undone.`,
+                confirmDeleteAllComments: 'Delete all comments for this gallery?',
+                confirmResetViews: 'Reset view count for this gallery?',
+                confirmResetFavorites: 'Reset all favorites for this gallery?',
+                confirmMoveTrash: 'Move this gallery to trash? It will be permanently deleted after 3 days.',
+                confirmPurgeGallery: 'Permanently delete this gallery? This cannot be undone.',
+                confirmEmptyTrash: 'Permanently delete all trashed galleries? This cannot be undone.',
+                clientFavorites: 'Client Favorites', copyRankingLink: 'Copy ranking link',
+                exportCsv: 'Export CSV', downloadPhotos: 'Download photos', noFavoritesYet: 'No favorites yet.',
+                clearAll: 'Clear all', noCommentsYet: 'No comments yet.', guest: 'Guest',
+                commentsTitleWithCount: n => `Comments (${n})`,
+                trashHint: 'Galleries are permanently deleted after 3 days.', emptyTrash: 'Empty trash',
+                trashEmpty: 'Trash is empty.', expiresToday: 'Expires today', expiresTomorrow: 'Expires tomorrow',
+                daysLeft: n => `${n} days left`,
+                restore: 'Restore', deleteNow: 'Delete now',
+                addGalleriesToCollection: 'Add galleries to collection', add: 'Add',
+                addN: (n, g) => `Add ${n} ${g}`, noGalleriesYetPicker: 'No galleries yet.',
+                alreadyInCollection: 'Already in this collection',
+                deleteCollectionTitle: 'Delete collection?', alsoMoveGalleries: 'Also move galleries to trash',
+                deleteColMsgWithGalleries: (n, g) => `This collection contains ${n} ${g}. They will not be affected unless you check the option below.`,
+                deleteColMsgEmpty: 'This will remove the collection. It contains no galleries.',
+                profileTitle: 'Profile & Social Links', website: 'Website', socialNetworks: 'Social Networks',
+                language: 'Language', autoLanguage: "Auto (visitor's browser)", save: 'Save',
+                saved: 'Saved.', errorSavingSettings: 'Error saving settings.', networkError: 'Network error.',
+                uploadingCount: (done, total) => `Uploading… ${done} / ${total} photos`,
+                uploadingCoverImage: 'Uploading cover image…',
+                coverTooLargeMax: mb => `Cover image is too large. Maximum size is ${mb} MB.`,
+                couldNotUploadCover: 'Could not upload cover image.',
+                errorCreatingGallery: msg => `Error creating gallery: ${msg}`,
+                galleriesCreated: (n, g) => `${n} ${g} created`,
+                failedAfterCreating: (n, total, msg) => `Failed after creating ${n} of ${total} galleries: ${msg}`,
+                noImagesFoundInFolders: 'No images found in the dropped folders.',
+                filesIgnoredNote: n => `${n} file${n > 1 ? 's' : ''} outside folders ${n > 1 ? 'were' : 'was'} ignored.`,
+                imageTooLargeSize: (size, mb) => `Image is too large (${size} MB). Maximum size is ${mb} MB.`,
+                couldNotUploadCollectionCover: 'Could not upload collection cover.',
+                couldNotUploadCollectionCoverErr: msg => `Could not upload collection cover: ${msg}`,
+                logoResetFailed: msg => `Logo reset failed: ${msg}`,
+                logoUploadFailed: msg => `Logo upload failed: ${msg}`,
+                uploadingCoverDots: 'Uploading cover...', uploadFailedDot: 'Upload failed.',
+                coverUpdated: 'Cover updated!', renamingDots: 'Renaming...', renamedExcl: 'Renamed!',
+                renameFailed: 'Rename failed',
+                couldNotUpdateDownloadSetting: msg => `Could not update download setting: ${msg}`,
+                couldNotUpdateCommentsSetting: msg => `Could not update comments setting: ${msg}`,
+                photosCouldNotBeDeleted: n => `${n} ${n > 1 ? 'photos' : 'photo'} could not be deleted.`,
+                couldNotLoadPhotos: 'Could not load photos',
+                couldNotDeletePhoto: msg => `Could not delete photo: ${msg}`,
+                couldNotLoadFavorites: 'Could not load favorites', couldNotLoadComments: 'Could not load comments',
+                couldNotDeleteComment: 'Could not delete comment', couldNotResetComments: 'Could not reset comments',
+                couldNotResetFavorites: 'Could not reset favorites',
+                errorResettingViews: msg => `Error resetting views: ${msg}`,
+                couldNotCreateCollection: msg => `Could not create collection: ${msg}`,
+                couldNotReorderGalleries: msg => `Could not reorder galleries: ${msg}`,
+                couldNotDeleteCollection: msg => `Could not delete collection: ${msg}`,
+                couldNotRemoveGalleryFromCollection: msg => `Could not remove gallery from collection: ${msg}`,
+                couldNotAddGalleryToCollection: msg => `Could not add gallery to collection: ${msg}`,
+                errorMovingGalleryToTrash: 'Error moving gallery to trash',
+                couldNotRestoreGallery: 'Could not restore gallery', couldNotDeleteGallery: 'Could not delete gallery',
+                couldNotEmptyTrash: 'Could not empty trash',
+                sharePreviewRegenerated: 'Share preview will be regenerated on next share.',
+                couldNotResetSharePreview: 'Could not reset share preview',
+                uploadFailedMsg: msg => `Upload failed: ${msg}`,
+            },
+            fr: {
+                loginTitle: 'Bon retour', loginSubtitle: 'Entrez votre mot de passe pour accéder au tableau de bord',
+                loginPasswordPlaceholder: 'Mot de passe', loginSignIn: 'Se connecter',
+                loginErrorDenied: 'Accès refusé — votre adresse IP n\'est pas autorisée',
+                loginErrorInvalid: 'Mot de passe invalide', loginErrorNetwork: 'Impossible de contacter le serveur',
+                logoHint: 'Changer le logo', logoHintSub: 'PNG · SVG · JPG — min 200px',
+                logoTitle: 'Cliquez pour changer le logo — PNG, SVG ou JPG, min 200px de large',
+                resetLogo: 'Réinitialiser le logo', headerProfile: 'Profil', logout: 'Déconnexion',
+                themeLight: '☀️ Mode clair', themeDark: '🌙 Mode sombre',
+                newGallery: 'Nouvelle galerie', eventNamePlaceholder: 'Nom de l\'événement',
+                dropPhotosOrFolders: 'Déposez des photos ou dossiers · cliquez pour parcourir',
+                dropImage: 'Déposez une image ou cliquez pour parcourir',
+                addToExistingCollection: 'Ajouter à une collection existante (optionnel)',
+                createAndCopyLink: 'Créer et copier le lien', createGalleryAndCollection: 'Créer la galerie + collection',
+                cancel: 'Annuler', uploadingDots: 'Envoi en cours...',
+                newCollection: 'Nouvelle collection', collectionNamePlaceholder: 'Nom de la collection',
+                includeGallerySingle: 'Inclure la galerie en cours de création',
+                includeGalleryMulti: 'Inclure les galeries en cours de création',
+                createCollection: 'Créer la collection',
+                galleryCreated: 'Galerie créée', copy: 'Copier', dismiss: 'Fermer',
+                collections: 'Collections', noCollectionsYet: 'Aucune collection pour le moment.',
+                galleries: 'Galeries', searchPlaceholder: 'Rechercher…', select: 'Sélectionner',
+                trash: 'Corbeille', loading: 'Chargement...',
+                noGalleriesMatch: q => `Aucune galerie ne correspond à "${q}".`,
+                noGalleriesYet: 'Aucune galerie pour le moment. Créez la première ci-dessus !',
+                dropOrClick: 'Déposer ou cliquer', rename: 'Renommer',
+                allowDownloads: 'Autoriser les clients à télécharger', allowComments: 'Autoriser les clients à commenter les photos',
+                downloads: 'Téléchargements', comments: 'Commentaires', uniqueViews: 'Vues uniques',
+                reset: 'Réinitialiser', totalDownloads: 'Téléchargements totaux', view: 'Voir',
+                inCollection: 'Dans une collection', moveUp: 'Monter', moveDown: 'Descendre',
+                copyClientLink: 'Copier le lien client', copyCritiqueLink: 'Copier le lien de critique (photos numérotées)',
+                managePhotos: 'Gérer les photos', regenerateShare: 'Régénérer l\'aperçu de partage',
+                ogTooltip: 'Régénère l\'image d\'aperçu affichée lorsque ce lien de galerie est partagé sur WhatsApp, iMessage ou les réseaux sociaux.',
+                moveToTrash: 'Déplacer vers la corbeille', gallerySingular: 'galerie', galleryPlural: 'galeries',
+                photoSingular: 'photo', photoPlural: 'photos',
+                commentSingular: 'commentaire', commentPlural: 'commentaires',
+                addGallery: '+ Ajouter une galerie', changeCoverTitle: 'Déposez une image ou cliquez pour changer la couverture',
+                moveLeft: 'Déplacer à gauche', moveRight: 'Déplacer à droite', remove: 'Retirer', delete: 'Supprimer',
+                clientLanguageTitle: 'Langue du client',
+                gallerySelectedCount: (n, g) => `${n} ${g} sélectionnée${n > 1 ? 's' : ''}`,
+                photoSelectedCount: (n, p) => `${n} ${p} sélectionnée${n > 1 ? 's' : ''}`,
+                selectAll: 'Tout sélectionner', deselectAll: 'Tout désélectionner',
+                enableDownloads: 'Activer les téléchargements', disableDownloads: 'Désactiver les téléchargements',
+                addToCollectionPlaceholder: 'Ajouter à une collection…',
+                managePhotosTitle: 'Gérer les photos', deleteSelected: 'Supprimer la sélection',
+                dropPhotosHereOr: 'Déposez des photos ici ou', browse: 'parcourir', upload: 'Envoyer',
+                noPhotosLeft: 'Plus aucune photo.',
+                confirmResetLogo: 'Réinitialiser le logo par défaut ?',
+                confirmBulkDelete: (n, g) => `Supprimer ${n} ${g} ? Cette action est irréversible.`,
+                confirmDeletePhotos: (n, p) => `Supprimer ${n} ${p} ? Cette action est irréversible.`,
+                confirmDeletePhoto: f => `Supprimer "${f}" ?\nCette action est irréversible.`,
+                confirmDeleteAllComments: 'Supprimer tous les commentaires de cette galerie ?',
+                confirmResetViews: 'Réinitialiser le nombre de vues de cette galerie ?',
+                confirmResetFavorites: 'Réinitialiser tous les favoris de cette galerie ?',
+                confirmMoveTrash: 'Déplacer cette galerie vers la corbeille ? Elle sera supprimée définitivement après 3 jours.',
+                confirmPurgeGallery: 'Supprimer définitivement cette galerie ? Cette action est irréversible.',
+                confirmEmptyTrash: 'Supprimer définitivement toutes les galeries de la corbeille ? Cette action est irréversible.',
+                clientFavorites: 'Favoris des clients', copyRankingLink: 'Copier le lien de classement',
+                exportCsv: 'Exporter en CSV', downloadPhotos: 'Télécharger les photos', noFavoritesYet: 'Aucun favori pour le moment.',
+                clearAll: 'Tout effacer', noCommentsYet: 'Aucun commentaire pour le moment.', guest: 'Invité',
+                commentsTitleWithCount: n => `Commentaires (${n})`,
+                trashHint: 'Les galeries sont supprimées définitivement après 3 jours.', emptyTrash: 'Vider la corbeille',
+                trashEmpty: 'La corbeille est vide.', expiresToday: 'Expire aujourd\'hui', expiresTomorrow: 'Expire demain',
+                daysLeft: n => `${n} jour${n > 1 ? 's' : ''} restant${n > 1 ? 's' : ''}`,
+                restore: 'Restaurer', deleteNow: 'Supprimer maintenant',
+                addGalleriesToCollection: 'Ajouter des galeries à la collection', add: 'Ajouter',
+                addN: (n, g) => `Ajouter ${n} ${g}`, noGalleriesYetPicker: 'Aucune galerie pour le moment.',
+                alreadyInCollection: 'Déjà dans cette collection',
+                deleteCollectionTitle: 'Supprimer la collection ?', alsoMoveGalleries: 'Déplacer aussi les galeries vers la corbeille',
+                deleteColMsgWithGalleries: (n, g) => `Cette collection contient ${n} ${g}. Elles ne seront pas affectées sauf si vous cochez l'option ci-dessous.`,
+                deleteColMsgEmpty: 'Cela supprimera la collection. Elle ne contient aucune galerie.',
+                profileTitle: 'Profil et réseaux sociaux', website: 'Site web', socialNetworks: 'Réseaux sociaux',
+                language: 'Langue', autoLanguage: 'Auto (navigateur du visiteur)', save: 'Enregistrer',
+                saved: 'Enregistré.', errorSavingSettings: 'Erreur lors de l\'enregistrement.', networkError: 'Erreur réseau.',
+                uploadingCount: (done, total) => `Envoi… ${done} / ${total} photos`,
+                uploadingCoverImage: 'Envoi de l\'image de couverture…',
+                coverTooLargeMax: mb => `L'image de couverture est trop grande. Taille maximale : ${mb} Mo.`,
+                couldNotUploadCover: 'Impossible d\'envoyer l\'image de couverture.',
+                errorCreatingGallery: msg => `Erreur lors de la création de la galerie : ${msg}`,
+                galleriesCreated: (n, g) => `${n} ${g} créée${n > 1 ? 's' : ''}`,
+                failedAfterCreating: (n, total, msg) => `Échec après la création de ${n} galerie(s) sur ${total} : ${msg}`,
+                noImagesFoundInFolders: 'Aucune image trouvée dans les dossiers déposés.',
+                filesIgnoredNote: n => `${n} fichier${n > 1 ? 's' : ''} hors dossiers ${n > 1 ? 'ont' : 'a'} été ignoré${n > 1 ? 's' : ''}.`,
+                imageTooLargeSize: (size, mb) => `L'image est trop grande (${size} Mo). Taille maximale : ${mb} Mo.`,
+                couldNotUploadCollectionCover: 'Impossible d\'envoyer la couverture de la collection.',
+                couldNotUploadCollectionCoverErr: msg => `Impossible d'envoyer la couverture de la collection : ${msg}`,
+                logoResetFailed: msg => `Échec de la réinitialisation du logo : ${msg}`,
+                logoUploadFailed: msg => `Échec de l'envoi du logo : ${msg}`,
+                uploadingCoverDots: 'Envoi de la couverture...', uploadFailedDot: 'Échec de l\'envoi.',
+                coverUpdated: 'Couverture mise à jour !', renamingDots: 'Renommage...', renamedExcl: 'Renommé !',
+                renameFailed: 'Échec du renommage',
+                couldNotUpdateDownloadSetting: msg => `Impossible de mettre à jour le réglage des téléchargements : ${msg}`,
+                couldNotUpdateCommentsSetting: msg => `Impossible de mettre à jour le réglage des commentaires : ${msg}`,
+                photosCouldNotBeDeleted: n => `${n} photo${n > 1 ? 's' : ''} n'${n > 1 ? 'ont' : 'a'} pas pu être supprimée${n > 1 ? 's' : ''}.`,
+                couldNotLoadPhotos: 'Impossible de charger les photos',
+                couldNotDeletePhoto: msg => `Impossible de supprimer la photo : ${msg}`,
+                couldNotLoadFavorites: 'Impossible de charger les favoris', couldNotLoadComments: 'Impossible de charger les commentaires',
+                couldNotDeleteComment: 'Impossible de supprimer le commentaire', couldNotResetComments: 'Impossible de réinitialiser les commentaires',
+                couldNotResetFavorites: 'Impossible de réinitialiser les favoris',
+                errorResettingViews: msg => `Erreur lors de la réinitialisation des vues : ${msg}`,
+                couldNotCreateCollection: msg => `Impossible de créer la collection : ${msg}`,
+                couldNotReorderGalleries: msg => `Impossible de réorganiser les galeries : ${msg}`,
+                couldNotDeleteCollection: msg => `Impossible de supprimer la collection : ${msg}`,
+                couldNotRemoveGalleryFromCollection: msg => `Impossible de retirer la galerie de la collection : ${msg}`,
+                couldNotAddGalleryToCollection: msg => `Impossible d'ajouter la galerie à la collection : ${msg}`,
+                errorMovingGalleryToTrash: 'Erreur lors du déplacement de la galerie vers la corbeille',
+                couldNotRestoreGallery: 'Impossible de restaurer la galerie', couldNotDeleteGallery: 'Impossible de supprimer la galerie',
+                couldNotEmptyTrash: 'Impossible de vider la corbeille',
+                sharePreviewRegenerated: 'L\'aperçu de partage sera régénéré au prochain partage.',
+                couldNotResetSharePreview: 'Impossible de réinitialiser l\'aperçu de partage',
+                uploadFailedMsg: msg => `Échec de l'envoi : ${msg}`,
+            },
+            es: {
+                loginTitle: 'Bienvenido de nuevo', loginSubtitle: 'Introduce tu contraseña para acceder al panel',
+                loginPasswordPlaceholder: 'Contraseña', loginSignIn: 'Iniciar sesión',
+                loginErrorDenied: 'Acceso denegado — tu dirección IP no está autorizada',
+                loginErrorInvalid: 'Contraseña incorrecta', loginErrorNetwork: 'No se pudo contactar con el servidor',
+                logoHint: 'Cambiar logo', logoHintSub: 'PNG · SVG · JPG — mín. 200px',
+                logoTitle: 'Haz clic para cambiar el logo — PNG, SVG o JPG, mín. 200px de ancho',
+                resetLogo: 'Restablecer logo', headerProfile: 'Perfil', logout: 'Cerrar sesión',
+                themeLight: '☀️ Modo claro', themeDark: '🌙 Modo oscuro',
+                newGallery: 'Nueva galería', eventNamePlaceholder: 'Nombre del evento',
+                dropPhotosOrFolders: 'Suelta fotos o carpetas · haz clic para explorar',
+                dropImage: 'Suelta una imagen o haz clic para explorar',
+                addToExistingCollection: 'Añadir a una colección existente (opcional)',
+                createAndCopyLink: 'Crear y copiar enlace', createGalleryAndCollection: 'Crear galería + colección',
+                cancel: 'Cancelar', uploadingDots: 'Subiendo...',
+                newCollection: 'Nueva colección', collectionNamePlaceholder: 'Nombre de la colección',
+                includeGallerySingle: 'Incluir la galería que se está creando',
+                includeGalleryMulti: 'Incluir las galerías que se están creando',
+                createCollection: 'Crear colección',
+                galleryCreated: 'Galería creada', copy: 'Copiar', dismiss: 'Cerrar',
+                collections: 'Colecciones', noCollectionsYet: 'Todavía no hay colecciones.',
+                galleries: 'Galerías', searchPlaceholder: 'Buscar…', select: 'Seleccionar',
+                trash: 'Papelera', loading: 'Cargando...',
+                noGalleriesMatch: q => `Ninguna galería coincide con "${q}".`,
+                noGalleriesYet: '¡Todavía no hay galerías. Crea la primera arriba!',
+                dropOrClick: 'Soltar o hacer clic', rename: 'Renombrar',
+                allowDownloads: 'Permitir que los clientes descarguen', allowComments: 'Permitir que los clientes comenten las fotos',
+                downloads: 'Descargas', comments: 'Comentarios', uniqueViews: 'Visitas únicas',
+                reset: 'Restablecer', totalDownloads: 'Descargas totales', view: 'Ver',
+                inCollection: 'En una colección', moveUp: 'Subir', moveDown: 'Bajar',
+                copyClientLink: 'Copiar enlace de cliente', copyCritiqueLink: 'Copiar enlace de crítica (fotos numeradas)',
+                managePhotos: 'Gestionar fotos', regenerateShare: 'Regenerar vista previa de compartir',
+                ogTooltip: 'Regenera la imagen de vista previa que se muestra al compartir este enlace de galería en WhatsApp, iMessage o redes sociales.',
+                moveToTrash: 'Mover a la papelera', gallerySingular: 'galería', galleryPlural: 'galerías',
+                photoSingular: 'foto', photoPlural: 'fotos',
+                commentSingular: 'comentario', commentPlural: 'comentarios',
+                addGallery: '+ Añadir galería', changeCoverTitle: 'Suelta una imagen o haz clic para cambiar la portada',
+                moveLeft: 'Mover a la izquierda', moveRight: 'Mover a la derecha', remove: 'Quitar', delete: 'Eliminar',
+                clientLanguageTitle: 'Idioma del cliente',
+                gallerySelectedCount: (n, g) => `${n} ${g} seleccionada${n > 1 ? 's' : ''}`,
+                photoSelectedCount: (n, p) => `${n} ${p} seleccionada${n > 1 ? 's' : ''}`,
+                selectAll: 'Seleccionar todo', deselectAll: 'Deseleccionar todo',
+                enableDownloads: 'Activar descargas', disableDownloads: 'Desactivar descargas',
+                addToCollectionPlaceholder: 'Añadir a una colección…',
+                managePhotosTitle: 'Gestionar fotos', deleteSelected: 'Eliminar selección',
+                dropPhotosHereOr: 'Suelta fotos aquí o', browse: 'explorar', upload: 'Subir',
+                noPhotosLeft: 'No quedan fotos.',
+                confirmResetLogo: '¿Restablecer el logo predeterminado?',
+                confirmBulkDelete: (n, g) => `¿Eliminar ${n} ${g}? Esta acción no se puede deshacer.`,
+                confirmDeletePhotos: (n, p) => `¿Eliminar ${n} ${p}? Esta acción no se puede deshacer.`,
+                confirmDeletePhoto: f => `¿Eliminar "${f}"?\nEsta acción no se puede deshacer.`,
+                confirmDeleteAllComments: '¿Eliminar todos los comentarios de esta galería?',
+                confirmResetViews: '¿Restablecer el contador de visitas de esta galería?',
+                confirmResetFavorites: '¿Restablecer todos los favoritos de esta galería?',
+                confirmMoveTrash: '¿Mover esta galería a la papelera? Se eliminará permanentemente después de 3 días.',
+                confirmPurgeGallery: '¿Eliminar esta galería permanentemente? Esta acción no se puede deshacer.',
+                confirmEmptyTrash: '¿Eliminar permanentemente todas las galerías de la papelera? Esta acción no se puede deshacer.',
+                clientFavorites: 'Favoritos del cliente', copyRankingLink: 'Copiar enlace de clasificación',
+                exportCsv: 'Exportar CSV', downloadPhotos: 'Descargar fotos', noFavoritesYet: 'Todavía no hay favoritos.',
+                clearAll: 'Borrar todo', noCommentsYet: 'Todavía no hay comentarios.', guest: 'Invitado',
+                commentsTitleWithCount: n => `Comentarios (${n})`,
+                trashHint: 'Las galerías se eliminan permanentemente después de 3 días.', emptyTrash: 'Vaciar papelera',
+                trashEmpty: 'La papelera está vacía.', expiresToday: 'Expira hoy', expiresTomorrow: 'Expira mañana',
+                daysLeft: n => `${n} día${n > 1 ? 's' : ''} restante${n > 1 ? 's' : ''}`,
+                restore: 'Restaurar', deleteNow: 'Eliminar ahora',
+                addGalleriesToCollection: 'Añadir galerías a la colección', add: 'Añadir',
+                addN: (n, g) => `Añadir ${n} ${g}`, noGalleriesYetPicker: 'Todavía no hay galerías.',
+                alreadyInCollection: 'Ya está en esta colección',
+                deleteCollectionTitle: '¿Eliminar la colección?', alsoMoveGalleries: 'Mover también las galerías a la papelera',
+                deleteColMsgWithGalleries: (n, g) => `Esta colección contiene ${n} ${g}. No se verán afectadas a menos que marques la opción de abajo.`,
+                deleteColMsgEmpty: 'Esto eliminará la colección. No contiene ninguna galería.',
+                profileTitle: 'Perfil y redes sociales', website: 'Sitio web', socialNetworks: 'Redes sociales',
+                language: 'Idioma', autoLanguage: 'Auto (navegador del visitante)', save: 'Guardar',
+                saved: 'Guardado.', errorSavingSettings: 'Error al guardar la configuración.', networkError: 'Error de red.',
+                uploadingCount: (done, total) => `Subiendo… ${done} / ${total} fotos`,
+                uploadingCoverImage: 'Subiendo imagen de portada…',
+                coverTooLargeMax: mb => `La imagen de portada es demasiado grande. Tamaño máximo: ${mb} MB.`,
+                couldNotUploadCover: 'No se pudo subir la imagen de portada.',
+                errorCreatingGallery: msg => `Error al crear la galería: ${msg}`,
+                galleriesCreated: (n, g) => `${n} ${g} creada${n > 1 ? 's' : ''}`,
+                failedAfterCreating: (n, total, msg) => `Fallo tras crear ${n} de ${total} galerías: ${msg}`,
+                noImagesFoundInFolders: 'No se encontraron imágenes en las carpetas soltadas.',
+                filesIgnoredNote: n => `${n} archivo${n > 1 ? 's' : ''} fuera de carpetas ${n > 1 ? 'fueron' : 'fue'} ignorado${n > 1 ? 's' : ''}.`,
+                imageTooLargeSize: (size, mb) => `La imagen es demasiado grande (${size} MB). Tamaño máximo: ${mb} MB.`,
+                couldNotUploadCollectionCover: 'No se pudo subir la portada de la colección.',
+                couldNotUploadCollectionCoverErr: msg => `No se pudo subir la portada de la colección: ${msg}`,
+                logoResetFailed: msg => `Error al restablecer el logo: ${msg}`,
+                logoUploadFailed: msg => `Error al subir el logo: ${msg}`,
+                uploadingCoverDots: 'Subiendo portada...', uploadFailedDot: 'Error al subir.',
+                coverUpdated: '¡Portada actualizada!', renamingDots: 'Renombrando...', renamedExcl: '¡Renombrado!',
+                renameFailed: 'Error al renombrar',
+                couldNotUpdateDownloadSetting: msg => `No se pudo actualizar la opción de descargas: ${msg}`,
+                couldNotUpdateCommentsSetting: msg => `No se pudo actualizar la opción de comentarios: ${msg}`,
+                photosCouldNotBeDeleted: n => `${n} foto${n > 1 ? 's' : ''} no se ${n > 1 ? 'pudieron' : 'pudo'} eliminar.`,
+                couldNotLoadPhotos: 'No se pudieron cargar las fotos',
+                couldNotDeletePhoto: msg => `No se pudo eliminar la foto: ${msg}`,
+                couldNotLoadFavorites: 'No se pudieron cargar los favoritos', couldNotLoadComments: 'No se pudieron cargar los comentarios',
+                couldNotDeleteComment: 'No se pudo eliminar el comentario', couldNotResetComments: 'No se pudieron restablecer los comentarios',
+                couldNotResetFavorites: 'No se pudieron restablecer los favoritos',
+                errorResettingViews: msg => `Error al restablecer las visitas: ${msg}`,
+                couldNotCreateCollection: msg => `No se pudo crear la colección: ${msg}`,
+                couldNotReorderGalleries: msg => `No se pudieron reordenar las galerías: ${msg}`,
+                couldNotDeleteCollection: msg => `No se pudo eliminar la colección: ${msg}`,
+                couldNotRemoveGalleryFromCollection: msg => `No se pudo quitar la galería de la colección: ${msg}`,
+                couldNotAddGalleryToCollection: msg => `No se pudo añadir la galería a la colección: ${msg}`,
+                errorMovingGalleryToTrash: 'Error al mover la galería a la papelera',
+                couldNotRestoreGallery: 'No se pudo restaurar la galería', couldNotDeleteGallery: 'No se pudo eliminar la galería',
+                couldNotEmptyTrash: 'No se pudo vaciar la papelera',
+                sharePreviewRegenerated: 'La vista previa de compartir se regenerará la próxima vez que se comparta.',
+                couldNotResetSharePreview: 'No se pudo restablecer la vista previa de compartir',
+                uploadFailedMsg: msg => `Error al subir: ${msg}`,
+            },
+            pt: {
+                loginTitle: 'Bem-vindo de volta', loginSubtitle: 'Digite sua senha para acessar o painel',
+                loginPasswordPlaceholder: 'Senha', loginSignIn: 'Entrar',
+                loginErrorDenied: 'Acesso negado — seu endereço IP não está autorizado',
+                loginErrorInvalid: 'Senha inválida', loginErrorNetwork: 'Não foi possível contatar o servidor',
+                logoHint: 'Alterar logo', logoHintSub: 'PNG · SVG · JPG — mín. 200px',
+                logoTitle: 'Clique para alterar o logo — PNG, SVG ou JPG, mín. 200px de largura',
+                resetLogo: 'Redefinir logo', headerProfile: 'Perfil', logout: 'Sair',
+                themeLight: '☀️ Modo claro', themeDark: '🌙 Modo escuro',
+                newGallery: 'Nova galeria', eventNamePlaceholder: 'Nome do evento',
+                dropPhotosOrFolders: 'Solte fotos ou pastas · clique para procurar',
+                dropImage: 'Solte uma imagem ou clique para procurar',
+                addToExistingCollection: 'Adicionar a uma coleção existente (opcional)',
+                createAndCopyLink: 'Criar e copiar link', createGalleryAndCollection: 'Criar galeria + coleção',
+                cancel: 'Cancelar', uploadingDots: 'Enviando...',
+                newCollection: 'Nova coleção', collectionNamePlaceholder: 'Nome da coleção',
+                includeGallerySingle: 'Incluir a galeria que está sendo criada',
+                includeGalleryMulti: 'Incluir as galerias que estão sendo criadas',
+                createCollection: 'Criar coleção',
+                galleryCreated: 'Galeria criada', copy: 'Copiar', dismiss: 'Fechar',
+                collections: 'Coleções', noCollectionsYet: 'Ainda não há coleções.',
+                galleries: 'Galerias', searchPlaceholder: 'Pesquisar…', select: 'Selecionar',
+                trash: 'Lixeira', loading: 'Carregando...',
+                noGalleriesMatch: q => `Nenhuma galeria corresponde a "${q}".`,
+                noGalleriesYet: 'Ainda não há galerias. Crie a primeira acima!',
+                dropOrClick: 'Soltar ou clicar', rename: 'Renomear',
+                allowDownloads: 'Permitir que os clientes baixem', allowComments: 'Permitir que os clientes comentem as fotos',
+                downloads: 'Downloads', comments: 'Comentários', uniqueViews: 'Visualizações únicas',
+                reset: 'Redefinir', totalDownloads: 'Downloads totais', view: 'Ver',
+                inCollection: 'Em uma coleção', moveUp: 'Mover para cima', moveDown: 'Mover para baixo',
+                copyClientLink: 'Copiar link do cliente', copyCritiqueLink: 'Copiar link de crítica (fotos numeradas)',
+                managePhotos: 'Gerenciar fotos', regenerateShare: 'Regenerar pré-visualização de compartilhamento',
+                ogTooltip: 'Regenera a imagem de pré-visualização exibida ao compartilhar este link da galeria no WhatsApp, iMessage ou redes sociais.',
+                moveToTrash: 'Mover para a lixeira', gallerySingular: 'galeria', galleryPlural: 'galerias',
+                photoSingular: 'foto', photoPlural: 'fotos',
+                commentSingular: 'comentário', commentPlural: 'comentários',
+                addGallery: '+ Adicionar galeria', changeCoverTitle: 'Solte uma imagem ou clique para alterar a capa',
+                moveLeft: 'Mover para a esquerda', moveRight: 'Mover para a direita', remove: 'Remover', delete: 'Excluir',
+                clientLanguageTitle: 'Idioma do cliente',
+                gallerySelectedCount: (n, g) => `${n} ${g} selecionada${n > 1 ? 's' : ''}`,
+                photoSelectedCount: (n, p) => `${n} ${p} selecionada${n > 1 ? 's' : ''}`,
+                selectAll: 'Selecionar tudo', deselectAll: 'Desmarcar tudo',
+                enableDownloads: 'Ativar downloads', disableDownloads: 'Desativar downloads',
+                addToCollectionPlaceholder: 'Adicionar a uma coleção…',
+                managePhotosTitle: 'Gerenciar fotos', deleteSelected: 'Excluir selecionadas',
+                dropPhotosHereOr: 'Solte fotos aqui ou', browse: 'procurar', upload: 'Enviar',
+                noPhotosLeft: 'Não há mais fotos.',
+                confirmResetLogo: 'Redefinir o logo para o padrão?',
+                confirmBulkDelete: (n, g) => `Excluir ${n} ${g}? Esta ação não pode ser desfeita.`,
+                confirmDeletePhotos: (n, p) => `Excluir ${n} ${p}? Esta ação não pode ser desfeita.`,
+                confirmDeletePhoto: f => `Excluir "${f}"?\nEsta ação não pode ser desfeita.`,
+                confirmDeleteAllComments: 'Excluir todos os comentários desta galeria?',
+                confirmResetViews: 'Redefinir o contador de visualizações desta galeria?',
+                confirmResetFavorites: 'Redefinir todos os favoritos desta galeria?',
+                confirmMoveTrash: 'Mover esta galeria para a lixeira? Ela será excluída permanentemente após 3 dias.',
+                confirmPurgeGallery: 'Excluir esta galeria permanentemente? Esta ação não pode ser desfeita.',
+                confirmEmptyTrash: 'Excluir permanentemente todas as galerias da lixeira? Esta ação não pode ser desfeita.',
+                clientFavorites: 'Favoritos do cliente', copyRankingLink: 'Copiar link de classificação',
+                exportCsv: 'Exportar CSV', downloadPhotos: 'Baixar fotos', noFavoritesYet: 'Ainda não há favoritos.',
+                clearAll: 'Limpar tudo', noCommentsYet: 'Ainda não há comentários.', guest: 'Visitante',
+                commentsTitleWithCount: n => `Comentários (${n})`,
+                trashHint: 'As galerias são excluídas permanentemente após 3 dias.', emptyTrash: 'Esvaziar lixeira',
+                trashEmpty: 'A lixeira está vazia.', expiresToday: 'Expira hoje', expiresTomorrow: 'Expira amanhã',
+                daysLeft: n => `${n} dia${n > 1 ? 's' : ''} restante${n > 1 ? 's' : ''}`,
+                restore: 'Restaurar', deleteNow: 'Excluir agora',
+                addGalleriesToCollection: 'Adicionar galerias à coleção', add: 'Adicionar',
+                addN: (n, g) => `Adicionar ${n} ${g}`, noGalleriesYetPicker: 'Ainda não há galerias.',
+                alreadyInCollection: 'Já está nesta coleção',
+                deleteCollectionTitle: 'Excluir coleção?', alsoMoveGalleries: 'Também mover galerias para a lixeira',
+                deleteColMsgWithGalleries: (n, g) => `Esta coleção contém ${n} ${g}. Elas não serão afetadas a menos que você marque a opção abaixo.`,
+                deleteColMsgEmpty: 'Isso removerá a coleção. Ela não contém nenhuma galeria.',
+                profileTitle: 'Perfil e redes sociais', website: 'Site', socialNetworks: 'Redes sociais',
+                language: 'Idioma', autoLanguage: 'Automático (navegador do visitante)', save: 'Salvar',
+                saved: 'Salvo.', errorSavingSettings: 'Erro ao salvar as configurações.', networkError: 'Erro de rede.',
+                uploadingCount: (done, total) => `Enviando… ${done} / ${total} fotos`,
+                uploadingCoverImage: 'Enviando imagem de capa…',
+                coverTooLargeMax: mb => `A imagem de capa é muito grande. Tamanho máximo: ${mb} MB.`,
+                couldNotUploadCover: 'Não foi possível enviar a imagem de capa.',
+                errorCreatingGallery: msg => `Erro ao criar a galeria: ${msg}`,
+                galleriesCreated: (n, g) => `${n} ${g} criada${n > 1 ? 's' : ''}`,
+                failedAfterCreating: (n, total, msg) => `Falha após criar ${n} de ${total} galerias: ${msg}`,
+                noImagesFoundInFolders: 'Nenhuma imagem encontrada nas pastas soltas.',
+                filesIgnoredNote: n => `${n} arquivo${n > 1 ? 's' : ''} fora de pastas ${n > 1 ? 'foram' : 'foi'} ignorado${n > 1 ? 's' : ''}.`,
+                imageTooLargeSize: (size, mb) => `A imagem é muito grande (${size} MB). Tamanho máximo: ${mb} MB.`,
+                couldNotUploadCollectionCover: 'Não foi possível enviar a capa da coleção.',
+                couldNotUploadCollectionCoverErr: msg => `Não foi possível enviar a capa da coleção: ${msg}`,
+                logoResetFailed: msg => `Falha ao redefinir o logo: ${msg}`,
+                logoUploadFailed: msg => `Falha ao enviar o logo: ${msg}`,
+                uploadingCoverDots: 'Enviando capa...', uploadFailedDot: 'Falha no envio.',
+                coverUpdated: 'Capa atualizada!', renamingDots: 'Renomeando...', renamedExcl: 'Renomeado!',
+                renameFailed: 'Falha ao renomear',
+                couldNotUpdateDownloadSetting: msg => `Não foi possível atualizar a configuração de downloads: ${msg}`,
+                couldNotUpdateCommentsSetting: msg => `Não foi possível atualizar a configuração de comentários: ${msg}`,
+                photosCouldNotBeDeleted: n => `${n} foto${n > 1 ? 's' : ''} não p${n > 1 ? 'uderam' : 'ôde'} ser excluída${n > 1 ? 's' : ''}.`,
+                couldNotLoadPhotos: 'Não foi possível carregar as fotos',
+                couldNotDeletePhoto: msg => `Não foi possível excluir a foto: ${msg}`,
+                couldNotLoadFavorites: 'Não foi possível carregar os favoritos', couldNotLoadComments: 'Não foi possível carregar os comentários',
+                couldNotDeleteComment: 'Não foi possível excluir o comentário', couldNotResetComments: 'Não foi possível redefinir os comentários',
+                couldNotResetFavorites: 'Não foi possível redefinir os favoritos',
+                errorResettingViews: msg => `Erro ao redefinir as visualizações: ${msg}`,
+                couldNotCreateCollection: msg => `Não foi possível criar a coleção: ${msg}`,
+                couldNotReorderGalleries: msg => `Não foi possível reordenar as galerias: ${msg}`,
+                couldNotDeleteCollection: msg => `Não foi possível excluir a coleção: ${msg}`,
+                couldNotRemoveGalleryFromCollection: msg => `Não foi possível remover a galeria da coleção: ${msg}`,
+                couldNotAddGalleryToCollection: msg => `Não foi possível adicionar a galeria à coleção: ${msg}`,
+                errorMovingGalleryToTrash: 'Erro ao mover a galeria para a lixeira',
+                couldNotRestoreGallery: 'Não foi possível restaurar a galeria', couldNotDeleteGallery: 'Não foi possível excluir a galeria',
+                couldNotEmptyTrash: 'Não foi possível esvaziar a lixeira',
+                sharePreviewRegenerated: 'A pré-visualização de compartilhamento será regenerada no próximo compartilhamento.',
+                couldNotResetSharePreview: 'Não foi possível redefinir a pré-visualização de compartilhamento',
+                uploadFailedMsg: msg => `Falha no envio: ${msg}`,
+            },
+            it: {
+                loginTitle: 'Bentornato', loginSubtitle: 'Inserisci la password per accedere alla dashboard',
+                loginPasswordPlaceholder: 'Password', loginSignIn: 'Accedi',
+                loginErrorDenied: 'Accesso negato — il tuo indirizzo IP non è autorizzato',
+                loginErrorInvalid: 'Password non valida', loginErrorNetwork: 'Impossibile contattare il server',
+                logoHint: 'Cambia logo', logoHintSub: 'PNG · SVG · JPG — min 200px',
+                logoTitle: 'Clicca per cambiare il logo — PNG, SVG o JPG, min 200px di larghezza',
+                resetLogo: 'Ripristina logo', headerProfile: 'Profilo', logout: 'Esci',
+                themeLight: '☀️ Modalità chiara', themeDark: '🌙 Modalità scura',
+                newGallery: 'Nuova galleria', eventNamePlaceholder: 'Nome evento',
+                dropPhotosOrFolders: 'Trascina foto o cartelle · clicca per sfogliare',
+                dropImage: 'Trascina un\'immagine o clicca per sfogliare',
+                addToExistingCollection: 'Aggiungi a una collezione esistente (opzionale)',
+                createAndCopyLink: 'Crea e copia link', createGalleryAndCollection: 'Crea galleria + collezione',
+                cancel: 'Annulla', uploadingDots: 'Caricamento...',
+                newCollection: 'Nuova collezione', collectionNamePlaceholder: 'Nome della collezione',
+                includeGallerySingle: 'Includi la galleria in fase di creazione',
+                includeGalleryMulti: 'Includi le gallerie in fase di creazione',
+                createCollection: 'Crea collezione',
+                galleryCreated: 'Galleria creata', copy: 'Copia', dismiss: 'Chiudi',
+                collections: 'Collezioni', noCollectionsYet: 'Nessuna collezione per il momento.',
+                galleries: 'Gallerie', searchPlaceholder: 'Cerca…', select: 'Seleziona',
+                trash: 'Cestino', loading: 'Caricamento...',
+                noGalleriesMatch: q => `Nessuna galleria corrisponde a "${q}".`,
+                noGalleriesYet: 'Nessuna galleria per il momento. Crea la prima qui sopra!',
+                dropOrClick: 'Trascina o clicca', rename: 'Rinomina',
+                allowDownloads: 'Consenti ai clienti di scaricare', allowComments: 'Consenti ai clienti di commentare le foto',
+                downloads: 'Download', comments: 'Commenti', uniqueViews: 'Visualizzazioni univoche',
+                reset: 'Ripristina', totalDownloads: 'Download totali', view: 'Visualizza',
+                inCollection: 'In una collezione', moveUp: 'Sposta su', moveDown: 'Sposta giù',
+                copyClientLink: 'Copia link cliente', copyCritiqueLink: 'Copia link di critica (foto numerate)',
+                managePhotos: 'Gestisci foto', regenerateShare: 'Rigenera anteprima di condivisione',
+                ogTooltip: 'Rigenera l\'immagine di anteprima mostrata quando questo link della galleria viene condiviso su WhatsApp, iMessage o sui social media.',
+                moveToTrash: 'Sposta nel cestino', gallerySingular: 'galleria', galleryPlural: 'gallerie',
+                photoSingular: 'foto', photoPlural: 'foto',
+                commentSingular: 'commento', commentPlural: 'commenti',
+                addGallery: '+ Aggiungi galleria', changeCoverTitle: 'Trascina un\'immagine o clicca per cambiare la copertina',
+                moveLeft: 'Sposta a sinistra', moveRight: 'Sposta a destra', remove: 'Rimuovi', delete: 'Elimina',
+                clientLanguageTitle: 'Lingua del cliente',
+                gallerySelectedCount: (n, g) => `${n} ${g} selezionat${n > 1 ? 'e' : 'a'}`,
+                photoSelectedCount: (n, p) => `${n} ${p} selezionat${n > 1 ? 'e' : 'a'}`,
+                selectAll: 'Seleziona tutto', deselectAll: 'Deseleziona tutto',
+                enableDownloads: 'Attiva download', disableDownloads: 'Disattiva download',
+                addToCollectionPlaceholder: 'Aggiungi a una collezione…',
+                managePhotosTitle: 'Gestisci foto', deleteSelected: 'Elimina selezionate',
+                dropPhotosHereOr: 'Trascina le foto qui o', browse: 'sfoglia', upload: 'Carica',
+                noPhotosLeft: 'Nessuna foto rimasta.',
+                confirmResetLogo: 'Ripristinare il logo predefinito?',
+                confirmBulkDelete: (n, g) => `Eliminare ${n} ${g}? Questa azione non può essere annullata.`,
+                confirmDeletePhotos: (n, p) => `Eliminare ${n} ${p}? Questa azione non può essere annullata.`,
+                confirmDeletePhoto: f => `Eliminare "${f}"?\nQuesta azione non può essere annullata.`,
+                confirmDeleteAllComments: 'Eliminare tutti i commenti di questa galleria?',
+                confirmResetViews: 'Ripristinare il conteggio delle visualizzazioni di questa galleria?',
+                confirmResetFavorites: 'Ripristinare tutti i preferiti di questa galleria?',
+                confirmMoveTrash: 'Spostare questa galleria nel cestino? Verrà eliminata definitivamente dopo 3 giorni.',
+                confirmPurgeGallery: 'Eliminare definitivamente questa galleria? Questa azione non può essere annullata.',
+                confirmEmptyTrash: 'Eliminare definitivamente tutte le gallerie nel cestino? Questa azione non può essere annullata.',
+                clientFavorites: 'Preferiti dei clienti', copyRankingLink: 'Copia link di classifica',
+                exportCsv: 'Esporta CSV', downloadPhotos: 'Scarica foto', noFavoritesYet: 'Nessun preferito per il momento.',
+                clearAll: 'Elimina tutto', noCommentsYet: 'Nessun commento per il momento.', guest: 'Ospite',
+                commentsTitleWithCount: n => `Commenti (${n})`,
+                trashHint: 'Le gallerie vengono eliminate definitivamente dopo 3 giorni.', emptyTrash: 'Vuota cestino',
+                trashEmpty: 'Il cestino è vuoto.', expiresToday: 'Scade oggi', expiresTomorrow: 'Scade domani',
+                daysLeft: n => `${n} giorn${n > 1 ? 'i' : 'o'} rimanent${n > 1 ? 'i' : 'e'}`,
+                restore: 'Ripristina', deleteNow: 'Elimina ora',
+                addGalleriesToCollection: 'Aggiungi gallerie alla collezione', add: 'Aggiungi',
+                addN: (n, g) => `Aggiungi ${n} ${g}`, noGalleriesYetPicker: 'Nessuna galleria per il momento.',
+                alreadyInCollection: 'Già presente in questa collezione',
+                deleteCollectionTitle: 'Eliminare la collezione?', alsoMoveGalleries: 'Sposta anche le gallerie nel cestino',
+                deleteColMsgWithGalleries: (n, g) => `Questa collezione contiene ${n} ${g}. Non saranno interessate a meno che non selezioni l'opzione sotto.`,
+                deleteColMsgEmpty: 'Questo rimuoverà la collezione. Non contiene alcuna galleria.',
+                profileTitle: 'Profilo e social network', website: 'Sito web', socialNetworks: 'Social network',
+                language: 'Lingua', autoLanguage: 'Automatica (browser del visitatore)', save: 'Salva',
+                saved: 'Salvato.', errorSavingSettings: 'Errore durante il salvataggio.', networkError: 'Errore di rete.',
+                uploadingCount: (done, total) => `Caricamento… ${done} / ${total} foto`,
+                uploadingCoverImage: 'Caricamento immagine di copertina…',
+                coverTooLargeMax: mb => `L'immagine di copertina è troppo grande. Dimensione massima: ${mb} MB.`,
+                couldNotUploadCover: 'Impossibile caricare l\'immagine di copertina.',
+                errorCreatingGallery: msg => `Errore durante la creazione della galleria: ${msg}`,
+                galleriesCreated: (n, g) => `${n} ${g} creat${n > 1 ? 'e' : 'a'}`,
+                failedAfterCreating: (n, total, msg) => `Errore dopo aver creato ${n} di ${total} gallerie: ${msg}`,
+                noImagesFoundInFolders: 'Nessuna immagine trovata nelle cartelle trascinate.',
+                filesIgnoredNote: n => `${n} file fuori dalle cartelle ${n > 1 ? 'sono stati' : 'è stato'} ignorat${n > 1 ? 'i' : 'o'}.`,
+                imageTooLargeSize: (size, mb) => `L'immagine è troppo grande (${size} MB). Dimensione massima: ${mb} MB.`,
+                couldNotUploadCollectionCover: 'Impossibile caricare la copertina della collezione.',
+                couldNotUploadCollectionCoverErr: msg => `Impossibile caricare la copertina della collezione: ${msg}`,
+                logoResetFailed: msg => `Ripristino del logo non riuscito: ${msg}`,
+                logoUploadFailed: msg => `Caricamento del logo non riuscito: ${msg}`,
+                uploadingCoverDots: 'Caricamento copertina...', uploadFailedDot: 'Caricamento non riuscito.',
+                coverUpdated: 'Copertina aggiornata!', renamingDots: 'Rinomina in corso...', renamedExcl: 'Rinominato!',
+                renameFailed: 'Ridenominazione non riuscita',
+                couldNotUpdateDownloadSetting: msg => `Impossibile aggiornare l'impostazione dei download: ${msg}`,
+                couldNotUpdateCommentsSetting: msg => `Impossibile aggiornare l'impostazione dei commenti: ${msg}`,
+                photosCouldNotBeDeleted: n => `${n} fot${n > 1 ? 'o' : 'o'} non pot${n > 1 ? 'ute' : 'uta'} essere eliminat${n > 1 ? 'e' : 'a'}.`,
+                couldNotLoadPhotos: 'Impossibile caricare le foto',
+                couldNotDeletePhoto: msg => `Impossibile eliminare la foto: ${msg}`,
+                couldNotLoadFavorites: 'Impossibile caricare i preferiti', couldNotLoadComments: 'Impossibile caricare i commenti',
+                couldNotDeleteComment: 'Impossibile eliminare il commento', couldNotResetComments: 'Impossibile ripristinare i commenti',
+                couldNotResetFavorites: 'Impossibile ripristinare i preferiti',
+                errorResettingViews: msg => `Errore durante il ripristino delle visualizzazioni: ${msg}`,
+                couldNotCreateCollection: msg => `Impossibile creare la collezione: ${msg}`,
+                couldNotReorderGalleries: msg => `Impossibile riordinare le gallerie: ${msg}`,
+                couldNotDeleteCollection: msg => `Impossibile eliminare la collezione: ${msg}`,
+                couldNotRemoveGalleryFromCollection: msg => `Impossibile rimuovere la galleria dalla collezione: ${msg}`,
+                couldNotAddGalleryToCollection: msg => `Impossibile aggiungere la galleria alla collezione: ${msg}`,
+                errorMovingGalleryToTrash: 'Errore durante lo spostamento della galleria nel cestino',
+                couldNotRestoreGallery: 'Impossibile ripristinare la galleria', couldNotDeleteGallery: 'Impossibile eliminare la galleria',
+                couldNotEmptyTrash: 'Impossibile vuotare il cestino',
+                sharePreviewRegenerated: 'L\'anteprima di condivisione verrà rigenerata alla prossima condivisione.',
+                couldNotResetSharePreview: 'Impossibile ripristinare l\'anteprima di condivisione',
+                uploadFailedMsg: msg => `Caricamento non riuscito: ${msg}`,
+            }
+        };
+        let t = adminTranslations.en;
+
+        function applyAdminTranslations(lang) {
+            t = adminTranslations[lang] || adminTranslations.en;
+            document.documentElement.lang = lang;
+
+            const byId = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
+
+            byId('loginTitle', t.loginTitle);
+            byId('loginSubtitle', t.loginSubtitle);
+            byId('loginSubmitBtn', t.loginSignIn);
+            const pwInput = document.getElementById('passwordInput');
+            if (pwInput) pwInput.placeholder = t.loginPasswordPlaceholder;
+
+            byId('logoHintText', t.logoHint);
+            byId('logoHintSub', t.logoHintSub);
+            const logoWrap = document.getElementById('logoWrap');
+            if (logoWrap) logoWrap.title = t.logoTitle;
+            byId('logoResetBtnText', t.resetLogo);
+            byId('headerProfileBtnText', t.headerProfile);
+            const logoutBtn = document.getElementById('logoutBtn');
+            if (logoutBtn) logoutBtn.title = t.logout;
+            const themeBtn = document.getElementById('themeToggleBtn');
+            if (themeBtn) themeBtn.textContent = document.documentElement.classList.contains('light') ? t.themeDark : t.themeLight;
+
+            byId('newGalleryLabel', t.newGallery);
+            const eventNameInput = document.getElementById('eventName');
+            if (eventNameInput) eventNameInput.placeholder = t.eventNamePlaceholder;
+            byId('dropZonePhotosText', t.dropPhotosOrFolders);
+            byId('bgDropZoneText', t.dropImage);
+            byId('collectionSelectPlaceholder', t.addToExistingCollection);
+            const createBtn = document.getElementById('createBtn');
+            if (createBtn) createBtn.textContent = t.createAndCopyLink;
+            byId('cancelMultiBtn', t.cancel);
+            byId('progressText', t.uploadingDots);
+            byId('newCollectionLabel', t.newCollection);
+            const colNameInput = document.getElementById('newCollectionName');
+            if (colNameInput) colNameInput.placeholder = t.collectionNamePlaceholder;
+            byId('colBgDropZoneText', t.dropImage);
+            byId('includeGalleryLabelText', _multiGalleryGroups.length > 1 ? t.includeGalleryMulti : t.includeGallerySingle);
+            byId('createCollectionBtn', t.createCollection);
+
+            byId('resultTitle', t.galleryCreated);
+            byId('dismissResultBtn', t.dismiss);
+            byId('collectionsSectionLabel', t.collections);
+            byId('galleriesSectionLabel', t.galleries);
+            const gallerySearch = document.getElementById('gallerySearch');
+            if (gallerySearch) gallerySearch.placeholder = t.searchPlaceholder;
+            byId('selectionModeBtn', t.select);
+            const trashOpenBtn = document.getElementById('trashOpenBtn');
+            if (trashOpenBtn) trashOpenBtn.title = t.trash;
+
+            byId('photosModalTitle', t.managePhotosTitle);
+            byId('photosSelectBtn', t.select);
+            byId('photosSelectAllBtn', t.selectAll);
+            byId('photosCancelSelectBtn', t.cancel);
+            byId('photosDeleteSelectedBtn', t.deleteSelected);
+            byId('photosDropText', t.dropPhotosHereOr);
+            byId('photosBrowseBtn', t.browse);
+            byId('photosUploadBtn', t.upload);
+
+            byId('favoritesModalTitle', t.clientFavorites);
+            byId('favCopyRankingBtnText', t.copyRankingLink);
+            byId('favExportBtn', t.exportCsv);
+            byId('favDownloadBtnText', t.downloadPhotos);
+            byId('commentsClearAllBtnText', t.clearAll);
+
+            byId('profileModalTitle', t.profileTitle);
+            byId('profileWebsiteLabel', t.website);
+            byId('profileSocialLabel', t.socialNetworks);
+            byId('profileLanguageLabel', t.language);
+            byId('profileClientLanguageAutoOpt', t.autoLanguage);
+            byId('profileSaveBtn', t.save);
+
+            byId('trashModalTitle', t.trash);
+            byId('emptyTrashBtn', t.emptyTrash);
+            byId('trashModalHint', t.trashHint);
+
+            byId('galleryPickerTitle', t.addGalleriesToCollection);
+            byId('galleryPickerCancelBtn', t.cancel);
+
+            byId('deleteColTitle', t.deleteCollectionTitle);
+            byId('deleteColCheckLabelText', t.alsoMoveGalleries);
+            byId('deleteColCancelBtn', t.cancel);
+            byId('deleteColConfirmBtn', t.delete);
+            byId('confirmDialogCancelBtn', t.cancel);
+
+            byId('bulkCount', t.gallerySelectedCount(0, t.galleryPlural));
+            byId('bulkSelectAllBtn', t.selectAll);
+            byId('bulkDeselectAllBtn', t.deselectAll);
+            const bulkEnableBtn = document.getElementById('bulkEnableBtn');
+            if (bulkEnableBtn) bulkEnableBtn.innerHTML = `${t.enableDownloads.split(' ')[0]}<span class="bulk-label-long"> ${t.downloads.toLowerCase()}</span>`;
+            const bulkDisableBtn = document.getElementById('bulkDisableBtn');
+            if (bulkDisableBtn) bulkDisableBtn.innerHTML = `${t.disableDownloads.split(' ')[0]}<span class="bulk-label-long"> ${t.downloads.toLowerCase()}</span>`;
+            const bulkColOpt = document.querySelector('#bulkCollectionSelect option[value=""]');
+            if (bulkColOpt) bulkColOpt.textContent = t.addToCollectionPlaceholder;
+            byId('bulkDeleteBtn', t.delete);
+            byId('bulkCancelBtn', t.cancel);
+
+            // Re-render dynamic lists so card templates pick up the new language
+            if (typeof loadGalleries === 'function' && document.getElementById('galleryList')) loadGalleries();
+            if (typeof loadCollections === 'function') loadCollections();
+            if (typeof loadTrash === 'function') loadTrash();
+        }
+
         // ── THEME ──
+        let _currentAdminLanguage = 'en';
         async function applyTheme() {
             try {
                 const res = await fetch('/api/settings');
                 if (res.ok) {
                     const s = await res.json();
                     document.documentElement.classList.toggle('light', s.theme === 'light');
-                    const btn = document.getElementById('themeToggleBtn');
-                    if (btn) btn.textContent = s.theme === 'light' ? '🌙 Dark mode' : '☀️ Light mode';
+                    _currentAdminLanguage = s.adminLanguage || 'en';
+                    applyAdminTranslations(_currentAdminLanguage);
                 }
             } catch (e) {}
         }
@@ -1642,12 +2354,12 @@
                     checkLogoState();
                 } else {
                     errorEl.textContent = res.status === 403
-                        ? 'Access denied — your IP address is not authorised'
-                        : 'Invalid password';
+                        ? t.loginErrorDenied
+                        : t.loginErrorInvalid;
                     errorEl.classList.add('visible');
                 }
             } catch (err) {
-                errorEl.textContent = 'Could not reach the server';
+                errorEl.textContent = t.loginErrorNetwork;
                 errorEl.classList.add('visible');
             }
         }
@@ -1750,7 +2462,7 @@
             }
 
             if (groups.length === 0) {
-                showError('No images found in the dropped folders.');
+                showError(t.noImagesFoundInFolders);
                 return;
             }
 
@@ -1758,7 +2470,7 @@
 
             const note = document.getElementById('multiGalleryNote');
             if (fileEntries.length > 0) {
-                note.textContent = `${fileEntries.length} file${fileEntries.length > 1 ? 's' : ''} outside folders ${fileEntries.length > 1 ? 'were' : 'was'} ignored.`;
+                note.textContent = t.filesIgnoredNote(fileEntries.length);
                 note.style.display = 'block';
             } else {
                 note.style.display = 'none';
@@ -1847,7 +2559,7 @@
 
         function setMultiGalleryBgFile(index, file) {
             if (file.size > MAX_BG_MB * 1024 * 1024) {
-                showError(`Cover image is too large (${(file.size / 1024 / 1024).toFixed(1)} MB). Maximum size is ${MAX_BG_MB} MB.`);
+                showError(t.imageTooLargeSize((file.size / 1024 / 1024).toFixed(1), MAX_BG_MB));
                 return;
             }
             const group = _multiGalleryGroups[index];
@@ -1971,7 +2683,7 @@
 
         function handleBgFile(file) {
             if (file.size > MAX_BG_MB * 1024 * 1024) {
-                showError(`Background image is too large (${(file.size / 1024 / 1024).toFixed(1)} MB). Maximum size is ${MAX_BG_MB} MB.`);
+                showError(t.imageTooLargeSize((file.size / 1024 / 1024).toFixed(1), MAX_BG_MB));
                 return;
             }
             selectedBgFile = file;
@@ -2085,13 +2797,13 @@
 
             const onProgress = (done, ttl) => {
                 const pct = Math.round((done / ttl) * 100);
-                setProgress(pct, `Uploading… ${Math.floor(done)} / ${ttl} photos`);
+                setProgress(pct, t.uploadingCount(Math.floor(done), ttl));
             };
 
             try {
                 // First batch: create the gallery
                 const firstBatch = files.slice(0, BATCH_SIZE);
-                setProgress(0, `Uploading… 0 / ${total} photos`);
+                setProgress(0, t.uploadingCount(0, total));
                 const result = await uploadBatchXHR('/api/gallery/create', 'POST', firstBatch, { eventName }, 0, total, onProgress);
                 const galleryId = result.galleryId;
                 let uploaded = firstBatch.length;
@@ -2103,11 +2815,11 @@
                     uploaded += batch.length;
                 }
 
-                setProgress(100, `${total} photos uploaded`);
+                setProgress(100, t.uploadingCount(total, total));
 
                 // Upload background if selected
                 if (selectedBgFile) {
-                    setProgress(100, 'Uploading cover image…');
+                    setProgress(100, t.uploadingCoverImage);
                     const bgFd = new FormData();
                     bgFd.append('background', selectedBgFile);
                     const bgRes = await fetch(`/api/gallery/${galleryId}/background`, {
@@ -2116,8 +2828,8 @@
                     });
                     if (!bgRes.ok) {
                         const msg = bgRes.status === 413
-                            ? `Cover image is too large. Maximum size is ${MAX_BG_MB} MB.`
-                            : 'Could not upload cover image.';
+                            ? t.coverTooLargeMax(MAX_BG_MB)
+                            : t.couldNotUploadCover;
                         showError(msg);
                     }
                 }
@@ -2141,7 +2853,7 @@
 
             } catch (err) {
                 document.getElementById('createBtn').disabled = false;
-                showError('Error creating gallery: ' + err.message);
+                showError(t.errorCreatingGallery(err.message));
             } finally {
                 document.getElementById('progressContainer').classList.remove('visible');
             }
@@ -2181,7 +2893,7 @@
 
                     const onProgress = (done) => {
                         const pct = Math.round(((baseUploaded + done) / grandTotal) * 100);
-                        setProgress(pct, `Gallery ${gi + 1}/${n} "${eventName}" — ${Math.floor(baseUploaded + done)} / ${grandTotal} photos`);
+                        setProgress(pct, `${t.gallerySingular.charAt(0).toUpperCase() + t.gallerySingular.slice(1)} ${gi + 1}/${n} "${eventName}" — ${Math.floor(baseUploaded + done)} / ${grandTotal} ${t.photoPlural}`);
                     };
 
                     onProgress(0);
@@ -2213,12 +2925,12 @@
                     _multiGalleryGroups.shift();
                 }
 
-                setProgress(100, `${createdCount} ${createdCount === 1 ? 'gallery' : 'galleries'} created`);
+                setProgress(100, t.galleriesCreated(createdCount, createdCount === 1 ? t.gallerySingular : t.galleryPlural));
                 cancelMultiGalleryMode();
                 showMultiGallerySuccess(createdCount);
 
             } catch (err) {
-                showError(`Failed after creating ${createdCount} of ${n} galleries: ${err.message}`);
+                showError(t.failedAfterCreating(createdCount, n, err.message));
                 renderMultiGalleryPanel();
             } finally {
                 document.getElementById('progressContainer').classList.remove('visible');
@@ -2239,7 +2951,7 @@
             spinner.style.display = 'none';
             errorIcon.style.display = 'none';
             successIcon.style.display = 'block';
-            message.textContent = `${n} ${n === 1 ? 'gallery' : 'galleries'} created`;
+            message.textContent = t.galleriesCreated(n, n === 1 ? t.gallerySingular : t.galleryPlural);
             toast.className = 'upload-toast visible success';
             clearTimeout(_successToastTimer);
             _successToastTimer = setTimeout(() => toast.classList.remove('visible', 'success'), 2500);
@@ -2254,7 +2966,7 @@
             document.getElementById('bgPreview').style.display = 'none';
             document.getElementById('bgDropZone').classList.remove('has-image');
             document.getElementById('createBtn').disabled = true;
-            document.getElementById('createBtn').textContent = 'Create & copy link';
+            document.getElementById('createBtn').textContent = t.createAndCopyLink;
             document.getElementById('progressFill').style.width = '0%';
             const colSel = document.getElementById('galleryCollectionSelect');
             if (colSel) colSel.value = '';
@@ -2291,7 +3003,7 @@
             const btn = document.getElementById('themeToggleBtn');
             // Optimistic update
             document.documentElement.classList.toggle('light', !isLight);
-            if (btn) btn.textContent = !isLight ? '🌙 Dark mode' : '☀️ Light mode';
+            if (btn) btn.textContent = !isLight ? t.themeDark : t.themeLight;
             try {
                 const res = await fetch('/api/settings/theme', {
                     method: 'PATCH',
@@ -2301,20 +3013,20 @@
                 if (!res.ok) {
                     // Revert
                     document.documentElement.classList.toggle('light', isLight);
-                    if (btn) btn.textContent = isLight ? '🌙 Dark mode' : '☀️ Light mode';
+                    if (btn) btn.textContent = isLight ? t.themeDark : t.themeLight;
                     console.error('Theme update failed:', res.status, await res.text());
                 }
             } catch (err) {
                 // Revert
                 document.documentElement.classList.toggle('light', isLight);
-                if (btn) btn.textContent = isLight ? '🌙 Dark mode' : '☀️ Light mode';
+                if (btn) btn.textContent = isLight ? t.themeDark : t.themeLight;
                 console.error('Could not update theme:', err);
             }
         }
 
         async function uploadCollectionBackground(collectionId, file) {
             if (file.size > MAX_BG_MB * 1024 * 1024) {
-                showError(`Background image is too large (${(file.size / 1024 / 1024).toFixed(1)} MB). Maximum size is ${MAX_BG_MB} MB.`);
+                showError(t.imageTooLargeSize((file.size / 1024 / 1024).toFixed(1), MAX_BG_MB));
                 return;
             }
             const formData = new FormData();
@@ -2328,12 +3040,12 @@
                     loadCollections();
                 } else {
                     const msg = res.status === 413
-                        ? `Cover image is too large. Maximum size is ${MAX_BG_MB} MB.`
-                        : 'Could not upload collection cover.';
+                        ? t.coverTooLargeMax(MAX_BG_MB)
+                        : t.couldNotUploadCollectionCover;
                     showError(msg);
                 }
             } catch (err) {
-                showError('Could not upload collection cover: ' + err.message);
+                showError(t.couldNotUploadCollectionCoverErr(err.message));
             }
         }
 
@@ -2346,7 +3058,7 @@
         }
 
         async function resetLogo() {
-            if (!confirm('Reset logo to the built-in default?')) return;
+            if (!(await confirmDialog(t.confirmResetLogo, t.reset))) return;
             try {
                 const res = await fetch('/api/logo', {
                     method: 'DELETE'
@@ -2355,7 +3067,7 @@
                 document.getElementById('adminLogo').src = '/api/logo?t=' + Date.now();
                 document.getElementById('logoResetBtn').style.display = 'none';
             } catch (err) {
-                showError('Logo reset failed: ' + err.message);
+                showError(t.logoResetFailed(err.message));
             }
         }
 
@@ -2373,7 +3085,7 @@
                 document.getElementById('adminLogo').src = '/api/logo?t=' + Date.now();
                 document.getElementById('logoResetBtn').style.display = 'block';
             } catch (err) {
-                showError('Logo upload failed: ' + err.message);
+                showError(t.logoUploadFailed(err.message));
             }
             this.value = '';
         });
@@ -2433,8 +3145,8 @@
             if (!items || items.length === 0) {
                 const query = document.getElementById('gallerySearch').value.trim();
                 container.innerHTML = query
-                    ? `<div class="empty-state">No galleries match "${escapeHtml(query)}".</div>`
-                    : '<div class="empty-state">No galleries yet. Create your first one above!</div>';
+                    ? `<div class="empty-state">${t.noGalleriesMatch(escapeHtml(query))}</div>`
+                    : `<div class="empty-state">${t.noGalleriesYet}</div>`;
                 return;
             }
             container.innerHTML = items.map(g => `
@@ -2461,7 +3173,7 @@
                         </div>
                         <div class="gallery-cover-overlay">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
-                            <span>Drop or click</span>
+                            <span>${t.dropOrClick}</span>
                         </div>
                         <input type="file" id="cover-input-${g.id}" accept="image/*"
                                onchange="handleCoverSelect(event, '${g.id}')" style="display:none;">
@@ -2475,70 +3187,88 @@
                                  onblur="finishGalleryRename('${g.id}', this)"
                                  onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur();} if(event.key==='Escape'){this.textContent=this.dataset.orig;this.blur();}"
                                  >${escapeHtml(g.eventName)}</div>
-                            <button class="name-edit-btn" onclick="startGalleryRename(event, '${g.id}', document.getElementById('gname-${g.id}'))" title="Rename">
+                            <button class="name-edit-btn" onclick="startGalleryRename(event, '${g.id}', document.getElementById('gname-${g.id}'))" title="${t.rename}">
                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
                             </button>
                         </div>
-                        <div class="gallery-meta">${g.fileCount} photos · ${new Date(g.created).toLocaleDateString()}${g.collectionId ? ' · <span class="in-collection">In collection</span>' : ''}</div>
+                        <div class="gallery-meta">${g.fileCount} ${t.photoPlural} · ${new Date(g.created).toLocaleDateString()}${g.collectionId ? ` · <span class="in-collection">${t.inCollection}</span>` : ''}</div>
                         <div class="gallery-bottom">
-                            <label class="downloads-toggle" title="Allow clients to download">
+                            <label class="downloads-toggle" title="${t.allowDownloads}">
                                 <span class="toggle-switch">
                                     <input type="checkbox" ${g.downloadsEnabled !== false ? 'checked' : ''}
                                            onchange="toggleDownloads('${g.id}', this.checked, this)">
                                     <span class="toggle-track"></span>
                                 </span>
-                                Downloads
+                                ${t.downloads}
                             </label>
-                            <label class="downloads-toggle" title="Allow clients to comment on photos">
+                            <label class="downloads-toggle" title="${t.allowComments}">
                                 <span class="toggle-switch">
                                     <input type="checkbox" ${g.commentsEnabled !== false ? 'checked' : ''}
                                            onchange="toggleComments('${g.id}', this.checked, this)">
                                     <span class="toggle-track"></span>
                                 </span>
-                                Comments
+                                ${t.comments}
                             </label>
-                            <div class="fav-info" title="Unique views">
+                            <select class="lang-select" title="${t.clientLanguageTitle}" onchange="setGalleryClientLanguage('${g.id}', this.value)">
+                                <option value="auto" ${g.clientLanguage === 'auto' ? 'selected' : ''}>${t.autoLanguage}</option>
+                                <option value="en" ${g.clientLanguage === 'en' ? 'selected' : ''}>English</option>
+                                <option value="fr" ${g.clientLanguage === 'fr' ? 'selected' : ''}>Français</option>
+                                <option value="es" ${g.clientLanguage === 'es' ? 'selected' : ''}>Español</option>
+                                <option value="pt" ${g.clientLanguage === 'pt' ? 'selected' : ''}>Português</option>
+                                <option value="it" ${g.clientLanguage === 'it' ? 'selected' : ''}>Italiano</option>
+                            </select>
+                            <div class="fav-info" title="${t.uniqueViews}">
                                 👁 ${g.viewCount || 0}
-                                ${(g.viewCount || 0) > 0 ? `<button class="btn-fav-action" onclick="resetViews('${g.id}')">Reset</button>` : ''}
+                                ${(g.viewCount || 0) > 0 ? `<button class="btn-fav-action" onclick="resetViews('${g.id}')">${t.reset}</button>` : ''}
                             </div>
-                            <div class="fav-info" title="Total downloads">
+                            <div class="fav-info" title="${t.totalDownloads}">
                                 ↓ ${g.downloadCount || 0}
                             </div>
                             <div class="fav-info">
                                 ♥ ${g.favoritesCount || 0}
-                                ${g.favoritesCount > 0 ? `<button class="btn-fav-action" onclick="viewFavorites('${g.id}')">View</button><button class="btn-fav-action" onclick="resetFavorites('${g.id}')">Reset</button>` : ''}
+                                ${g.favoritesCount > 0 ? `<button class="btn-fav-action" onclick="viewFavorites('${g.id}')">${t.view}</button><button class="btn-fav-action" onclick="resetFavorites('${g.id}')">${t.reset}</button>` : ''}
                             </div>
-                            <div class="fav-info" title="Comments">
+                            <div class="fav-info" title="${t.comments}">
                                 💬 ${g.commentsCount || 0}
-                                ${g.commentsCount > 0 ? `<button class="btn-fav-action" onclick="viewComments('${g.id}')">View</button><button class="btn-fav-action" onclick="resetComments('${g.id}')">Reset</button>` : ''}
+                                ${g.commentsCount > 0 ? `<button class="btn-fav-action" onclick="viewComments('${g.id}')">${t.view}</button><button class="btn-fav-action" onclick="resetComments('${g.id}')">${t.reset}</button>` : ''}
                             </div>
                         </div>
                     </div>
 
                     <div class="gallery-actions">
-                        <button class="gallery-move-btn" onclick="moveGallery('${g.id}', -1)" title="Move up">▲</button>
-                        <button class="gallery-move-btn" onclick="moveGallery('${g.id}', 1)" title="Move down">▼</button>
-                        <button class="btn-icon" onclick="copyGalleryLink('${g.id}', 'download', this)" title="Copy client link">
+                        <button class="gallery-move-btn" onclick="moveGallery('${g.id}', -1)" title="${t.moveUp}">▲</button>
+                        <button class="gallery-move-btn" onclick="moveGallery('${g.id}', 1)" title="${t.moveDown}">▼</button>
+                        <button class="btn-icon" onclick="copyGalleryLink('${g.id}', 'download', this)" title="${t.copyClientLink}">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
                         </button>
-                        <button class="btn-icon" onclick="copyCritiqueLink('${g.id}', this)" title="Copy critique link (numbered photos)">
+                        <button class="btn-icon" onclick="copyCritiqueLink('${g.id}', this)" title="${t.copyCritiqueLink}">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="10" y1="6" x2="21" y2="6"/><line x1="10" y1="12" x2="21" y2="12"/><line x1="10" y1="18" x2="21" y2="18"/><path d="M4 6h1v4M4 10h2M6 18H4c0-1 2-2 2-3s-1-1.5-2-1" stroke-linecap="round" stroke-linejoin="round"/></svg>
                         </button>
-                        <button class="btn-icon" onclick="openPhotosModal('${g.id}')" title="Manage photos">
+                        <button class="btn-icon" onclick="openPhotosModal('${g.id}')" title="${t.managePhotos}">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
                         </button>
                         <div class="og-tooltip-wrap">
-                            <button class="btn-icon" onclick="regenerateOG('${g.id}')" title="Regenerate share preview">
+                            <button class="btn-icon" onclick="regenerateOG('${g.id}')" title="${t.regenerateShare}">
                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
                             </button>
-                            <div class="og-tooltip">Regenerate the preview image shown when this gallery link is shared on WhatsApp, iMessage or social media.</div>
+                            <div class="og-tooltip">${t.ogTooltip}</div>
                         </div>
-                        <button class="btn-icon btn-icon-danger" onclick="deleteGallery('${g.id}')" title="Move to trash">
+                        <button class="btn-icon btn-icon-danger" onclick="deleteGallery('${g.id}')" title="${t.moveToTrash}">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
                         </button>
                     </div>
                 </div>
             `).join('');
+        }
+
+        async function setGalleryClientLanguage(galleryId, language) {
+            try {
+                await fetch(`/api/gallery/${galleryId}/client-language`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ language })
+                });
+            } catch (_) {}
         }
 
         function filterGalleries(query) {
@@ -2625,7 +3355,7 @@
 
         function updateBulkBar() {
             const n = _selectedGalleries.size;
-            document.getElementById('bulkCount').textContent = `${n} ${n === 1 ? 'gallery' : 'galleries'} selected`;
+            document.getElementById('bulkCount').textContent = t.gallerySelectedCount(n, n === 1 ? t.gallerySingular : t.galleryPlural);
             const hasSelection = n > 0;
             document.getElementById('bulkEnableBtn').disabled = !hasSelection;
             document.getElementById('bulkDisableBtn').disabled = !hasSelection;
@@ -2636,7 +3366,7 @@
 
         function populateBulkCollectionSelect() {
             const sel = document.getElementById('bulkCollectionSelect');
-            sel.innerHTML = '<option value="">Add to collection…</option>';
+            sel.innerHTML = `<option value="">${t.addToCollectionPlaceholder}</option>`;
             (_collectionsData || []).forEach(c => {
                 const opt = document.createElement('option');
                 opt.value = c.id;
@@ -2649,7 +3379,7 @@
         async function bulkDelete() {
             const ids = [..._selectedGalleries];
             const n = ids.length;
-            if (!confirm(`Delete ${n} ${n === 1 ? 'gallery' : 'galleries'}? This cannot be undone.`)) return;
+            if (!(await confirmDialog(t.confirmBulkDelete(n, n === 1 ? t.gallerySingular : t.galleryPlural)))) return;
             for (const id of ids) {
                 try {
                     await fetch(`/api/gallery/${id}`, { method: 'DELETE' });
@@ -2738,7 +3468,7 @@
             spinner.style.display = 'block';
             successIcon.style.display = 'none';
             errorIcon.style.display = 'none';
-            message.textContent = 'Uploading cover...';
+            message.textContent = t.uploadingCoverDots;
             toast.className = 'upload-toast visible';
 
             try {
@@ -2752,15 +3482,15 @@
 
                 if (!res.ok) {
                     const msg = res.status === 413
-                        ? `Image too large. Maximum size is ${MAX_BG_MB} MB.`
-                        : 'Upload failed.';
+                        ? t.coverTooLargeMax(MAX_BG_MB)
+                        : t.uploadFailedDot;
                     throw new Error(msg);
                 }
 
                 // Show success
                 spinner.style.display = 'none';
                 successIcon.style.display = 'block';
-                message.textContent = 'Cover updated!';
+                message.textContent = t.coverUpdated;
                 toast.classList.add('success');
 
                 // Reload galleries to show new cover
@@ -2775,7 +3505,7 @@
                 // Show error
                 spinner.style.display = 'none';
                 errorIcon.style.display = 'block';
-                message.textContent = err.message || 'Upload failed';
+                message.textContent = err.message || t.uploadFailedDot;
                 toast.classList.add('error');
 
                 setTimeout(() => {
@@ -2846,13 +3576,13 @@
             spinner.style.display = 'block';
             successIcon.style.display = 'none';
             errorIcon.style.display = 'none';
-            message.textContent = 'Renaming...';
+            message.textContent = t.renamingDots;
             toast.className = 'upload-toast visible';
 
             try {
                 const res = await fetch(`/api/gallery/${galleryId}/rename`, {
                     method: 'POST',
-                    headers: { 
+                    headers: {
                         'Content-Type': 'application/json'
                     },
                     body: JSON.stringify({ eventName: newName })
@@ -2862,7 +3592,7 @@
 
                 spinner.style.display = 'none';
                 successIcon.style.display = 'block';
-                message.textContent = 'Renamed!';
+                message.textContent = t.renamedExcl;
                 toast.classList.add('success');
 
                 loadGalleries();
@@ -2874,7 +3604,7 @@
             } catch (err) {
                 spinner.style.display = 'none';
                 errorIcon.style.display = 'block';
-                message.textContent = 'Rename failed';
+                message.textContent = t.renameFailed;
                 toast.classList.add('error');
 
                 loadGalleries();
@@ -2930,7 +3660,7 @@
                 const data = await res.json();
                 checkbox.checked = data.downloadsEnabled;
             } catch (err) {
-                showError('Could not update download setting: ' + err.message);
+                showError(t.couldNotUpdateDownloadSetting(err.message));
                 checkbox.checked = !enabled;
             } finally {
                 checkbox.disabled = false;
@@ -2951,7 +3681,7 @@
                 const data = await res.json();
                 checkbox.checked = data.commentsEnabled;
             } catch (err) {
-                showError('Could not update comments setting: ' + err.message);
+                showError(t.couldNotUpdateCommentsSetting(err.message));
                 checkbox.checked = !enabled;
             } finally {
                 checkbox.disabled = false;
@@ -2968,19 +3698,20 @@
         let _photosSelected = new Set();
         let _pendingUploadFiles = [];
 
-        // ── In-app confirm dialog ─────────────────────────────────────────
+        // ── In-app confirm dialog (page-level, reusable from anywhere) ────
 
         let _confirmResolve = null;
-        function photosConfirm(message, okLabel = 'Delete') {
+        function confirmDialog(message, okLabel) {
+            if (okLabel === undefined) okLabel = t.delete;
             return new Promise(resolve => {
                 _confirmResolve = resolve;
-                document.getElementById('photosConfirmMsg').textContent = message;
-                document.getElementById('photosConfirmOkBtn').textContent = okLabel;
-                document.getElementById('photosConfirmOverlay').style.display = 'flex';
+                document.getElementById('confirmDialogMsg').textContent = message;
+                document.getElementById('confirmDialogOkBtn').textContent = okLabel;
+                document.getElementById('confirmDialogOverlay').classList.add('active');
             });
         }
-        function photosConfirmResolve(result) {
-            document.getElementById('photosConfirmOverlay').style.display = 'none';
+        function confirmDialogResolve(result) {
+            document.getElementById('confirmDialogOverlay').classList.remove('active');
             if (_confirmResolve) { _confirmResolve(result); _confirmResolve = null; }
         }
 
@@ -2992,7 +3723,7 @@
             _photosSelected = new Set();
             _photosSelectionMode = false;
             document.getElementById('photosModalMeta').textContent = '';
-            document.getElementById('photosGrid').innerHTML = '<p style="color:var(--muted);font-size:13px">Loading…</p>';
+            document.getElementById('photosGrid').innerHTML = `<p style="color:var(--muted);font-size:13px">${t.loading}</p>`;
             document.getElementById('photosUploadWrap').style.display = 'none';
             document.getElementById('photosQueueWrap').style.display = 'none';
             document.getElementById('photosBulkBar').style.display = 'none';
@@ -3037,8 +3768,8 @@
             if (_pendingUploadFiles.length === 0) { wrap.style.display = 'none'; return; }
             wrap.style.display = 'block';
             const n = _pendingUploadFiles.length;
-            count.textContent = `${n} photo${n > 1 ? 's' : ''} selected`;
-            btn.textContent = `Upload ${n} photo${n > 1 ? 's' : ''}`;
+            count.textContent = t.photoSelectedCount(n, n > 1 ? t.photoPlural : t.photoSingular);
+            btn.textContent = `${t.upload} ${n} ${n > 1 ? t.photoPlural : t.photoSingular}`;
             pills.innerHTML = _pendingUploadFiles.map((f, i) =>
                 `<span class="file-pill">
                     <span class="file-pill-name">${escapeAttr(f.name)}</span>
@@ -3061,7 +3792,7 @@
             const text = document.getElementById('photosUploadText');
             wrap.style.display = 'block';
             fill.style.width = '0%';
-            text.textContent = `Uploading 0 / ${total}…`;
+            text.textContent = t.uploadingCount(0, total);
 
             try {
                 let uploaded = 0;
@@ -3076,7 +3807,7 @@
                             if (!e.lengthComputable) return;
                             const done = uploaded + batch.length * (e.loaded / e.total);
                             fill.style.width = Math.round((done / total) * 100) + '%';
-                            text.textContent = `Uploading ${Math.floor(done)} / ${total}…`;
+                            text.textContent = t.uploadingCount(Math.floor(done), total);
                         };
                         xhr.onload = () => {
                             if (xhr.status < 300) resolve();
@@ -3088,14 +3819,14 @@
                     uploaded += batch.length;
                 }
                 fill.style.width = '100%';
-                text.textContent = `${total} photo${total !== 1 ? 's' : ''} added`;
+                text.textContent = t.uploadingCount(total, total);
                 setTimeout(() => { wrap.style.display = 'none'; }, 1800);
                 if (_photosResizeObs) { _photosResizeObs.disconnect(); _photosResizeObs = null; }
                 await refreshPhotosGrid(galleryId);
                 loadGalleries();
             } catch (err) {
                 wrap.style.display = 'none';
-                showError('Upload failed: ' + err.message);
+                showError(t.uploadFailedMsg(err.message));
             }
         }
 
@@ -3128,7 +3859,7 @@
 
         function updatePhotosSelectionBar() {
             const n = _photosSelected.size;
-            document.getElementById('photosSelectedCount').textContent = `${n} selected`;
+            document.getElementById('photosSelectedCount').textContent = t.photoSelectedCount(n, n === 1 ? t.photoSingular : t.photoPlural);
             document.getElementById('photosDeleteSelectedBtn').disabled = n === 0;
         }
 
@@ -3160,8 +3891,8 @@
             const filenames = [..._photosSelected];
             const n = filenames.length;
             if (!n) return;
-            const ok = await photosConfirm(
-                `Delete ${n} photo${n > 1 ? 's' : ''}? This cannot be undone.`
+            const ok = await confirmDialog(
+                t.confirmDeletePhotos(n, n > 1 ? t.photoPlural : t.photoSingular)
             );
             if (!ok) return;
             filenames.forEach(f => {
@@ -3175,7 +3906,7 @@
                     if (!res.ok) errors++;
                 } catch { errors++; }
             }
-            if (errors) showError(`${errors} photo${errors > 1 ? 's' : ''} could not be deleted.`);
+            if (errors) showError(t.photosCouldNotBeDeleted(errors));
             togglePhotoSelection();
             if (_photosResizeObs) { _photosResizeObs.disconnect(); _photosResizeObs = null; }
             await refreshPhotosGrid(galleryId);
@@ -3214,9 +3945,9 @@
                 if (!res.ok) throw new Error('Failed');
                 const { photos } = await res.json();
                 const n = photos.length;
-                document.getElementById('photosModalMeta').textContent = `${n} photo${n !== 1 ? 's' : ''}`;
+                document.getElementById('photosModalMeta').textContent = `${n} ${n !== 1 ? t.photoPlural : t.photoSingular}`;
                 const grid = document.getElementById('photosGrid');
-                if (n === 0) { grid.innerHTML = '<p style="color:var(--muted);font-size:13px">No photos left.</p>'; return; }
+                if (n === 0) { grid.innerHTML = `<p style="color:var(--muted);font-size:13px">${t.noPhotosLeft}</p>`; return; }
                 _renderPhotosRows(galleryId, photos);
                 if (_photosResizeObs) { _photosResizeObs.disconnect(); _photosResizeObs = null; }
                 _photosResizeObs = new ResizeObserver(() => {
@@ -3224,7 +3955,7 @@
                 });
                 _photosResizeObs.observe(grid);
             } catch (err) {
-                showError('Could not load photos');
+                showError(t.couldNotLoadPhotos);
             }
         }
 
@@ -3256,7 +3987,7 @@
                         ${videoBadge}
                         <div class="photo-overlay-info">
                             <span class="photo-filename">${escapeHtml(photo.filename)}</span>
-                            <button class="photo-delete-btn" onclick="event.stopPropagation(); deletePhoto('${galleryId}', '${escapeAttr(photo.filename)}')" title="Delete">${trashSvg}</button>
+                            <button class="photo-delete-btn" onclick="event.stopPropagation(); deletePhoto('${galleryId}', '${escapeAttr(photo.filename)}')" title="${t.delete}">${trashSvg}</button>
                         </div>`;
                     rowEl.appendChild(card);
                 });
@@ -3266,7 +3997,7 @@
 
         async function deletePhoto(galleryId, filename) {
             if (_photosSelectionMode) return;
-            const ok = await photosConfirm(`Delete "${filename}"?\nThis cannot be undone.`);
+            const ok = await confirmDialog(t.confirmDeletePhoto(filename));
             if (!ok) return;
             const item = document.getElementById(`photo-item-${CSS.escape(filename)}`);
             if (item) item.classList.add('deleting');
@@ -3277,7 +4008,7 @@
                 await refreshPhotosGrid(galleryId);
             } catch (err) {
                 if (item) item.classList.remove('deleting');
-                showError('Could not delete photo: ' + err.message);
+                showError(t.couldNotDeletePhoto(err.message));
             }
         }
 
@@ -3307,7 +4038,7 @@
                 const rankingBtn = document.getElementById('favCopyRankingBtn');
 
                 if (favData.favorites.length === 0) {
-                    grid.innerHTML = '<p class="favorites-empty">No favorites yet.</p>';
+                    grid.innerHTML = `<p class="favorites-empty">${t.noFavoritesYet}</p>`;
                     exportBtn.style.display = 'none';
                     downloadBtn.style.display = 'none';
                     rankingBtn.style.display = 'none';
@@ -3336,7 +4067,7 @@
 
                 document.getElementById('favoritesModal').classList.add('active');
             } catch (err) {
-                showError('Could not load favorites');
+                showError(t.couldNotLoadFavorites);
             }
         }
 
@@ -3379,10 +4110,10 @@
                 const data = await res.json();
                 const list = document.getElementById('commentsList');
                 const clearBtn = document.getElementById('commentsClearAllBtn');
-                document.getElementById('commentsModalTitle').textContent = `Comments (${data.comments.length})`;
+                document.getElementById('commentsModalTitle').textContent = t.commentsTitleWithCount(data.comments.length);
 
                 if (data.comments.length === 0) {
-                    list.innerHTML = '<p class="comments-empty">No comments yet.</p>';
+                    list.innerHTML = `<p class="comments-empty">${t.noCommentsYet}</p>`;
                     clearBtn.style.display = 'none';
                 } else {
                     _renderCommentGroups(galleryId, data.comments, list);
@@ -3391,7 +4122,7 @@
 
                 document.getElementById('commentsModal').classList.add('active');
             } catch (err) {
-                showError('Could not load comments');
+                showError(t.couldNotLoadComments);
             }
         }
 
@@ -3419,7 +4150,7 @@
                         <img class="comment-photo-thumb" src="${group.thumbnailUrl}" alt="" loading="lazy">
                         <div class="comment-photo-meta">
                             <span class="comment-photo-filename">${escapeHtml(filename)}</span>
-                            <span class="comment-photo-count">${items.length} comment${items.length > 1 ? 's' : ''}</span>
+                            <span class="comment-photo-count">${items.length} ${items.length > 1 ? t.commentPlural : t.commentSingular}</span>
                         </div>
                     </div>
                     <div class="comment-photo-items">
@@ -3427,12 +4158,12 @@
                         <div class="comment-admin-row" id="comment-row-${escapeAttr(c.id)}">
                             <div class="comment-admin-body">
                                 <div class="comment-admin-head">
-                                    <span class="comment-admin-name">${escapeHtml(c.name || 'Guest')}</span>
+                                    <span class="comment-admin-name">${escapeHtml(c.name || t.guest)}</span>
                                     <span class="comment-admin-date">${new Date(c.createdAt).toLocaleString()}</span>
                                 </div>
                                 <div class="comment-admin-text">${escapeHtml(c.text)}</div>
                             </div>
-                            <button class="comment-admin-delete" onclick="deleteComment('${galleryId}', '${escapeAttr(filename)}', '${escapeAttr(c.id)}')" title="Delete">
+                            <button class="comment-admin-delete" onclick="deleteComment('${galleryId}', '${escapeAttr(filename)}', '${escapeAttr(c.id)}')" title="${t.delete}">
                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
                             </button>
                         </div>`).join('')}
@@ -3456,31 +4187,31 @@
                         group.remove();
                     } else {
                         const countEl = group.querySelector('.comment-photo-count');
-                        if (countEl) countEl.textContent = `${remainingInGroup} comment${remainingInGroup > 1 ? 's' : ''}`;
+                        if (countEl) countEl.textContent = `${remainingInGroup} ${remainingInGroup > 1 ? t.commentPlural : t.commentSingular}`;
                     }
                 }
 
                 const remaining = document.querySelectorAll('#commentsList .comment-admin-row').length;
-                document.getElementById('commentsModalTitle').textContent = `Comments (${remaining})`;
+                document.getElementById('commentsModalTitle').textContent = t.commentsTitleWithCount(remaining);
                 if (remaining === 0) {
-                    document.getElementById('commentsList').innerHTML = '<p class="comments-empty">No comments yet.</p>';
+                    document.getElementById('commentsList').innerHTML = `<p class="comments-empty">${t.noCommentsYet}</p>`;
                     document.getElementById('commentsClearAllBtn').style.display = 'none';
                 }
                 loadGalleries();
             } catch (err) {
-                showError('Could not delete comment');
+                showError(t.couldNotDeleteComment);
             }
         }
 
         async function resetComments(galleryId) {
-            if (!galleryId || !confirm('Delete all comments for this gallery?')) return;
+            if (!galleryId || !(await confirmDialog(t.confirmDeleteAllComments))) return;
             try {
                 const res = await fetch(`/api/gallery/${galleryId}/comments`, { method: 'DELETE' });
                 if (!res.ok) throw new Error('Failed');
                 closeCommentsModal();
                 loadGalleries();
             } catch (err) {
-                showError('Could not reset comments');
+                showError(t.couldNotResetComments);
             }
         }
 
@@ -3500,7 +4231,7 @@
                 checkbox.checked = data.downloadsEnabled;
             } catch (e) {
                 checkbox.checked = !enabled;
-                alert('Error: ' + e.message);
+                showError(t.couldNotUpdateDownloadSetting(e.message));
             }
         }
 
@@ -3516,23 +4247,23 @@
                 checkbox.checked = data.commentsEnabled;
             } catch (e) {
                 checkbox.checked = !enabled;
-                alert('Error: ' + e.message);
+                showError(t.couldNotUpdateCommentsSetting(e.message));
             }
         }
 
         async function resetViews(galleryId) {
-            if (!confirm('Reset view count for this gallery?')) return;
+            if (!(await confirmDialog(t.confirmResetViews, t.reset))) return;
             try {
                 const res = await fetch(`/api/gallery/${galleryId}/views`, { method: 'DELETE' });
                 if (!res.ok) throw new Error('Error');
                 await loadGalleries();
             } catch (e) {
-                alert('Error resetting views: ' + e.message);
+                showError(t.errorResettingViews(e.message));
             }
         }
 
         async function resetFavorites(galleryId) {
-            if (!confirm('Reset all favorites for this gallery?')) return;
+            if (!(await confirmDialog(t.confirmResetFavorites, t.reset))) return;
             try {
                 const res = await fetch(`/api/gallery/${galleryId}/favorites`, {
                     method: 'DELETE'
@@ -3540,7 +4271,7 @@
                 if (!res.ok) throw new Error('Failed');
                 loadGalleries();
             } catch (err) {
-                showError('Could not reset favorites');
+                showError(t.couldNotResetFavorites);
             }
         }
 
@@ -3564,7 +4295,7 @@
         function renderCollections(colls) {
             const container = document.getElementById('collectionList');
             if (colls.length === 0) {
-                container.innerHTML = '<div class="empty-state">No collections yet.</div>';
+                container.innerHTML = `<div class="empty-state">${t.noCollectionsYet}</div>`;
                 return;
             }
             container.innerHTML = colls.map(c => {
@@ -3577,12 +4308,12 @@
                                     ondragover="handlePillDragOver(event)"
                                     ondrop="handlePillDrop(event, '${c.id}')"
                                     ondragend="handlePillDragEnd(event)">
-                            <button class="pill-move" onclick="movePill('${c.id}','${gid}',-1)" title="Move left">◀</button>
+                            <button class="pill-move" onclick="movePill('${c.id}','${gid}',-1)" title="${t.moveLeft}">◀</button>
                             ${name}
-                            <button class="pill-move" onclick="movePill('${c.id}','${gid}',1)" title="Move right">▶</button>
-                            <button class="pill-remove" onclick="removeFromCollection('${c.id}', '${gid}')" title="Remove">✕</button>
+                            <button class="pill-move" onclick="movePill('${c.id}','${gid}',1)" title="${t.moveRight}">▶</button>
+                            <button class="pill-remove" onclick="removeFromCollection('${c.id}', '${gid}')" title="${t.remove}">✕</button>
                         </span>`;
-                    }).join('') + `<button class="add-gallery-pill" onclick="openGalleryPicker('${c.id}')">+ Add gallery</button>`;
+                    }).join('') + `<button class="add-gallery-pill" onclick="openGalleryPicker('${c.id}')">${t.addGallery}</button>`;
 
                 const coverHtml = c.hasBackground
                     ? `<img src="/api/collection/${c.id}/background?thumb=1&t=${Date.now()}" alt="">`
@@ -3590,7 +4321,7 @@
 
                 return `<div class="collection-item">
                     <div class="collection-header">
-                        <div class="collection-cover-thumb" onclick="document.getElementById('col-cover-input-${c.id}').click()" title="Drop image or click to change cover">
+                        <div class="collection-cover-thumb" onclick="document.getElementById('col-cover-input-${c.id}').click()" title="${t.changeCoverTitle}">
                             ${coverHtml}
                             <div class="collection-cover-overlay">
                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
@@ -3606,38 +4337,46 @@
                                      onblur="finishCollectionRename('${c.id}', this)"
                                      onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur();} if(event.key==='Escape'){this.textContent=this.dataset.orig;this.blur();}"
                                      >${escapeHtml(c.name)}</div>
-                                <button class="name-edit-btn" onclick="startCollectionRename('${c.id}')" title="Rename">
+                                <button class="name-edit-btn" onclick="startCollectionRename('${c.id}')" title="${t.rename}">
                                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
                                 </button>
                             </div>
-                            <div class="collection-meta-row">${c.galleryIds.length} ${c.galleryIds.length === 1 ? 'gallery' : 'galleries'}</div>
+                            <div class="collection-meta-row">${c.galleryIds.length} ${c.galleryIds.length === 1 ? t.gallerySingular : t.galleryPlural}</div>
                             <div class="gallery-bottom">
-                                <label class="downloads-toggle" title="Allow clients to download">
+                                <label class="downloads-toggle" title="${t.allowDownloads}">
                                     <span class="toggle-switch">
                                         <input type="checkbox" ${c.downloadsEnabled !== false ? 'checked' : ''}
                                                onchange="toggleCollectionDownloads('${c.id}', this.checked, this)">
                                         <span class="toggle-track"></span>
                                     </span>
-                                    Downloads
+                                    ${t.downloads}
                                 </label>
-                                <label class="downloads-toggle" title="Allow clients to comment on photos">
+                                <label class="downloads-toggle" title="${t.allowComments}">
                                     <span class="toggle-switch">
                                         <input type="checkbox" ${c.commentsEnabled !== false ? 'checked' : ''}
                                                onchange="toggleCollectionComments('${c.id}', this.checked, this)">
                                         <span class="toggle-track"></span>
                                     </span>
-                                    Comments
+                                    ${t.comments}
                                 </label>
+                                <select class="lang-select" title="${t.clientLanguageTitle}" onchange="setCollectionClientLanguage('${c.id}', this.value)">
+                                    <option value="auto" ${c.clientLanguage === 'auto' ? 'selected' : ''}>${t.autoLanguage}</option>
+                                    <option value="en" ${c.clientLanguage === 'en' ? 'selected' : ''}>English</option>
+                                    <option value="fr" ${c.clientLanguage === 'fr' ? 'selected' : ''}>Français</option>
+                                    <option value="es" ${c.clientLanguage === 'es' ? 'selected' : ''}>Español</option>
+                                    <option value="pt" ${c.clientLanguage === 'pt' ? 'selected' : ''}>Português</option>
+                                    <option value="it" ${c.clientLanguage === 'it' ? 'selected' : ''}>Italiano</option>
+                                </select>
                             </div>
                         </div>
                         <div class="collection-actions">
-                            <button class="btn-icon" onclick="copyCollectionLink('${c.id}', this)" title="Copy client link">
+                            <button class="btn-icon" onclick="copyCollectionLink('${c.id}', this)" title="${t.copyClientLink}">
                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
                             </button>
-                            <button class="btn-icon" onclick="copyCollectionCritiqueLink('${c.id}', this)" title="Copy critique link (numbered photos)">
+                            <button class="btn-icon" onclick="copyCollectionCritiqueLink('${c.id}', this)" title="${t.copyCritiqueLink}">
                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="10" y1="6" x2="21" y2="6"/><line x1="10" y1="12" x2="21" y2="12"/><line x1="10" y1="18" x2="21" y2="18"/><path d="M4 6h1v4M4 10h2M6 18H4c0-1 2-2 2-3s-1-1.5-2-1" stroke-linecap="round" stroke-linejoin="round"/></svg>
                             </button>
-                            <button class="btn-icon btn-icon-danger" onclick="deleteCollection('${c.id}')" title="Delete">
+                            <button class="btn-icon btn-icon-danger" onclick="deleteCollection('${c.id}')" title="${t.delete}">
                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
                             </button>
                         </div>
@@ -3651,6 +4390,16 @@
                     </div>
                 </div>`;
             }).join('');
+        }
+
+        async function setCollectionClientLanguage(collectionId, language) {
+            try {
+                await fetch(`/api/collection/${collectionId}/client-language`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ language })
+                });
+            } catch (_) {}
         }
 
         // Pill reordering drag state
@@ -3698,7 +4447,7 @@
                 });
                 await loadCollections();
             } catch (err) {
-                showError('Could not reorder galleries: ' + err.message);
+                showError(t.couldNotReorderGalleries(err.message));
             }
         }
 
@@ -3737,7 +4486,7 @@
             const sel = document.getElementById('galleryCollectionSelect');
             if (!sel) return;
             const prev = sel.value;
-            sel.innerHTML = '<option value="" disabled>Add to existing collection (optional)</option>';
+            sel.innerHTML = `<option value="" disabled>${t.addToExistingCollection}</option>`;
             (_collectionsData || []).forEach(c => {
                 const opt = document.createElement('option');
                 opt.value = c.id;
@@ -3756,8 +4505,8 @@
             const labelText = document.getElementById('includeGalleryLabelText');
             if (labelText) {
                 labelText.textContent = multiCount > 1
-                    ? 'Include the galleries being created'
-                    : 'Include the gallery being created';
+                    ? t.includeGalleryMulti
+                    : t.includeGallerySingle;
             }
 
             const colSel = document.getElementById('galleryCollectionSelect');
@@ -3768,15 +4517,15 @@
 
             const btn = document.getElementById('createBtn');
             if (hasFiles && willAssignCollection) {
-                btn.textContent = 'Create gallery + collection';
+                btn.textContent = t.createGalleryAndCollection;
             } else {
-                btn.textContent = 'Create & copy link';
+                btn.textContent = t.createAndCopyLink;
             }
 
             const multiBtn = document.getElementById('createMultiBtn');
             if (multiBtn && multiCount > 0) {
-                const base = `Create ${multiCount} ${multiCount === 1 ? 'gallery' : 'galleries'}`;
-                multiBtn.textContent = willAssignCollection ? `${base} + collection` : base;
+                const base = `${t.createAndCopyLink.split(' ')[0]} ${multiCount} ${multiCount === 1 ? t.gallerySingular : t.galleryPlural}`;
+                multiBtn.textContent = willAssignCollection ? `${base} + ${t.collections.toLowerCase()}` : base;
             }
         }
 
@@ -3807,7 +4556,7 @@
                 }
                 await loadCollections();
             } catch (err) {
-                showError('Could not create collection: ' + err.message);
+                showError(t.couldNotCreateCollection(err.message));
             }
         }
 
@@ -3864,11 +4613,10 @@
             document.getElementById('deleteColGalleriesCb').checked = false;
             if (galleryCount > 0) {
                 document.getElementById('deleteColMsg').textContent =
-                    `This collection contains ${galleryCount} ${galleryCount === 1 ? 'gallery' : 'galleries'}. They will not be affected unless you check the option below.`;
+                    t.deleteColMsgWithGalleries(galleryCount, galleryCount === 1 ? t.gallerySingular : t.galleryPlural);
                 checkLabel.style.display = 'flex';
             } else {
-                document.getElementById('deleteColMsg').textContent =
-                    'This will remove the collection. It contains no galleries.';
+                document.getElementById('deleteColMsg').textContent = t.deleteColMsgEmpty;
                 checkLabel.style.display = 'none';
             }
             document.getElementById('deleteColModal').classList.add('active');
@@ -3897,7 +4645,7 @@
                 await loadGalleries();
                 if (alsoTrash) loadTrash();
             } catch (err) {
-                showError('Could not delete collection: ' + err.message);
+                showError(t.couldNotDeleteCollection(err.message));
             }
         }
 
@@ -3924,7 +4672,7 @@
                 await loadCollections();
                 await loadGalleries();
             } catch (err) {
-                showError('Could not remove gallery from collection: ' + err.message);
+                showError(t.couldNotRemoveGalleryFromCollection(err.message));
             }
         }
 
@@ -3942,7 +4690,7 @@
                 await loadCollections();
                 await loadGalleries();
             } catch (err) {
-                showError('Could not add gallery to collection: ' + err.message);
+                showError(t.couldNotAddGalleryToCollection(err.message));
             }
         }
 
@@ -3958,7 +4706,7 @@
             const all = _galleriesData || [];
             const list = document.getElementById('galleryPickerList');
             if (all.length === 0) {
-                list.innerHTML = '<div class="gallery-picker-empty">No galleries yet.</div>';
+                list.innerHTML = `<div class="gallery-picker-empty">${t.noGalleriesYetPicker}</div>`;
             } else {
                 const thumbSvg = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>`;
                 list.innerHTML = all.map(g => {
@@ -3967,11 +4715,11 @@
                         ? `<img src="/api/gallery/${g.id}/background?thumb=1" alt="" loading="lazy">`
                         : thumbSvg;
                     return `<button class="gallery-picker-item" id="picker-item-${g.id}"
-                            ${already ? 'disabled title="Already in this collection"' : `onclick="togglePickerItem('${g.id}')"`}>
+                            ${already ? `disabled title="${t.alreadyInCollection}"` : `onclick="togglePickerItem('${g.id}')"`}>
                         <div class="gallery-picker-thumb">${thumbHtml}</div>
                         <div class="gallery-picker-info">
                             <div class="gallery-picker-name">${escapeHtml(g.eventName)}</div>
-                            <div class="gallery-picker-count">${g.fileCount} photo${g.fileCount !== 1 ? 's' : ''}${already ? ' · ✓ added' : ''}</div>
+                            <div class="gallery-picker-count">${g.fileCount} ${g.fileCount !== 1 ? t.photoPlural : t.photoSingular}${already ? ' · ✓' : ''}</div>
                         </div>
                     </button>`;
                 }).join('');
@@ -3995,7 +4743,7 @@
             const btn = document.getElementById('galleryPickerConfirm');
             const n = _pickerSelected.size;
             btn.disabled = n === 0;
-            btn.textContent = n > 0 ? `Add ${n} ${n === 1 ? 'gallery' : 'galleries'}` : 'Add';
+            btn.textContent = n > 0 ? t.addN(n, n === 1 ? t.gallerySingular : t.galleryPlural) : t.add;
         }
 
         function closeGalleryPicker() {
@@ -4100,14 +4848,14 @@
         }
 
         async function deleteGallery(id) {
-            if (!confirm('Move this gallery to trash? It will be permanently deleted after 3 days.')) return;
+            if (!(await confirmDialog(t.confirmMoveTrash, t.moveToTrash))) return;
             try {
                 const res = await fetch(`/api/gallery/${id}`, { method: 'DELETE' });
                 if (!res.ok) throw new Error('Failed');
                 loadGalleries();
                 loadTrash();
             } catch (err) {
-                showError('Error moving gallery to trash');
+                showError(t.errorMovingGalleryToTrash);
             }
         }
 
@@ -4127,25 +4875,25 @@
                 if (emptyBtn) emptyBtn.style.display = trashed.length > 0 ? 'inline-block' : 'none';
                 const list = document.getElementById('trashList');
                 if (trashed.length === 0) {
-                    list.innerHTML = '<div class="empty-state">Trash is empty.</div>';
+                    list.innerHTML = `<div class="empty-state">${t.trashEmpty}</div>`;
                     return;
                 }
                 const thumbSvg = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>`;
                 list.innerHTML = trashed.map(g => {
                     const thumbHtml = g.hasBackground ? `<img src="/api/gallery/${g.id}/background?thumb=1" alt="">` : thumbSvg;
                     const urgent = g.daysLeft <= 1;
-                    const dayLabel = g.daysLeft === 0 ? 'Expires today'
-                        : g.daysLeft === 1 ? 'Expires tomorrow'
-                        : `${g.daysLeft} days left`;
+                    const dayLabel = g.daysLeft === 0 ? t.expiresToday
+                        : g.daysLeft === 1 ? t.expiresTomorrow
+                        : t.daysLeft(g.daysLeft);
                     return `<div class="trash-item">
                         <div class="trash-cover">${thumbHtml}</div>
                         <div class="trash-info">
                             <div class="trash-name">${escapeHtml(g.eventName)}</div>
-                            <div class="trash-meta${urgent ? ' urgent' : ''}">${g.fileCount} photos · ${dayLabel}</div>
+                            <div class="trash-meta${urgent ? ' urgent' : ''}">${g.fileCount} ${t.photoPlural} · ${dayLabel}</div>
                         </div>
                         <div class="trash-actions">
-                            <button class="btn-restore" onclick="restoreGallery('${g.id}')">Restore</button>
-                            <button class="btn-purge" onclick="purgeGallery('${g.id}')">Delete now</button>
+                            <button class="btn-restore" onclick="restoreGallery('${g.id}')">${t.restore}</button>
+                            <button class="btn-purge" onclick="purgeGallery('${g.id}')">${t.deleteNow}</button>
                         </div>
                     </div>`;
                 }).join('');
@@ -4159,29 +4907,29 @@
                 loadGalleries();
                 loadTrash();
             } catch (err) {
-                showError('Could not restore gallery');
+                showError(t.couldNotRestoreGallery);
             }
         }
 
         async function purgeGallery(id) {
-            if (!confirm('Permanently delete this gallery? This cannot be undone.')) return;
+            if (!(await confirmDialog(t.confirmPurgeGallery))) return;
             try {
                 const res = await fetch(`/api/gallery/${id}/purge`, { method: 'DELETE' });
                 if (!res.ok) throw new Error('Failed');
                 loadTrash();
             } catch (err) {
-                showError('Could not delete gallery');
+                showError(t.couldNotDeleteGallery);
             }
         }
 
         async function emptyTrash() {
-            if (!confirm('Permanently delete all trashed galleries? This cannot be undone.')) return;
+            if (!(await confirmDialog(t.confirmEmptyTrash))) return;
             try {
                 const res = await fetch('/api/galleries/trash', { method: 'DELETE' });
                 if (!res.ok) throw new Error('Failed');
                 loadTrash();
             } catch (err) {
-                showError('Could not empty trash');
+                showError(t.couldNotEmptyTrash);
             }
         }
 
@@ -4196,11 +4944,11 @@
                 const message = document.getElementById('toastMessage');
                 spinner.style.display = 'none'; errorIcon.style.display = 'none';
                 successIcon.style.display = 'block';
-                message.textContent = 'Share preview will be regenerated on next share.';
+                message.textContent = t.sharePreviewRegenerated;
                 toast.className = 'upload-toast visible success';
                 setTimeout(() => toast.classList.remove('visible', 'success'), 3000);
             } catch (err) {
-                showError('Could not reset share preview');
+                showError(t.couldNotResetSharePreview);
             }
         }
 
@@ -4228,6 +4976,8 @@
                 document.getElementById('profile500px').value     = soc['500px']  || '';
                 document.getElementById('profileFlickr').value    = soc.flickr    || '';
                 document.getElementById('profileBehance').value   = soc.behance   || '';
+                document.getElementById('profileAdminLanguage').value  = s.adminLanguage  || 'en';
+                document.getElementById('profileClientLanguage').value = s.clientLanguage || 'auto';
             }).catch(() => {});
             document.getElementById('profileFeedback').textContent = '';
             document.getElementById('profileModal').classList.add('active');
@@ -4238,6 +4988,8 @@
         }
 
         async function saveProfile() {
+            const newAdminLanguage = document.getElementById('profileAdminLanguage').value;
+            const adminLanguageChanged = newAdminLanguage !== (_currentAdminLanguage || 'en');
             const payload = {
                 website: document.getElementById('profileWebsite').value.trim(),
                 socials: {
@@ -4249,7 +5001,9 @@
                     '500px':   document.getElementById('profile500px').value.trim(),
                     flickr:    document.getElementById('profileFlickr').value.trim(),
                     behance:   document.getElementById('profileBehance').value.trim()
-                }
+                },
+                adminLanguage: newAdminLanguage,
+                clientLanguage: document.getElementById('profileClientLanguage').value
             };
             try {
                 const res = await fetch('/api/settings', {
@@ -4259,15 +5013,19 @@
                 });
                 const fb = document.getElementById('profileFeedback');
                 if (res.ok) {
+                    if (adminLanguageChanged) {
+                        location.reload();
+                        return;
+                    }
                     fb.style.color = 'var(--success)';
-                    fb.textContent = 'Saved.';
+                    fb.textContent = t.saved;
                     setTimeout(() => { fb.textContent = ''; }, 2500);
                 } else {
                     fb.style.color = 'var(--error)';
-                    fb.textContent = 'Error saving settings.';
+                    fb.textContent = t.errorSavingSettings;
                 }
             } catch (e) {
-                document.getElementById('profileFeedback').textContent = 'Network error.';
+                document.getElementById('profileFeedback').textContent = t.networkError;
             }
         }
     </script>
@@ -4276,8 +5034,8 @@
     <div id="bulkActionBar">
         <div class="bulk-left">
             <span id="bulkCount">0 selected</span>
-            <button class="bulk-select-all" onclick="selectAllGalleries()">Select all</button>
-            <button class="bulk-select-all" onclick="deselectAllGalleries()">Deselect all</button>
+            <button class="bulk-select-all" id="bulkSelectAllBtn" onclick="selectAllGalleries()">Select all</button>
+            <button class="bulk-select-all" id="bulkDeselectAllBtn" onclick="deselectAllGalleries()">Deselect all</button>
         </div>
         <div class="bulk-right">
             <button class="bulk-btn" id="bulkEnableBtn" onclick="bulkSetDownloads(true)" disabled>Enable<span class="bulk-label-long"> downloads</span></button>
@@ -4286,7 +5044,7 @@
                 <option value="">Add to collection…</option>
             </select>
             <button class="bulk-btn bulk-btn-danger" id="bulkDeleteBtn" onclick="bulkDelete()" disabled>Delete</button>
-            <button class="bulk-btn bulk-btn-cancel" onclick="exitSelectionMode()">Cancel</button>
+            <button class="bulk-btn bulk-btn-cancel" id="bulkCancelBtn" onclick="exitSelectionMode()">Cancel</button>
         </div>
     </div>
 </body>
