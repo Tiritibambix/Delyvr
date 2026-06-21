@@ -660,6 +660,15 @@
             letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted);
             flex-shrink: 0;
         }
+        .section-icon {
+            display: flex; flex-shrink: 0; width: 14px; height: 14px; color: var(--muted2);
+        }
+        .section-icon svg { width: 14px; height: 14px; }
+        .collections-panel {
+            background: var(--bg2); border: 1px solid var(--border);
+            border-radius: 8px; padding: 14px 14px 6px;
+        }
+        .collections-panel .section-header { margin-bottom: 10px; }
         .section-header-right {
             display: flex; align-items: center; gap: 8px;
             margin-left: auto;
@@ -1404,11 +1413,9 @@
                         <span id="favCopyRankingBtnText">Copy ranking link</span>
                     </button>
                     <a class="btn-fav-action" id="favExportBtn" href="#" download style="display:none">Export CSV</a>
-                    <select class="gallery-sort-select" id="favMinVotesSelect" onchange="updateFavDownloadLink()" style="display:none"></select>
-                    <a class="btn-fav-action" id="favDownloadBtn" href="#" download style="display:none">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12" style="vertical-align:middle;margin-right:3px"><path d="M12 4v12m0 0l-4-4m4 4l4-4M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-                        <span id="favDownloadBtnText">Download photos</span>
-                    </a>
+                    <select class="gallery-sort-select" id="favDownloadSelect" onchange="handleFavDownloadSelect(this)" style="display:none">
+                        <option value="" selected disabled id="favDownloadPlaceholderOption">Download photos</option>
+                    </select>
                     <button class="favorites-modal-close" onclick="closeFavoritesModal()">×</button>
                 </div>
             </div>
@@ -1621,8 +1628,9 @@
                 <button class="new-upload-btn" id="dismissResultBtn" onclick="document.getElementById('resultSection').classList.remove('visible')">Dismiss</button>
             </div>
 
-            <div>
+            <div class="collections-panel">
                 <div class="section-header">
+                    <span class="section-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2 2 7l10 5 10-5-10-5Z"/><path d="m2 17 10 5 10-5"/><path d="m2 12 10 5 10-5"/></svg></span>
                     <span class="section-label" id="collectionsSectionLabel">Collections</span>
                 </div>
                 <div id="collectionList"><div class="empty-state" id="noCollectionsYetMsg">No collections yet.</div></div>
@@ -1630,16 +1638,22 @@
 
             <div>
                 <div class="section-header">
+                    <span class="section-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg></span>
                     <span class="section-label" id="galleriesSectionLabel">Galleries</span>
                     <div class="section-header-right">
                         <input class="gallery-search" id="gallerySearch" type="search" placeholder="Search…" oninput="filterGalleries(this.value)">
-                        <select class="gallery-sort-select" id="gallerySortSelect" onchange="filterGalleries(document.getElementById('gallerySearch').value)">
-                            <option value="dateNewest">Newest first</option>
-                            <option value="dateOldest">Oldest first</option>
+                        <select class="gallery-sort-select" id="gallerySortField" onchange="filterGalleries(document.getElementById('gallerySearch').value)">
+                            <option value="date">Date</option>
                             <option value="name">Name</option>
-                            <option value="views">Most viewed</option>
-                            <option value="downloads">Most downloaded</option>
+                            <option value="views">Views</option>
+                            <option value="downloads">Downloads</option>
+                            <option value="photos">Photos</option>
+                            <option value="comments">Comments</option>
+                            <option value="favorites">Favorites</option>
                         </select>
+                        <button class="btn-icon" id="gallerySortDirBtn" onclick="toggleGallerySortDirection()" title="Descending">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M19 12l-7 7-7-7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                        </button>
                         <button class="section-select-btn" id="filterNoCollectionBtn" onclick="toggleGalleryFilter('noCollection', this)">No collection</button>
                         <button class="section-select-btn" id="filterDownloadsOffBtn" onclick="toggleGalleryFilter('downloadsOff', this)">Downloads off</button>
                         <button class="section-select-btn" id="collapseAllGroupsBtn" onclick="collapseAllGroups()">Collapse all</button>
@@ -1788,12 +1802,14 @@
                 sharePreviewRegenerated: 'Share preview will be regenerated on next share.',
                 couldNotResetSharePreview: 'Could not reset share preview',
                 uploadFailedMsg: msg => `Upload failed: ${msg}`,
-                sortName: 'Name', sortDateNewest: 'Newest first', sortDateOldest: 'Oldest first',
-                sortMostViewed: 'Most viewed', sortMostDownloaded: 'Most downloaded',
+                sortName: 'Name', sortDate: 'Date', sortViews: 'Views', sortDownloads: 'Downloads',
+                sortPhotos: 'Photos', sortComments: 'Comments', sortFavorites: 'Favorites',
+                sortAscending: 'Ascending', sortDescending: 'Descending',
                 filterNoCollection: 'No collection', filterDownloadsOff: 'Downloads off',
                 collapseAll: 'Collapse all', expandAll: 'Expand all',
                 hideGalleryStats: 'Hide gallery stats', showGalleryStats: 'Show gallery stats',
-                minVotesOption: n => `≥${n} ${n === 1 ? 'vote' : 'votes'}`,
+                favDownloadAllOption: count => `All (${count})`,
+                minVotesOption: (n, count) => `≥${n} ${n === 1 ? 'vote' : 'votes'} (${count})`,
             },
             fr: {
                 loginTitle: 'Bon retour', loginSubtitle: 'Entrez votre mot de passe pour accéder au tableau de bord',
@@ -1909,12 +1925,14 @@
                 sharePreviewRegenerated: 'L\'aperçu de partage sera régénéré au prochain partage.',
                 couldNotResetSharePreview: 'Impossible de réinitialiser l\'aperçu de partage',
                 uploadFailedMsg: msg => `Échec de l'envoi : ${msg}`,
-                sortName: 'Nom', sortDateNewest: 'Plus récentes', sortDateOldest: 'Plus anciennes',
-                sortMostViewed: 'Plus vues', sortMostDownloaded: 'Plus téléchargées',
+                sortName: 'Nom', sortDate: 'Date', sortViews: 'Vues', sortDownloads: 'Téléchargements',
+                sortPhotos: 'Photos', sortComments: 'Commentaires', sortFavorites: 'Favoris',
+                sortAscending: 'Croissant', sortDescending: 'Décroissant',
                 filterNoCollection: 'Sans collection', filterDownloadsOff: 'Téléchargements désactivés',
                 collapseAll: 'Tout réduire', expandAll: 'Tout déplier',
                 hideGalleryStats: 'Masquer les statistiques', showGalleryStats: 'Afficher les statistiques',
-                minVotesOption: n => `≥${n} ${n === 1 ? 'vote' : 'votes'}`,
+                favDownloadAllOption: count => `Toutes (${count})`,
+                minVotesOption: (n, count) => `≥${n} ${n === 1 ? 'vote' : 'votes'} (${count})`,
             },
             es: {
                 loginTitle: 'Bienvenido de nuevo', loginSubtitle: 'Introduce tu contraseña para acceder al panel',
@@ -2030,12 +2048,14 @@
                 sharePreviewRegenerated: 'La vista previa de compartir se regenerará la próxima vez que se comparta.',
                 couldNotResetSharePreview: 'No se pudo restablecer la vista previa de compartir',
                 uploadFailedMsg: msg => `Error al subir: ${msg}`,
-                sortName: 'Nombre', sortDateNewest: 'Más recientes', sortDateOldest: 'Más antiguas',
-                sortMostViewed: 'Más vistas', sortMostDownloaded: 'Más descargadas',
+                sortName: 'Nombre', sortDate: 'Fecha', sortViews: 'Vistas', sortDownloads: 'Descargas',
+                sortPhotos: 'Fotos', sortComments: 'Comentarios', sortFavorites: 'Favoritos',
+                sortAscending: 'Ascendente', sortDescending: 'Descendente',
                 filterNoCollection: 'Sin colección', filterDownloadsOff: 'Descargas desactivadas',
                 collapseAll: 'Contraer todo', expandAll: 'Expandir todo',
                 hideGalleryStats: 'Ocultar estadísticas', showGalleryStats: 'Mostrar estadísticas',
-                minVotesOption: n => `≥${n} ${n === 1 ? 'voto' : 'votos'}`,
+                favDownloadAllOption: count => `Todas (${count})`,
+                minVotesOption: (n, count) => `≥${n} ${n === 1 ? 'voto' : 'votos'} (${count})`,
             },
             pt: {
                 loginTitle: 'Bem-vindo de volta', loginSubtitle: 'Digite sua senha para acessar o painel',
@@ -2151,12 +2171,14 @@
                 sharePreviewRegenerated: 'A pré-visualização de compartilhamento será regenerada no próximo compartilhamento.',
                 couldNotResetSharePreview: 'Não foi possível redefinir a pré-visualização de compartilhamento',
                 uploadFailedMsg: msg => `Falha no envio: ${msg}`,
-                sortName: 'Nome', sortDateNewest: 'Mais recentes', sortDateOldest: 'Mais antigas',
-                sortMostViewed: 'Mais vistas', sortMostDownloaded: 'Mais baixadas',
+                sortName: 'Nome', sortDate: 'Data', sortViews: 'Visualizações', sortDownloads: 'Downloads',
+                sortPhotos: 'Fotos', sortComments: 'Comentários', sortFavorites: 'Favoritos',
+                sortAscending: 'Crescente', sortDescending: 'Decrescente',
                 filterNoCollection: 'Sem coleção', filterDownloadsOff: 'Downloads desativados',
                 collapseAll: 'Recolher tudo', expandAll: 'Expandir tudo',
                 hideGalleryStats: 'Ocultar estatísticas', showGalleryStats: 'Mostrar estatísticas',
-                minVotesOption: n => `≥${n} ${n === 1 ? 'voto' : 'votos'}`,
+                favDownloadAllOption: count => `Todas (${count})`,
+                minVotesOption: (n, count) => `≥${n} ${n === 1 ? 'voto' : 'votos'} (${count})`,
             },
             it: {
                 loginTitle: 'Bentornato', loginSubtitle: 'Inserisci la password per accedere alla dashboard',
@@ -2272,12 +2294,14 @@
                 sharePreviewRegenerated: 'L\'anteprima di condivisione verrà rigenerata alla prossima condivisione.',
                 couldNotResetSharePreview: 'Impossibile ripristinare l\'anteprima di condivisione',
                 uploadFailedMsg: msg => `Caricamento non riuscito: ${msg}`,
-                sortName: 'Nome', sortDateNewest: 'Più recenti', sortDateOldest: 'Più vecchie',
-                sortMostViewed: 'Più visualizzate', sortMostDownloaded: 'Più scaricate',
+                sortName: 'Nome', sortDate: 'Data', sortViews: 'Visualizzazioni', sortDownloads: 'Download',
+                sortPhotos: 'Foto', sortComments: 'Commenti', sortFavorites: 'Preferiti',
+                sortAscending: 'Crescente', sortDescending: 'Decrescente',
                 filterNoCollection: 'Senza collezione', filterDownloadsOff: 'Download disattivati',
                 collapseAll: 'Comprimi tutto', expandAll: 'Espandi tutto',
                 hideGalleryStats: 'Nascondi statistiche', showGalleryStats: 'Mostra statistiche',
-                minVotesOption: n => `≥${n} ${n === 1 ? 'voto' : 'voti'}`,
+                favDownloadAllOption: count => `Tutte (${count})`,
+                minVotesOption: (n, count) => `≥${n} ${n === 1 ? 'voto' : 'voti'} (${count})`,
             }
         };
         let t = adminTranslations.en;
@@ -2328,11 +2352,13 @@
             byId('galleriesSectionLabel', t.galleries);
             const gallerySearch = document.getElementById('gallerySearch');
             if (gallerySearch) gallerySearch.placeholder = t.searchPlaceholder;
-            const sortSelect = document.getElementById('gallerySortSelect');
+            const sortSelect = document.getElementById('gallerySortField');
             if (sortSelect) {
-                const sortLabels = { dateNewest: t.sortDateNewest, dateOldest: t.sortDateOldest, name: t.sortName, views: t.sortMostViewed, downloads: t.sortMostDownloaded };
+                const sortLabels = { date: t.sortDate, name: t.sortName, views: t.sortViews, downloads: t.sortDownloads, photos: t.sortPhotos, comments: t.sortComments, favorites: t.sortFavorites };
                 Array.from(sortSelect.options).forEach(opt => { if (sortLabels[opt.value]) opt.textContent = sortLabels[opt.value]; });
             }
+            const sortDirBtn = document.getElementById('gallerySortDirBtn');
+            if (sortDirBtn) sortDirBtn.title = _gallerySortDir === 'asc' ? t.sortAscending : t.sortDescending;
             byId('filterNoCollectionBtn', t.filterNoCollection);
             byId('filterDownloadsOffBtn', t.filterDownloadsOff);
             byId('collapseAllGroupsBtn', t.collapseAll);
@@ -2358,7 +2384,7 @@
             byId('favoritesModalTitle', t.clientFavorites);
             byId('favCopyRankingBtnText', t.copyRankingLink);
             byId('favExportBtn', t.exportCsv);
-            byId('favDownloadBtnText', t.downloadPhotos);
+            byId('favDownloadPlaceholderOption', t.downloadPhotos);
             byId('commentsClearAllBtnText', t.clearAll);
 
             byId('profileModalTitle', t.profileTitle);
@@ -3227,7 +3253,8 @@
             setTimeout(() => { btn.textContent = orig; btn.style.background = ''; }, 1800);
         }
 
-        let _gallerySort = 'dateNewest';
+        let _gallerySort = 'date';
+        let _gallerySortDir = 'desc';
         let _galleryFilters = new Set();
         let _collapsedGroups = new Set();
 
@@ -3249,7 +3276,7 @@
         }
 
         // Pure: combines galleries + collections + current toolbar state into grouped sections.
-        function buildGalleryViewModel(galleries, collections, { query, sortBy, filters }) {
+        function buildGalleryViewModel(galleries, collections, { query, sortBy, sortDir, filters }) {
             const q = (query || '').trim().toLowerCase();
             const collById = new Map((collections || []).map(c => [c.id, c]));
             let list = galleries || [];
@@ -3264,14 +3291,18 @@
             if (filters.has('noCollection')) list = list.filter(g => !g.collectionId);
             if (filters.has('downloadsOff')) list = list.filter(g => g.downloadsEnabled === false);
 
+            // Ascending base comparators — direction is applied uniformly below.
             const sorters = {
                 name: (a, b) => a.eventName.localeCompare(b.eventName),
-                dateNewest: (a, b) => new Date(b.created) - new Date(a.created),
-                dateOldest: (a, b) => new Date(a.created) - new Date(b.created),
-                views: (a, b) => (b.viewCount || 0) - (a.viewCount || 0),
-                downloads: (a, b) => (b.downloadCount || 0) - (a.downloadCount || 0),
+                date: (a, b) => new Date(a.created) - new Date(b.created),
+                views: (a, b) => (a.viewCount || 0) - (b.viewCount || 0),
+                downloads: (a, b) => (a.downloadCount || 0) - (b.downloadCount || 0),
+                photos: (a, b) => (a.fileCount || 0) - (b.fileCount || 0),
+                comments: (a, b) => (a.commentsCount || 0) - (b.commentsCount || 0),
+                favorites: (a, b) => (a.favoritesCount || 0) - (b.favoritesCount || 0),
             };
-            const sorter = sorters[sortBy] || sorters.dateNewest;
+            const baseSorter = sorters[sortBy] || sorters.date;
+            const sorter = sortDir === 'asc' ? baseSorter : (a, b) => -baseSorter(a, b);
 
             const byCollection = new Map();
             const ungrouped = [];
@@ -3493,9 +3524,19 @@
 
         function filterGalleries(query) {
             if (!_galleriesData) return;
-            _gallerySort = document.getElementById('gallerySortSelect')?.value || 'dateNewest';
-            const vm = buildGalleryViewModel(_galleriesData, _collectionsData, { query, sortBy: _gallerySort, filters: _galleryFilters });
+            _gallerySort = document.getElementById('gallerySortField')?.value || 'date';
+            const vm = buildGalleryViewModel(_galleriesData, _collectionsData, { query, sortBy: _gallerySort, sortDir: _gallerySortDir, filters: _galleryFilters });
             renderGalleryItems(vm);
+        }
+
+        function toggleGallerySortDirection() {
+            _gallerySortDir = _gallerySortDir === 'asc' ? 'desc' : 'asc';
+            const btn = document.getElementById('gallerySortDirBtn');
+            btn.title = _gallerySortDir === 'asc' ? t.sortAscending : t.sortDescending;
+            btn.innerHTML = _gallerySortDir === 'asc'
+                ? `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 19V5M5 12l7-7 7 7" stroke-linecap="round" stroke-linejoin="round"/></svg>`
+                : `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M19 12l-7 7-7-7" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+            filterGalleries(document.getElementById('gallerySearch').value);
         }
 
         // ── SELECTION MODE ─────────────────────────────────────────────────────
@@ -4252,15 +4293,13 @@
 
                 const grid = document.getElementById('favoritesGrid');
                 const exportBtn = document.getElementById('favExportBtn');
-                const downloadBtn = document.getElementById('favDownloadBtn');
+                const downloadSelect = document.getElementById('favDownloadSelect');
                 const rankingBtn = document.getElementById('favCopyRankingBtn');
-                const minVotesSelect = document.getElementById('favMinVotesSelect');
 
                 if (favData.favorites.length === 0) {
                     grid.innerHTML = `<p class="favorites-empty">${t.noFavoritesYet}</p>`;
                     exportBtn.style.display = 'none';
-                    downloadBtn.style.display = 'none';
-                    minVotesSelect.style.display = 'none';
+                    downloadSelect.style.display = 'none';
                     rankingBtn.style.display = 'none';
                 } else {
                     // Build dimension map from photos API
@@ -4283,11 +4322,14 @@
 
                     // favData.favorites is sorted by votes descending (server-side), so [0] holds the max.
                     const maxVotes = favData.favorites[0].votes;
-                    minVotesSelect.innerHTML = Array.from({ length: maxVotes }, (_, i) => i + 1)
-                        .map(n => `<option value="${n}">${t.minVotesOption(n)}</option>`).join('');
-                    minVotesSelect.style.display = 'inline';
-                    downloadBtn.style.display = 'inline';
-                    updateFavDownloadLink();
+                    const options = [`<option value="" selected disabled id="favDownloadPlaceholderOption">${t.downloadPhotos}</option>`];
+                    for (let n = 1; n <= maxVotes; n++) {
+                        const count = favData.favorites.filter(f => f.votes >= n).length;
+                        const label = n === 1 ? t.favDownloadAllOption(count) : t.minVotesOption(n, count);
+                        options.push(`<option value="${n}">${label}</option>`);
+                    }
+                    downloadSelect.innerHTML = options.join('');
+                    downloadSelect.style.display = 'inline';
                     rankingBtn.style.display = 'inline';
                 }
 
@@ -4297,9 +4339,11 @@
             }
         }
 
-        function updateFavDownloadLink() {
-            const minVotes = document.getElementById('favMinVotesSelect').value || 1;
-            document.getElementById('favDownloadBtn').href = `/api/gallery/${_favGalleryId}/favorites/download?minVotes=${minVotes}`;
+        function handleFavDownloadSelect(selectEl) {
+            const minVotes = selectEl.value;
+            if (!minVotes) return;
+            window.location.href = `/api/gallery/${_favGalleryId}/favorites/download?minVotes=${minVotes}`;
+            selectEl.value = '';
         }
 
         function _renderFavRows(galleryId, favPhotos, grid) {
