@@ -1872,9 +1872,10 @@ app.get('/api/gallery/:galleryId/favorites/download', downloadLimiter, requireAu
     const gallery = galleries.get(galleryId);
     if (!gallery) return res.status(404).json({ error: 'Gallery not found' });
 
+    const minVotes = Math.max(1, parseInt(req.query.minVotes, 10) || 1);
     const favs = gallery.favorites || {};
     const filenames = Object.entries(favs)
-        .filter(([, voters]) => voters.length > 0)
+        .filter(([, voters]) => voters.length >= minVotes)
         .sort((a, b) => b[1].length - a[1].length)
         .map(([filename]) => filename);
 
