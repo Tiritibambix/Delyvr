@@ -683,6 +683,14 @@
         }
         .gallery-search:focus { border-color: var(--accent); }
         .gallery-search::placeholder { color: var(--muted2); }
+        .gallery-sort-select {
+            height: 26px; flex-shrink: 0;
+            background: var(--bg3); border: 1px solid var(--border2);
+            border-radius: 4px; padding: 0 6px;
+            font-size: 11px; color: var(--text);
+            font-family: inherit; outline: none; cursor: pointer;
+        }
+        .gallery-sort-select:focus { border-color: var(--accent); }
 
         /* ── RESULT SECTION ── */
         .result-section {
@@ -921,6 +929,31 @@
         .gallery-item:active { cursor: grabbing; }
         .gallery-item.dragging { opacity: 0.4; }
         .gallery-item.drag-over-gallery { border-top: 2px solid var(--accent); }
+
+        /* ── GALLERY GROUPS (accordion by collection) ── */
+        .gallery-group { margin-bottom: 16px; }
+        .gallery-group-header {
+            display: flex; align-items: center; gap: 8px; width: 100%;
+            background: none; border: none; cursor: pointer; font-family: inherit;
+            padding: 4px 2px 8px; text-align: left;
+        }
+        .group-chevron { width: 13px; height: 13px; color: var(--muted); transition: transform 0.15s; flex-shrink: 0; }
+        .gallery-group.collapsed .group-chevron { transform: rotate(-90deg); }
+        .gallery-group-name {
+            font-size: 11px; font-weight: 600; letter-spacing: 0.04em;
+            color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        }
+        .gallery-group-count { font-size: 11px; color: var(--muted); margin-left: auto; flex-shrink: 0; }
+        .gallery-group.collapsed .gallery-group-items { display: none; }
+
+        /* ── ON-DEMAND DETAIL PANEL ── */
+        .gallery-item:not(.expanded) .gallery-detail-panel { display: none; }
+        .gallery-item.expanded .gallery-detail-panel { display: flex; }
+        .gallery-detail-chevron {
+            width: 12px; height: 12px; color: var(--muted2);
+            margin-left: 4px; flex-shrink: 0; transition: transform 0.15s;
+        }
+        .gallery-item.expanded .gallery-detail-chevron { transform: rotate(180deg); }
 
         /* ── SELECTION MODE ── */
         .gallery-cb {
@@ -1604,6 +1637,15 @@
                     <span class="section-label" id="galleriesSectionLabel">Galleries</span>
                     <div class="section-header-right">
                         <input class="gallery-search" id="gallerySearch" type="search" placeholder="Search…" oninput="filterGalleries(this.value)">
+                        <select class="gallery-sort-select" id="gallerySortSelect" onchange="filterGalleries(document.getElementById('gallerySearch').value)">
+                            <option value="dateNewest">Newest first</option>
+                            <option value="dateOldest">Oldest first</option>
+                            <option value="name">Name</option>
+                            <option value="views">Most viewed</option>
+                            <option value="downloads">Most downloaded</option>
+                        </select>
+                        <button class="section-select-btn" id="filterNoCollectionBtn" onclick="toggleGalleryFilter('noCollection', this)">No collection</button>
+                        <button class="section-select-btn" id="filterDownloadsOffBtn" onclick="toggleGalleryFilter('downloadsOff', this)">Downloads off</button>
                         <button class="section-select-btn" id="selectionModeBtn" onclick="toggleSelectionMode()">Select</button>
                         <button class="trash-open-btn" id="trashOpenBtn" onclick="openTrashModal()" title="Trash" style="display:none">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
@@ -1745,6 +1787,9 @@
                 sharePreviewRegenerated: 'Share preview will be regenerated on next share.',
                 couldNotResetSharePreview: 'Could not reset share preview',
                 uploadFailedMsg: msg => `Upload failed: ${msg}`,
+                sortName: 'Name', sortDateNewest: 'Newest first', sortDateOldest: 'Oldest first',
+                sortMostViewed: 'Most viewed', sortMostDownloaded: 'Most downloaded',
+                filterNoCollection: 'No collection', filterDownloadsOff: 'Downloads off',
             },
             fr: {
                 loginTitle: 'Bon retour', loginSubtitle: 'Entrez votre mot de passe pour accéder au tableau de bord',
@@ -1860,6 +1905,9 @@
                 sharePreviewRegenerated: 'L\'aperçu de partage sera régénéré au prochain partage.',
                 couldNotResetSharePreview: 'Impossible de réinitialiser l\'aperçu de partage',
                 uploadFailedMsg: msg => `Échec de l'envoi : ${msg}`,
+                sortName: 'Nom', sortDateNewest: 'Plus récentes', sortDateOldest: 'Plus anciennes',
+                sortMostViewed: 'Plus vues', sortMostDownloaded: 'Plus téléchargées',
+                filterNoCollection: 'Sans collection', filterDownloadsOff: 'Téléchargements désactivés',
             },
             es: {
                 loginTitle: 'Bienvenido de nuevo', loginSubtitle: 'Introduce tu contraseña para acceder al panel',
@@ -1975,6 +2023,9 @@
                 sharePreviewRegenerated: 'La vista previa de compartir se regenerará la próxima vez que se comparta.',
                 couldNotResetSharePreview: 'No se pudo restablecer la vista previa de compartir',
                 uploadFailedMsg: msg => `Error al subir: ${msg}`,
+                sortName: 'Nombre', sortDateNewest: 'Más recientes', sortDateOldest: 'Más antiguas',
+                sortMostViewed: 'Más vistas', sortMostDownloaded: 'Más descargadas',
+                filterNoCollection: 'Sin colección', filterDownloadsOff: 'Descargas desactivadas',
             },
             pt: {
                 loginTitle: 'Bem-vindo de volta', loginSubtitle: 'Digite sua senha para acessar o painel',
@@ -2090,6 +2141,9 @@
                 sharePreviewRegenerated: 'A pré-visualização de compartilhamento será regenerada no próximo compartilhamento.',
                 couldNotResetSharePreview: 'Não foi possível redefinir a pré-visualização de compartilhamento',
                 uploadFailedMsg: msg => `Falha no envio: ${msg}`,
+                sortName: 'Nome', sortDateNewest: 'Mais recentes', sortDateOldest: 'Mais antigas',
+                sortMostViewed: 'Mais vistas', sortMostDownloaded: 'Mais baixadas',
+                filterNoCollection: 'Sem coleção', filterDownloadsOff: 'Downloads desativados',
             },
             it: {
                 loginTitle: 'Bentornato', loginSubtitle: 'Inserisci la password per accedere alla dashboard',
@@ -2205,6 +2259,9 @@
                 sharePreviewRegenerated: 'L\'anteprima di condivisione verrà rigenerata alla prossima condivisione.',
                 couldNotResetSharePreview: 'Impossibile ripristinare l\'anteprima di condivisione',
                 uploadFailedMsg: msg => `Caricamento non riuscito: ${msg}`,
+                sortName: 'Nome', sortDateNewest: 'Più recenti', sortDateOldest: 'Più vecchie',
+                sortMostViewed: 'Più visualizzate', sortMostDownloaded: 'Più scaricate',
+                filterNoCollection: 'Senza collezione', filterDownloadsOff: 'Download disattivati',
             }
         };
         let t = adminTranslations.en;
@@ -2255,6 +2312,13 @@
             byId('galleriesSectionLabel', t.galleries);
             const gallerySearch = document.getElementById('gallerySearch');
             if (gallerySearch) gallerySearch.placeholder = t.searchPlaceholder;
+            const sortSelect = document.getElementById('gallerySortSelect');
+            if (sortSelect) {
+                const sortLabels = { dateNewest: t.sortDateNewest, dateOldest: t.sortDateOldest, name: t.sortName, views: t.sortMostViewed, downloads: t.sortMostDownloaded };
+                Array.from(sortSelect.options).forEach(opt => { if (sortLabels[opt.value]) opt.textContent = sortLabels[opt.value]; });
+            }
+            byId('filterNoCollectionBtn', t.filterNoCollection);
+            byId('filterDownloadsOffBtn', t.filterDownloadsOff);
             byId('selectionModeBtn', t.select);
             const trashOpenBtn = document.getElementById('trashOpenBtn');
             if (trashOpenBtn) trashOpenBtn.title = t.trash;
@@ -3140,37 +3204,81 @@
             setTimeout(() => { btn.textContent = orig; btn.style.background = ''; }, 1800);
         }
 
+        let _gallerySort = 'dateNewest';
+        let _galleryFilters = new Set();
+        let _collapsedGroups = new Set();
+
         async function loadGalleries() {
             try {
                 const res = await fetch('/api/galleries', {
                 });
-                
+
                 if (!res.ok) throw new Error('Failed to load galleries');
-                
+
                 const galleries = await res.json();
                 _galleriesData = galleries;
                 renderCollections(_collectionsData);
-                renderGalleryItems(galleries);
+                filterGalleries(document.getElementById('gallerySearch').value);
 
             } catch (err) {
                 console.error('Error loading galleries:', err);
             }
         }
 
-        function renderGalleryItems(items) {
-            const container = document.getElementById('galleryList');
-            if (!items || items.length === 0) {
-                const query = document.getElementById('gallerySearch').value.trim();
-                container.innerHTML = query
-                    ? `<div class="empty-state">${t.noGalleriesMatch(escapeHtml(query))}</div>`
-                    : `<div class="empty-state">${t.noGalleriesYet}</div>`;
-                return;
+        // Pure: combines galleries + collections + current toolbar state into grouped sections.
+        function buildGalleryViewModel(galleries, collections, { query, sortBy, filters }) {
+            const q = (query || '').trim().toLowerCase();
+            const collById = new Map((collections || []).map(c => [c.id, c]));
+            let list = galleries || [];
+
+            if (q) {
+                list = list.filter(g => {
+                    if (g.eventName.toLowerCase().includes(q)) return true;
+                    const col = g.collectionId ? collById.get(g.collectionId) : null;
+                    return col ? col.name.toLowerCase().includes(q) : false;
+                });
             }
-            container.innerHTML = items.map(g => {
-                const _col = g.collectionId ? (_collectionsData || []).find(c => c.id === g.collectionId) : null;
-                const _dlBlocked = !!(_col && _col.downloadsEnabled === false);
-                const _cmBlocked = !!(_col && _col.commentsEnabled === false);
-                return `
+            if (filters.has('noCollection')) list = list.filter(g => !g.collectionId);
+            if (filters.has('downloadsOff')) list = list.filter(g => g.downloadsEnabled === false);
+
+            const sorters = {
+                name: (a, b) => a.eventName.localeCompare(b.eventName),
+                dateNewest: (a, b) => new Date(b.created) - new Date(a.created),
+                dateOldest: (a, b) => new Date(a.created) - new Date(b.created),
+                views: (a, b) => (b.viewCount || 0) - (a.viewCount || 0),
+                downloads: (a, b) => (b.downloadCount || 0) - (a.downloadCount || 0),
+            };
+            const sorter = sorters[sortBy] || sorters.dateNewest;
+
+            const byCollection = new Map();
+            const ungrouped = [];
+            list.forEach(g => {
+                if (g.collectionId && collById.has(g.collectionId)) {
+                    if (!byCollection.has(g.collectionId)) byCollection.set(g.collectionId, []);
+                    byCollection.get(g.collectionId).push(g);
+                } else {
+                    ungrouped.push(g);
+                }
+            });
+
+            const groups = [];
+            (collections || []).forEach(c => {
+                const members = byCollection.get(c.id);
+                if (members && members.length) {
+                    groups.push({ id: c.id, name: c.name, galleries: members.slice().sort(sorter) });
+                }
+            });
+            if (ungrouped.length) {
+                groups.push({ id: '__ungrouped__', name: t.filterNoCollection, galleries: ungrouped.slice().sort(sorter) });
+            }
+            return { groups };
+        }
+
+        function renderGalleryItemHtml(g) {
+            const _col = g.collectionId ? (_collectionsData || []).find(c => c.id === g.collectionId) : null;
+            const _dlBlocked = !!(_col && _col.downloadsEnabled === false);
+            const _cmBlocked = !!(_col && _col.commentsEnabled === false);
+            return `
                 <div class="gallery-item" draggable="true"
                      id="gallery-item-${g.id}"
                      ondragstart="handleGalleryDragStart(event, '${g.id}')"
@@ -3184,7 +3292,7 @@
 
                     <div class="gallery-cover ${g.hasBackground ? 'has-image' : ''}"
                          id="cover-${g.id}"
-                         onclick="document.getElementById('cover-input-${g.id}').click()"
+                         onclick="event.stopPropagation(); document.getElementById('cover-input-${g.id}').click()"
                          ondragover="handleCoverDragOver(event, '${g.id}')"
                          ondragleave="handleCoverDragLeave(event, '${g.id}')"
                          ondrop="handleCoverDrop(event, '${g.id}')">
@@ -3211,9 +3319,10 @@
                             <button class="name-edit-btn" onclick="startGalleryRename(event, '${g.id}', document.getElementById('gname-${g.id}'))" title="${t.rename}">
                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
                             </button>
+                            <svg class="gallery-detail-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
                         </div>
-                        <div class="gallery-meta">${g.fileCount} ${t.photoPlural} · ${new Date(g.created).toLocaleDateString()}${g.collectionId ? ` · <span class="in-collection">${t.inCollection}</span>` : ''}</div>
-                        <div class="gallery-bottom">
+                        <div class="gallery-meta">${g.fileCount} ${t.photoPlural} · ${new Date(g.created).toLocaleDateString()}</div>
+                        <div class="gallery-bottom gallery-detail-panel">
                             <label class="downloads-toggle ${_dlBlocked ? 'blocked-by-collection' : ''}" title="${_dlBlocked ? t.downloadsBlockedByCollection(_col.name) : t.allowDownloads}">
                                 <span class="toggle-switch">
                                     <input type="checkbox" ${g.downloadsEnabled !== false ? 'checked' : ''}
@@ -3280,7 +3389,50 @@
                     </div>
                 </div>
             `;
+        }
+
+        function renderGalleryItems(vm) {
+            const container = document.getElementById('galleryList');
+            if (!vm || !vm.groups || vm.groups.length === 0) {
+                const query = document.getElementById('gallerySearch').value.trim();
+                container.innerHTML = query
+                    ? `<div class="empty-state">${t.noGalleriesMatch(escapeHtml(query))}</div>`
+                    : `<div class="empty-state">${t.noGalleriesYet}</div>`;
+                return;
+            }
+            container.innerHTML = vm.groups.map(group => {
+                const collapsed = _collapsedGroups.has(group.id);
+                const n = group.galleries.length;
+                const countLabel = `${n} ${n === 1 ? t.gallerySingular : t.galleryPlural}`;
+                return `
+                <div class="gallery-group ${collapsed ? 'collapsed' : ''}" data-group-id="${group.id}">
+                    <button class="gallery-group-header" onclick="toggleGalleryGroup('${group.id}')">
+                        <svg class="group-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
+                        <span class="gallery-group-name">${escapeHtml(group.name)}</span>
+                        <span class="gallery-group-count">${countLabel}</span>
+                    </button>
+                    <div class="gallery-group-items">
+                        ${group.galleries.map(g => renderGalleryItemHtml(g)).join('')}
+                    </div>
+                </div>`;
             }).join('');
+        }
+
+        function toggleGalleryGroup(groupId) {
+            if (_collapsedGroups.has(groupId)) _collapsedGroups.delete(groupId);
+            else _collapsedGroups.add(groupId);
+            document.querySelector(`.gallery-group[data-group-id="${groupId}"]`)?.classList.toggle('collapsed');
+        }
+
+        function toggleGalleryFilter(key, btnEl) {
+            if (_galleryFilters.has(key)) {
+                _galleryFilters.delete(key);
+                btnEl.classList.remove('active');
+            } else {
+                _galleryFilters.add(key);
+                btnEl.classList.add('active');
+            }
+            filterGalleries(document.getElementById('gallerySearch').value);
         }
 
         async function setGalleryClientLanguage(galleryId, language) {
@@ -3295,11 +3447,9 @@
 
         function filterGalleries(query) {
             if (!_galleriesData) return;
-            const q = query.trim().toLowerCase();
-            const filtered = q
-                ? _galleriesData.filter(g => g.eventName.toLowerCase().includes(q))
-                : _galleriesData;
-            renderGalleryItems(filtered);
+            _gallerySort = document.getElementById('gallerySortSelect')?.value || 'dateNewest';
+            const vm = buildGalleryViewModel(_galleriesData, _collectionsData, { query, sortBy: _gallerySort, filters: _galleryFilters });
+            renderGalleryItems(vm);
         }
 
         // ── SELECTION MODE ─────────────────────────────────────────────────────
@@ -3332,9 +3482,12 @@
         }
 
         function handleGalleryItemClick(event, galleryId) {
-            if (!_selectionMode) return;
             if (event.target.closest('button, input, [contenteditable], label, select')) return;
-            toggleGallerySelection(galleryId);
+            if (_selectionMode) {
+                toggleGallerySelection(galleryId);
+                return;
+            }
+            document.getElementById(`gallery-item-${galleryId}`)?.classList.toggle('expanded');
         }
 
         function toggleGallerySelection(galleryId) {
@@ -4837,12 +4990,16 @@
             const draggedEl = document.getElementById(`gallery-item-${draggedId}`);
             const targetEl = document.getElementById(`gallery-item-${targetId}`);
             if (!draggedEl || !targetEl) return;
-            document.getElementById('galleryList').insertBefore(draggedEl, targetEl);
+            // Reorder only within the same collection group — cross-group drag doesn't reassign collection membership.
+            if (draggedEl.closest('.gallery-group-items') !== targetEl.closest('.gallery-group-items')) return;
+            targetEl.parentElement.insertBefore(draggedEl, targetEl);
             await saveGalleryOrder();
         }
 
         async function moveGallery(galleryId, direction) {
-            const container = document.getElementById('galleryList');
+            const itemEl = document.getElementById(`gallery-item-${galleryId}`);
+            const container = itemEl ? itemEl.closest('.gallery-group-items') : null;
+            if (!container) return;
             const items = Array.from(container.querySelectorAll('.gallery-item'));
             const idx = items.findIndex(el => el.id === `gallery-item-${galleryId}`);
             if (idx === -1) return;
