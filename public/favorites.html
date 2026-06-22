@@ -271,8 +271,7 @@
         function renderGallery(photos) {
             _lastPhotos = photos;
             const grid = document.getElementById('galleryGrid');
-            const container = document.getElementById('galleryContainer');
-            const containerWidth = container.clientWidth;
+            const containerWidth = grid.clientWidth;
             if (!containerWidth) return;
 
             const gap = 6;
