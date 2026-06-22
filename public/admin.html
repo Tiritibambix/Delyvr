@@ -186,7 +186,7 @@
             width: 92%; max-width: 700px; max-height: 85vh;
             display: flex; flex-direction: column; gap: 14px;
         }
-        .comments-modal-header { display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; }
+        .comments-modal-header { display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; flex-wrap: wrap; gap: 8px; }
         .comments-modal-header h3 { font-size: 15px; font-weight: 600; }
         .comments-modal-close { background: none; border: none; color: var(--muted); font-size: 1.4rem; cursor: pointer; line-height: 1; }
         .comments-list { overflow-y: auto; flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 12px; }
@@ -361,7 +361,7 @@
         .photos-grid-card .photo-delete-btn:hover { background: var(--error); border-color: var(--error); }
         .photos-grid-card.deleting { opacity: 0.35; pointer-events: none; }
 
-        @media (max-width: 480px) {
+        @media (max-width: 600px) {
             .photos-modal-card { padding: 14px; width: 95%; gap: 10px; }
             .photos-grid-card .photo-overlay-info { opacity: 1; background: rgba(0,0,0,0.32); }
             .photos-grid-card .photo-filename { display: none; }
@@ -437,7 +437,7 @@
             border-bottom: 1px solid var(--border);
             padding: 10px 24px;
             display: flex; align-items: center; justify-content: space-between;
-            flex-shrink: 0; gap: 16px;
+            flex-shrink: 0; gap: 16px; flex-wrap: wrap;
         }
 
         .logo-wrap {
@@ -808,6 +808,9 @@
             cursor: grab; user-select: none;
         }
         .gallery-pill:active { cursor: grabbing; }
+        .gallery-pill-name {
+            max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+        }
         .pill-remove {
             color: var(--muted2); cursor: pointer; font-size: 12px; line-height: 1;
             background: none; border: none; font-family: inherit; padding: 0;
@@ -857,7 +860,7 @@
             grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
             gap: 8px; overflow-y: auto;
         }
-        @media (max-width: 480px) {
+        @media (max-width: 600px) {
             .gallery-picker-card { padding: 16px; width: 95%; }
             .gallery-picker-list { grid-template-columns: repeat(2, 1fr); gap: 6px; }
         }
@@ -1201,7 +1204,7 @@
             display: flex; flex-direction: column; gap: 12px;
         }
         .trash-modal-header {
-            display: flex; align-items: center; justify-content: space-between; flex-shrink: 0;
+            display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; flex-wrap: wrap; gap: 8px;
         }
         .trash-modal-header h3 { font-size: 15px; font-weight: 600; }
         .trash-modal-close { background: none; border: none; color: var(--muted); font-size: 1.4rem; cursor: pointer; line-height: 1; }
@@ -1308,18 +1311,18 @@
         @media (max-width: 900px) {
             .dashboard {
                 grid-template-columns: 1fr;
-                grid-template-rows: 33% 67%;
-                height: calc(100vh - 68px);
-                overflow: hidden;
+                grid-template-rows: auto auto;
+                height: auto;
+                overflow: visible;
             }
             .left-col {
                 border-right: none;
                 border-bottom: 1px solid var(--border);
-                overflow-y: auto;
+                overflow-y: visible;
                 max-height: none;
             }
             .right-col {
-                overflow-y: auto;
+                overflow-y: visible;
             }
         }
     </style>
@@ -4604,7 +4607,7 @@
                                     ondrop="handlePillDrop(event, '${c.id}')"
                                     ondragend="handlePillDragEnd(event)">
                             <button class="pill-move" onclick="movePill('${c.id}','${gid}',-1)" title="${t.moveLeft}">◀</button>
-                            ${name}
+                            <span class="gallery-pill-name">${name}</span>
                             <button class="pill-move" onclick="movePill('${c.id}','${gid}',1)" title="${t.moveRight}">▶</button>
                             <button class="pill-remove" onclick="removeFromCollection('${c.id}', '${gid}')" title="${t.remove}">✕</button>
                         </span>`;
