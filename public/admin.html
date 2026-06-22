@@ -1133,6 +1133,14 @@
         .toggle-switch input:checked + .toggle-track { background: var(--success); }
         .toggle-switch input:checked + .toggle-track::after { transform: translateX(12px); background: #fff; }
 
+        .gallery-stats-grid {
+            display: grid;
+            grid-template-columns: 110px 60px 150px 150px; /* views | downloads | favorites | comments */
+            column-gap: 12px; align-items: center;
+        }
+        @media (max-width: 600px) {
+            .gallery-stats-grid { grid-template-columns: repeat(2, 1fr); row-gap: 4px; }
+        }
         .fav-info {
             font-size: 11px; color: var(--muted); display: flex; align-items: center; gap: 6px;
         }
@@ -3401,20 +3409,22 @@
                                 <option value="pt" title="Português" ${g.clientLanguage === 'pt' ? 'selected' : ''}>Pt</option>
                                 <option value="it" title="Italiano" ${g.clientLanguage === 'it' ? 'selected' : ''}>It</option>
                             </select>
-                            <div class="fav-info" title="${t.uniqueViews}">
-                                👁 ${g.viewCount || 0}
-                                ${(g.viewCount || 0) > 0 ? `<button class="btn-fav-action" onclick="resetViews('${g.id}')">${t.reset}</button>` : ''}
-                            </div>
-                            <div class="fav-info" title="${t.totalDownloads}">
-                                ↓ ${g.downloadCount || 0}
-                            </div>
-                            <div class="fav-info">
-                                ♥ ${g.favoritesCount || 0}
-                                ${g.favoritesCount > 0 ? `<button class="btn-fav-action" onclick="viewFavorites('${g.id}')">${t.view}</button><button class="btn-fav-action" onclick="resetFavorites('${g.id}')">${t.reset}</button>` : ''}
-                            </div>
-                            <div class="fav-info" title="${t.comments}">
-                                💬 ${g.commentsCount || 0}
-                                ${g.commentsCount > 0 ? `<button class="btn-fav-action" onclick="viewComments('${g.id}')">${t.view}</button><button class="btn-fav-action" onclick="resetComments('${g.id}')">${t.reset}</button>` : ''}
+                            <div class="gallery-stats-grid">
+                                <div class="fav-info" title="${t.uniqueViews}">
+                                    👁 ${g.viewCount || 0}
+                                    ${(g.viewCount || 0) > 0 ? `<button class="btn-fav-action" onclick="resetViews('${g.id}')">${t.reset}</button>` : ''}
+                                </div>
+                                <div class="fav-info" title="${t.totalDownloads}">
+                                    ↓ ${g.downloadCount || 0}
+                                </div>
+                                <div class="fav-info">
+                                    ♥ ${g.favoritesCount || 0}
+                                    ${g.favoritesCount > 0 ? `<button class="btn-fav-action" onclick="viewFavorites('${g.id}')">${t.view}</button><button class="btn-fav-action" onclick="resetFavorites('${g.id}')">${t.reset}</button>` : ''}
+                                </div>
+                                <div class="fav-info" title="${t.comments}">
+                                    💬 ${g.commentsCount || 0}
+                                    ${g.commentsCount > 0 ? `<button class="btn-fav-action" onclick="viewComments('${g.id}')">${t.view}</button><button class="btn-fav-action" onclick="resetComments('${g.id}')">${t.reset}</button>` : ''}
+                                </div>
                             </div>
                         </div>
                     </div>
