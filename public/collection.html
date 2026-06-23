@@ -537,7 +537,7 @@
         }
 
         function copyGalleryCustomerLink(btn, galleryId) {
-            const url = new URL('../download/' + galleryId, window.location.href).href;
+            const url = new URL('../preview/' + galleryId, window.location.href).href;
             navigator.clipboard.writeText(url).then(() => {
                 btn.classList.add('copied');
                 setTimeout(() => btn.classList.remove('copied'), 1800);

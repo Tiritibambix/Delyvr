@@ -107,13 +107,6 @@ const SUPPORTED_LANGUAGES = ['en', 'fr', 'es', 'pt', 'it'];
 
 // OG share-preview descriptions, localized — 'auto' (no browser to detect from) falls back to English
 const OG_DESCRIPTIONS = {
-    download: {
-        en: 'Your photos are ready to download.',
-        fr: 'Vos photos sont prêtes à télécharger.',
-        es: 'Tus fotos están listas para descargar.',
-        pt: 'Suas fotos estão prontas para download.',
-        it: 'Le tue foto sono pronte per il download.'
-    },
     preview: {
         en: 'Browse and download individual photos.',
         fr: 'Parcourez et téléchargez vos photos individuellement.',
@@ -1047,7 +1040,7 @@ app.post('/api/gallery/create', requireAuth, generateGalleryId, upload.array('ph
     }
 
     const baseUrl = `${req.protocol}://${req.get('host')}`;
-    const downloadUrl = `${baseUrl}/download/${galleryId}`;
+    const downloadUrl = `${baseUrl}/preview/${galleryId}`;
 
     res.json({
         success: true,
@@ -1147,7 +1140,7 @@ app.get('/api/background/:galleryId', publicReadLimiter, validateGalleryId, (req
     res.status(404).send('Background not found');
 });
 
-// Serve background image (REST-style route used by admin.html and customer.html)
+// Serve background image (REST-style route used by admin.html)
 app.get('/api/gallery/:galleryId/background', publicReadLimiter, validateGalleryId, (req, res) => {
     const { galleryId } = req.params;
     const backgroundsDir = path.join(DATA_DIR, 'backgrounds');
@@ -1541,31 +1534,6 @@ app.delete('/api/collection/:collectionId/og-image', adminLimiter, requireAuth, 
     const { collectionId } = req.params;
     try { fs.unlinkSync(safeResolvePath(OG_CACHE_DIR, `collection-${collectionId}.jpg`)); } catch (_) {}
     res.json({ success: true });
-});
-
-// Customer download page — serves HTML with OG meta tags injected
-app.get('/download/:galleryId', publicReadLimiter, validateGalleryId, (req, res) => {
-    const { galleryId } = req.params;
-    const galleryPath = safeResolvePath(path.join(DATA_DIR, 'uploads'), galleryId);
-
-    if (!fs.existsSync(galleryPath) || !getActiveGallery(galleryId)) {
-        return res.status(404).send('Gallery not found');
-    }
-
-    const gallery = galleries.get(galleryId);
-    const eventName = gallery ? gallery.eventName : 'Your Photos';
-    const baseUrl = `${req.protocol}://${req.get('host')}`;
-
-    const ogTags = [
-        `<meta property="og:title" content="${escapeHtml(eventName)}">`,
-        `<meta property="og:description" content="${escapeHtml(ogDescription('download', resolveGalleryClientLanguage(galleryId)))}">`,
-        `<meta property="og:image" content="${escapeHtml(baseUrl)}/api/gallery/${escapeHtml(galleryId)}/og-image">`,
-        `<meta property="og:type" content="website">`,
-        `<meta property="og:url" content="${escapeHtml(baseUrl)}/download/${escapeHtml(galleryId)}">`
-    ].join('\n    ');
-
-    const html = fs.readFileSync(path.join(__dirname, 'public', 'customer.html'), 'utf8');
-    res.send(html.replace('<head>', `<head>\n    ${ogTags}`));
 });
 
 // Preview page — serves HTML with OG meta tags injected
@@ -2370,7 +2338,6 @@ app.get('/collection/:collectionId', publicReadLimiter, validateCollectionId, (r
 // List all galleries (admin)
 app.get('/api/galleries', adminLimiter, requireAuth, (req, res) => {
     const galleryList = [];
-    const baseUrl = `${req.protocol}://${req.get('host')}`;
     const uploadsDir = path.join(DATA_DIR, 'uploads');
     const backgroundsDir = path.join(DATA_DIR, 'backgrounds');
 
@@ -2416,7 +2383,6 @@ app.get('/api/galleries', adminLimiter, requireAuth, (req, res) => {
                     created: gallery.created || stats.birthtime.toISOString(),
                     fileCount: files.length,
                     hasBackground,
-                    downloadUrl: `${baseUrl}/download/${galleryId}`,
                     favoritesCount: Object.keys(gallery.favorites || {}).length,
                     commentsCount: Object.values(gallery.comments || {}).reduce((sum, arr) => sum + arr.length, 0),
                     viewCount: gallery.viewCount || 0,

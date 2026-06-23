@@ -47,7 +47,6 @@ delyvr/
 ├── .gitignore
 ├── public/
 │   ├── admin.html      # Photographer dashboard
-│   ├── customer.html   # Client download page (single gallery)
 │   ├── preview.html    # Client photo browser (justified grid + lightbox + favorites + pinch zoom)
 │   ├── collection.html # Client collection page (multiple galleries)
 │   ├── favorites.html  # Public favorites ranking page (/favorites/:id)
@@ -193,7 +192,7 @@ All filesystem paths incorporating user-controlled values go through `safeResolv
 Two independent language concerns, with different scopes:
 
 - **Admin dashboard language** (`settings.adminLanguage`) — a single global preference, one of `en`/`fr`/`es`/`pt`/`it`. Set via the "Dashboard language" `<select>` in `admin.html`'s Profile modal (`POST /api/settings`). `admin.html` holds a full `adminTranslations` object (5 locales) and a global `t` reference reassigned by `applyAdminTranslations(lang)`, which also re-runs `loadGalleries()`/`loadCollections()`/`loadTrash()` so dynamically-rendered card templates pick up the new language. **Saving a language change triggers `location.reload()`** rather than attempting to live-retranslate every render call site — simpler and more robust given the size of the file.
-- **Client-facing language** (for `preview.html`, `customer.html`, `collection.html`, and the OG share-preview text) — resolved per gallery/collection through a 3-tier cascade, **most specific wins**: the gallery's own `clientLanguage` override, else the first collection containing it that has a `clientLanguage` override, else the global default `settings.clientLanguage` (`'auto'` = browser-detected, like before this feature existed). Implemented by two resolver functions reused everywhere a language decision is needed (OG tags, `/info`, `/api/collection/:id`):
+- **Client-facing language** (for `preview.html`, `collection.html`, and the OG share-preview text) — resolved per gallery/collection through a 3-tier cascade, **most specific wins**: the gallery's own `clientLanguage` override, else the first collection containing it that has a `clientLanguage` override, else the global default `settings.clientLanguage` (`'auto'` = browser-detected, like before this feature existed). Implemented by two resolver functions reused everywhere a language decision is needed (OG tags, `/info`, `/api/collection/:id`):
   ```js
   function resolveGalleryClientLanguage(galleryId) { /* gallery.clientLanguage → containing collection's → settings.clientLanguage */ }
   function resolveCollectionClientLanguage(collectionId) { /* collection.clientLanguage → settings.clientLanguage */ }
@@ -201,7 +200,7 @@ Two independent language concerns, with different scopes:
   Set via `PATCH /api/gallery/:id/client-language` / `PATCH /api/collection/:id/client-language` (body `{ language }`, `'auto'` stored as `null`). The admin UI exposes this as a compact `<select>` on each gallery/collection card's `.gallery-bottom` row, plus a "Default client language" `<select>` (global) in the Profile modal.
 
   Client pages no longer detect the browser language themselves. `GET /api/gallery/:id/info` and `GET /api/collection/:id` both include the resolved `clientLanguage` (`'auto'` or a specific code) in their response; each page reads `locale = resolveClientLocale(info.clientLanguage)` (defined in `shared.js`) only after that fetch resolves, then re-applies its static translations via an `applyStaticTranslations()` helper. `resolveClientLocale()` only handles the final `'auto'` → browser-detection step — the gallery/collection/global precedence itself lives server-side as the single source of truth, shared with the OG-tag generation below. `favorites.html` has no client-side i18n today and was left untouched.
-- **OG share-preview localization**: `OG_DESCRIPTIONS` (server.js) is a 4-key × 5-language map (`download`, `preview`, `collection`, `favorites`) read via `ogDescription(key, language)`, applied at all 4 OG injection sites using the resolver functions above (gallery routes use `resolveGalleryClientLanguage`, the collection route uses `resolveCollectionClientLanguage`). `'auto'` falls back to English since OG crawlers have no browser to detect from.
+- **OG share-preview localization**: `OG_DESCRIPTIONS` (server.js) is a 3-key × 5-language map (`preview`, `collection`, `favorites`) read via `ogDescription(key, language)`, applied at all OG injection sites using the resolver functions above (gallery routes use `resolveGalleryClientLanguage`, the collection route uses `resolveCollectionClientLanguage`). `'auto'` falls back to English since OG crawlers have no browser to detect from.
 
 ### Preview generation
 
@@ -249,7 +248,7 @@ On mobile (`≤ 768px`), the lightbox image has `touch-action: none` and a unifi
 
 ### Social footer
 
-All client pages (`customer.html`, `preview.html`, `collection.html`) call `GET /api/settings` on load and render inline SVG icons for each non-empty social/website URL. The footer is `position: fixed; bottom: 0` on all screen sizes, with a semi-transparent blurred background. Hidden entirely if no links are configured.
+All client pages (`preview.html`, `collection.html`) call `GET /api/settings` on load and render inline SVG icons for each non-empty social/website URL. The footer is `position: fixed; bottom: 0` on all screen sizes, with a semi-transparent blurred background. Hidden entirely if no links are configured. (`preview.html` additionally fades it in/out based on scroll position — see its section below — so it never overlaps the full-screen hero.)
 
 ### Soft-delete and trash
 
@@ -300,7 +299,6 @@ Gallery names use `contenteditable="false"` by default. Double-clicking (or clic
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
 | `GET` | `/` | | Admin dashboard |
-| `GET` | `/download/:id` | | Customer download page |
 | `GET` | `/preview/:id` | | Photo browser |
 | `POST` | `/api/auth/verify` | | Verify password |
 | `POST` | `/api/gallery/create` | ✓ | Create gallery + upload |
@@ -407,26 +405,18 @@ Loaded by all client pages via `<script src="/shared.js">` before their inline `
 - **Shared upload/collection helpers** (module scope, used by both flows): `uploadBatchXHR(url, method, batch, extraFields, uploadedSoFar, total, onProgress)` uploads one batch via `XMLHttpRequest` with progress reporting; `resolveCollectionTarget()` resolves `#galleryCollectionSelect` to an existing collection id, or — if `#includeInNewCollection` is checked — creates the new collection **once** (uploading its background if set) and returns its id; `assignGalleryToCollection(collectionId, galleryId)` calls `POST /api/collection/:id/galleries`.
 - **`updateCollectionLink()`** keeps the collection UI in sync for both flows: shows/hides `#includeGalleryLabel`, sets `#includeGalleryLabelText` to "Include the gallery being created" (single) or "Include the galleries being created" (when `_multiGalleryGroups.length > 1`), and updates `#createBtn`/`#createMultiBtn` text to append "+ collection" whenever a collection (existing or new) will be assigned.
 
-### `public/customer.html`
-
-- `html, body { height: 100%; overflow: hidden }` — fully fixed page, no scroll.
-- Reads `?from=` URL param; if present shows "Back to collection" link and threads `?from=` through to the preview link.
-- Social footer `position: fixed; bottom: 0` on all screen sizes with backdrop-filter blur.
-- Download button shows total size (`totalSizeBytes` from `/api/gallery/:id/info`).
-- `applyTheme()` and `renderSocialFooter()` called on load.
-- Locale is finalized inside `loadGallery()`, not at page load: `let locale = 'en'; let t = translations.en;` defaults are replaced once `info.clientLanguage` comes back from `GET /api/gallery/:id/info`, via `resolveClientLocale()` (see "Language settings"). `applyStaticTranslations()` is called once with the defaults and again after resolution.
-
 ### `public/preview.html`
 
+- **Full-screen hero**: `.hero` is `height: 100vh`/`100dvh` (fallback cascade) with the gallery's background photo as an undimmed, full-bleed cover (`object-fit: cover`, no darkening overlay) — the site logo sits top-left, the gallery name bottom-left, and a "Show Gallery" button + the "Download All" button bottom-right. "Show Gallery" (`scrollToGallery()`) smooth-scrolls down to `#galleryContainer`. The three action-style buttons across the page (`.show-gallery-btn`, `.download-all-btn`, `.back-to-collection`) share one CSS rule set — same size/border/radius, theme-aware via an `html.light` override — rather than each having its own styling.
 - Justified/row-based gallery: photos grouped into `.gallery-row` flex rows built in JS, recomputed on resize.
 - Photos sorted alphabetically by filename (server-side).
 - Lightbox preloads N-1 and N+1 previews via `new Image()` on each navigation.
 - Mobile lightbox: pinch-to-zoom (up to 5x), one-finger pan while zoomed, swipe navigation when not zoomed. `touch-action: none` disables native browser zoom.
 - **Critique mode:** `critiqueMode = URLSearchParams.get('critique') === '1'`. When true: photo number badges rendered on grid cards, `#lbCritiqueNum` shown in lightbox, `#critiqueIndicator` shown in actions bar.
 - Favorites toast: `showFavToast(added)` shown on toggle, localized in all 5 languages, auto-dismisses after 2s.
-- Social footer `position: fixed; bottom: 0` on all screen sizes.
+- Social footer is hidden (`opacity: 0; pointer-events: none`) over the full-screen hero and only fades in once the page is scrolled past 100px (`updateFooterVisibility()`, on a `scroll` listener), so it never overlaps the hero's action buttons.
 - `applyTheme()` and `renderSocialFooter()` called on load.
-- Same deferred-locale pattern as `customer.html`: resolved from `info.clientLanguage` via `resolveClientLocale()` inside `loadGallery()`, not browser-detected at parse time.
+- Locale is finalized inside `loadGallery()`, not at page load: `let locale = 'en'; let t = translations.en;` defaults are replaced once `info.clientLanguage` comes back from `GET /api/gallery/:id/info`, via `resolveClientLocale()` (see "Language settings"). `applyStaticTranslations()` is called once with the defaults and again after resolution.
 
 ### `public/collection.html`
 

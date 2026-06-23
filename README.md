@@ -363,7 +363,6 @@ delyvr/
 ├── .env.example        # Template for new installs
 ├── public/
 │   ├── admin.html      # Photographer dashboard
-│   ├── customer.html   # Client download page
 │   ├── preview.html    # Photo browser, justified grid + lightbox
 │   ├── collection.html # Client collection page
 │   ├── favorites.html  # Public favorites ranking page
@@ -390,7 +389,6 @@ delyvr/
 | Method | Endpoint | Auth | Description |
 |--------|----------|------|-------------|
 | `GET` | `/` | | Admin dashboard |
-| `GET` | `/download/:id` | | Client download page |
 | `GET` | `/preview/:id` | | Photo preview page |
 | `POST` | `/api/auth/verify` | | Verify admin password |
 | `POST` | `/api/gallery/create` | ✓ | Create gallery and upload photos |

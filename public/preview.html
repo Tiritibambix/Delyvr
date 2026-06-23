@@ -67,27 +67,7 @@
         }
 
         .hero-bg.loaded {
-            opacity: 0.5;
-        }
-
-        .hero-overlay {
-            position: absolute;
-            inset: 0;
-            background: linear-gradient(
-                to bottom,
-                rgba(10, 10, 11, 0.2) 0%,
-                rgba(10, 10, 11, 0.7) 70%,
-                rgba(10, 10, 11, 1) 100%
-            );
-        }
-
-        html.light .hero-overlay {
-            background: linear-gradient(
-                to bottom,
-                rgba(250, 250, 250, 0.1) 0%,
-                rgba(250, 250, 250, 0.6) 70%,
-                rgba(250, 250, 250, 1) 100%
-            );
+            opacity: 1;
         }
 
         .hero-logo {
@@ -97,6 +77,7 @@
             max-height: 48px;
             width: auto;
             z-index: 2;
+            filter: drop-shadow(0 1px 4px rgba(0,0,0,0.5));
         }
 
         .hero h1 {
@@ -109,6 +90,7 @@
             font-size: clamp(2rem, 5vw, 3rem);
             font-weight: 600;
             letter-spacing: -0.02em;
+            text-shadow: 0 2px 6px rgba(0,0,0,0.55);
             opacity: 0;
             transform: translateY(20px);
             animation: fadeUp 0.8s ease forwards;
@@ -130,31 +112,6 @@
             align-items: center;
             gap: 12px;
         }
-
-        .hero-actions .download-all-btn { padding: 7px 15px; font-size: 9px; flex: none; }
-        .hero-actions .download-all-btn svg { width: 11px; height: 11px; }
-
-        .show-gallery-btn {
-            display: inline-flex;
-            align-items: center;
-            gap: 8px;
-            padding: 7px 15px;
-            background: transparent;
-            border: 1px solid #c9a962;
-            color: #c9a962;
-            border-radius: 4px;
-            font-size: 9px;
-            font-weight: 600;
-            letter-spacing: 0.06em;
-            text-transform: uppercase;
-            cursor: pointer;
-            font-family: inherit;
-            transition: background 0.2s;
-            white-space: nowrap;
-        }
-        .show-gallery-btn:hover { background: rgba(201,169,98,0.12); }
-        html.light .show-gallery-btn { border-color: #8a6515; color: #8a6515; }
-        html.light .show-gallery-btn:hover { background: rgba(138,101,21,0.08); }
 
         @media (max-width: 480px) {
             .hero-logo { top: 16px; left: 16px; max-height: 36px; }
@@ -206,57 +163,52 @@
 
 
 
+        .show-gallery-btn,
+        .download-all-btn,
         .back-to-collection {
             display: inline-flex;
             align-items: center;
             gap: 8px;
-            padding: 9px 20px;
+            padding: 10px 18px;
             background: transparent;
-            border: 1px solid #c9a962;
-            color: #c9a962;
+            border: 1px solid rgba(255,255,255,0.6);
+            color: rgba(255,255,255,0.92);
             text-decoration: none;
-            border-radius: 4px;
-            font-size: 12px;
-            font-weight: 600;
-            letter-spacing: 0.06em;
-            text-transform: uppercase;
-            transition: background 0.2s;
+            border-radius: 3px;
+            font-size: 13px;
+            font-weight: 500;
+            cursor: pointer;
+            font-family: inherit;
+            transition: background 0.2s, border-color 0.2s, color 0.2s;
             white-space: nowrap;
+            text-shadow: 0 1px 3px rgba(0,0,0,0.5);
         }
 
-        .back-to-collection:hover { background: rgba(201,169,98,0.12); }
-        html.light .back-to-collection { border-color: #8a6515; color: #8a6515; }
-        html.light .back-to-collection:hover { background: rgba(138,101,21,0.08); }
-
-        .back-to-collection svg {
-            width: 15px;
-            height: 15px;
-            flex-shrink: 0;
+        .show-gallery-btn:hover,
+        .download-all-btn:hover,
+        .back-to-collection:hover {
+            background: rgba(255,255,255,0.12);
         }
 
-        .download-all-btn {
-            display: inline-flex;
-            align-items: center;
-            gap: 8px;
-            padding: 9px 20px;
-            background: #c9a962;
-            color: #0a0a0b;
-            text-decoration: none;
-            border-radius: 4px;
-            font-size: 12px;
-            font-weight: 600;
-            letter-spacing: 0.06em;
-            text-transform: uppercase;
-            border: none;
-            transition: background 0.2s;
-            white-space: nowrap;
+        html.light .show-gallery-btn,
+        html.light .download-all-btn,
+        html.light .back-to-collection {
+            border-color: rgba(0,0,0,0.55);
+            color: rgba(0,0,0,0.85);
+            text-shadow: none;
         }
 
-        .download-all-btn:hover { background: #dfc07a; }
+        html.light .show-gallery-btn:hover,
+        html.light .download-all-btn:hover,
+        html.light .back-to-collection:hover {
+            background: rgba(0,0,0,0.06);
+        }
 
+        .back-to-collection svg,
         .download-all-btn svg {
-            width: 15px;
-            height: 15px;
+            width: 14px;
+            height: 14px;
+            flex-shrink: 0;
         }
 
         /* Critique mode */
@@ -1266,7 +1218,11 @@
             background: rgba(10,10,11,0.75);
             backdrop-filter: blur(12px);
             -webkit-backdrop-filter: blur(12px);
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.3s ease;
         }
+        .social-footer.visible { opacity: 1; pointer-events: auto; }
         html.light .social-footer { background: rgba(245,244,240,0.85); }
         /* Avoid footer overlapping last gallery row */
         .gallery-container { padding-bottom: 64px; }
@@ -1301,7 +1257,6 @@
     <!-- Hero Section -->
     <section class="hero" id="heroSection" style="display: none;">
         <img class="hero-bg" id="heroBg">
-        <div class="hero-overlay"></div>
         <img src="/api/logo" alt="Logo" class="hero-logo">
         <h1 id="eventTitle"></h1>
         <div class="hero-actions">
@@ -2620,6 +2575,13 @@
         });
 
         renderSocialFooter();
+
+        // Le footer reste masqué sur le hero plein écran et n'apparaît qu'au scroll.
+        function updateFooterVisibility() {
+            document.getElementById('socialFooter').classList.toggle('visible', window.scrollY > 100);
+        }
+        window.addEventListener('scroll', updateFooterVisibility, { passive: true });
+        updateFooterVisibility();
     </script>
     <footer class="social-footer" id="socialFooter"></footer>
     <div id="favToast"></div>
