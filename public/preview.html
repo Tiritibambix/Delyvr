@@ -47,29 +47,12 @@
         /* Hero Section */
         .hero {
             position: relative;
-            height: 33vh;
-            min-height: 200px;
-            max-height: 320px;
+            height: 100vh;
+            height: 100dvh; /* unité dynamique mobile — la déclaration vh ci-dessus sert de fallback si dvh n'est pas supporté */
             display: flex;
             align-items: center;
             justify-content: center;
             overflow: hidden;
-        }
-
-        @media (max-width: 768px) {
-            .hero {
-                height: 20vh;
-                min-height: 140px;
-                max-height: 200px;
-            }
-        }
-
-        @media (max-height: 600px) and (orientation: landscape) {
-            .hero {
-                height: 12vh;
-                min-height: 80px;
-                max-height: 120px;
-            }
         }
 
         .hero-bg {
@@ -78,6 +61,7 @@
             width: 100%;
             height: 100%;
             object-fit: cover;
+            object-position: center;
             opacity: 0;
             transition: opacity 1s ease;
         }
@@ -106,37 +90,80 @@
             );
         }
 
-        .hero-content {
-            position: relative;
-            z-index: 10;
-            text-align: center;
-            padding: 24px;
+        .hero-logo {
+            position: absolute;
+            top: 24px;
+            left: 24px;
+            max-height: 48px;
+            width: auto;
+            z-index: 2;
         }
 
-
         .hero h1 {
+            position: absolute;
+            bottom: 28px;
+            left: 28px;
+            z-index: 2;
+            max-width: calc(100vw - 56px);
             font-family: 'Fraunces', serif;
             font-size: clamp(2rem, 5vw, 3rem);
             font-weight: 600;
             letter-spacing: -0.02em;
-            margin-bottom: 8px;
             opacity: 0;
             transform: translateY(20px);
             animation: fadeUp 0.8s ease forwards;
-        }
-
-        .hero-meta {
-            color: var(--text-secondary);
-            font-size: 1rem;
-            opacity: 0;
-            transform: translateY(20px);
-            animation: fadeUp 0.8s ease 0.1s forwards;
         }
 
         @keyframes fadeUp {
             to {
                 opacity: 1;
                 transform: translateY(0);
+            }
+        }
+
+        .hero-actions {
+            position: absolute;
+            bottom: 28px;
+            right: 28px;
+            z-index: 2;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .hero-actions .download-all-btn { padding: 7px 15px; font-size: 9px; flex: none; }
+        .hero-actions .download-all-btn svg { width: 11px; height: 11px; }
+
+        .show-gallery-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 7px 15px;
+            background: transparent;
+            border: 1px solid #c9a962;
+            color: #c9a962;
+            border-radius: 4px;
+            font-size: 9px;
+            font-weight: 600;
+            letter-spacing: 0.06em;
+            text-transform: uppercase;
+            cursor: pointer;
+            font-family: inherit;
+            transition: background 0.2s;
+            white-space: nowrap;
+        }
+        .show-gallery-btn:hover { background: rgba(201,169,98,0.12); }
+        html.light .show-gallery-btn { border-color: #8a6515; color: #8a6515; }
+        html.light .show-gallery-btn:hover { background: rgba(138,101,21,0.08); }
+
+        @media (max-width: 480px) {
+            .hero-logo { top: 16px; left: 16px; max-height: 36px; }
+            .hero h1 { bottom: 16px; left: 16px; max-width: calc(100vw - 32px); }
+            .hero-actions {
+                bottom: 16px;
+                right: 16px;
+                flex-wrap: wrap;
+                justify-content: flex-end;
             }
         }
 
@@ -165,8 +192,7 @@
                 padding: 10px 12px;
                 gap: 8px;
             }
-            .back-to-collection,
-            .download-all-btn {
+            .back-to-collection {
                 flex: 1;
                 justify-content: center;
                 min-width: 0;
@@ -1276,9 +1302,18 @@
     <section class="hero" id="heroSection" style="display: none;">
         <img class="hero-bg" id="heroBg">
         <div class="hero-overlay"></div>
-<div class="hero-content">
-            <h1 id="eventTitle"></h1>
-            <p class="hero-meta" id="heroMeta"></p>
+        <img src="/api/logo" alt="Logo" class="hero-logo">
+        <h1 id="eventTitle"></h1>
+        <div class="hero-actions">
+            <button class="show-gallery-btn" id="showGalleryBtn" onclick="scrollToGallery()">
+                <span id="showGalleryText"></span>
+            </button>
+            <a class="download-all-btn" id="downloadAllBtn" href="#">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M12 4v12m0 0l-4-4m4 4l4-4M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+                <span id="downloadAllText"></span>
+            </a>
         </div>
     </section>
 
@@ -1294,12 +1329,6 @@
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><line x1="10" y1="6" x2="21" y2="6"/><line x1="10" y1="12" x2="21" y2="12"/><line x1="10" y1="18" x2="21" y2="18"/><path d="M4 6h1v4M4 10h2M6 18H4c0-1 2-2 2-3s-1-1.5-2-1" stroke-linecap="round" stroke-linejoin="round"/></svg>
             Critique
         </span>
-        <a class="download-all-btn" id="downloadAllBtn" href="#">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M12 4v12m0 0l-4-4m4 4l4-4M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2" stroke-linecap="round" stroke-linejoin="round"/>
-            </svg>
-            <span id="downloadAllText"></span>
-        </a>
     </div>
 
     <!-- Gallery Grid -->
@@ -1425,11 +1454,9 @@
         const translations = {
             en: {
                 yourPhotos: 'Your Photos',
-                photo: 'photo',
-                photos: 'photos',
                 downloadAll: 'Download All',
                 download: 'Download',
-                clickToPreview: 'Click any photo to preview',
+                showGallery: 'Show Gallery',
                 loadingGallery: 'Loading gallery...',
                 notFoundTitle: 'Gallery Not Found',
                 notFoundText: 'This gallery may have been removed or the link is incorrect.',
@@ -1454,11 +1481,9 @@
             },
             pt: {
                 yourPhotos: 'Suas Fotos',
-                photo: 'foto',
-                photos: 'fotos',
                 downloadAll: 'Baixar Todas',
                 download: 'Baixar',
-                clickToPreview: 'Clique em qualquer foto para visualizar',
+                showGallery: 'Ver Galeria',
                 loadingGallery: 'Carregando galeria...',
                 notFoundTitle: 'Galeria Não Encontrada',
                 notFoundText: 'Esta galeria pode ter sido removida ou o link está incorreto.',
@@ -1483,11 +1508,9 @@
             },
             es: {
                 yourPhotos: 'Tus Fotos',
-                photo: 'foto',
-                photos: 'fotos',
                 downloadAll: 'Descargar Todas',
                 download: 'Descargar',
-                clickToPreview: 'Haz clic en cualquier foto para ver',
+                showGallery: 'Ver Galería',
                 loadingGallery: 'Cargando galería...',
                 notFoundTitle: 'Galería No Encontrada',
                 notFoundText: 'Esta galería puede haber sido eliminada o el enlace es incorrecto.',
@@ -1512,11 +1535,9 @@
             },
             it: {
                 yourPhotos: 'Le Tue Foto',
-                photo: 'foto',
-                photos: 'foto',
                 downloadAll: 'Scarica Tutte',
                 download: 'Scarica',
-                clickToPreview: 'Clicca su una foto per visualizzarla',
+                showGallery: 'Mostra Galleria',
                 loadingGallery: 'Caricamento galleria...',
                 notFoundTitle: 'Galleria Non Trovata',
                 notFoundText: 'Questa galleria potrebbe essere stata rimossa o il link non è corretto.',
@@ -1541,11 +1562,9 @@
             },
             fr: {
                 yourPhotos: 'Vos Photos',
-                photo: 'photo',
-                photos: 'photos',
                 downloadAll: 'Tout Télécharger',
                 download: 'Télécharger',
-                clickToPreview: 'Cliquez sur une photo pour l\'aperçu',
+                showGallery: 'Afficher la galerie',
                 loadingGallery: 'Chargement de la galerie...',
                 notFoundTitle: 'Galerie Introuvable',
                 notFoundText: 'Cette galerie a peut-être été supprimée ou le lien est incorrect.',
@@ -1578,6 +1597,7 @@
         function applyStaticTranslations() {
             document.documentElement.lang = locale;
             document.getElementById('downloadAllText').textContent = t.downloadAll;
+            document.getElementById('showGalleryText').textContent = t.showGallery;
             document.getElementById('loadingState').textContent = t.loadingGallery;
             document.getElementById('notFoundTitle').textContent = t.notFoundTitle;
             document.getElementById('notFoundText').textContent = t.notFoundText;
@@ -1597,6 +1617,10 @@
             document.getElementById('kbLabelNavigate').textContent = t.kbNavigate;
         }
         applyStaticTranslations();
+
+        function scrollToGallery() {
+            document.getElementById('galleryContainer').scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
 
         applyTheme();
 
@@ -1938,12 +1962,6 @@
                     : t.yourPhotos;
                 document.getElementById('eventTitle').textContent = title;
                 document.title = title;
-
-                // Set meta
-                const count = photos.length;
-                const photoWord = count === 1 ? t.photo : t.photos;
-                document.getElementById('heroMeta').textContent = `${count} ${photoWord} • ${t.clickToPreview}`;
-
 
                 // Set download all button
                 document.getElementById('downloadAllBtn').href = `/api/gallery/${galleryId}/download`;
