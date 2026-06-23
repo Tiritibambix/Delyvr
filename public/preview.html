@@ -1306,8 +1306,12 @@
 
         <!-- Keyboard hint — inside lightbox so it survives fullscreen -->
         <div id="kbHint">
-            <div class="kb-hint-row"><span class="kb-key">Esc</span></div>
-            <div class="kb-hint-row"><span class="kb-key">←</span><span class="kb-key">→</span></div>
+            <div class="kb-hint-row">Close <span class="kb-key">Esc</span></div>
+            <div class="kb-hint-row">Fullscreen <span class="kb-key">S</span></div>
+            <div class="kb-hint-row">Comment <span class="kb-key">C</span></div>
+            <div class="kb-hint-row">Favorite <span class="kb-key">F</span></div>
+            <div class="kb-hint-row">Download <span class="kb-key">D</span></div>
+            <div class="kb-hint-row">Navigate <span class="kb-key">←</span><span class="kb-key">→</span></div>
         </div>
 
         <!-- Mobile Overlay (portrait + landscape) -->
@@ -2218,10 +2222,17 @@
                 if (e.key === 'Escape') closeCommentDrawer();
                 return;
             }
+            // Don't hijack browser/OS shortcuts that happen to share these letters (Cmd+F, Ctrl+S, ...).
+            if (e.ctrlKey || e.metaKey || e.altKey) return;
 
+            const key = e.key.toLowerCase();
             if (e.key === 'Escape') closeLightbox();
             if (e.key === 'ArrowLeft') navigateLightbox(-1);
             if (e.key === 'ArrowRight') navigateLightbox(1);
+            if (key === 's') toggleFullscreen();
+            if (key === 'c') openCommentDrawer();
+            if (key === 'f') toggleFavoriteFromLightbox();
+            if (key === 'd' && _lastDownloadsEnabled) document.getElementById('lightboxDownload').click();
         }, { capture: true });
 
         // Close lightbox on background click
