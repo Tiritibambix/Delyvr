@@ -1306,12 +1306,12 @@
 
         <!-- Keyboard hint — inside lightbox so it survives fullscreen -->
         <div id="kbHint">
-            <div class="kb-hint-row">Close <span class="kb-key">Esc</span></div>
-            <div class="kb-hint-row">Fullscreen <span class="kb-key">S</span></div>
-            <div class="kb-hint-row">Comment <span class="kb-key">C</span></div>
-            <div class="kb-hint-row">Favorite <span class="kb-key">F</span></div>
-            <div class="kb-hint-row">Download <span class="kb-key">D</span></div>
-            <div class="kb-hint-row">Navigate <span class="kb-key">←</span><span class="kb-key">→</span></div>
+            <div class="kb-hint-row"><span id="kbLabelClose"></span> <span class="kb-key">Esc</span></div>
+            <div class="kb-hint-row"><span id="kbLabelFullscreen"></span> <span class="kb-key">S</span></div>
+            <div class="kb-hint-row"><span id="kbLabelComment"></span> <span class="kb-key">C</span></div>
+            <div class="kb-hint-row"><span id="kbLabelFavorite"></span> <span class="kb-key">F</span></div>
+            <div class="kb-hint-row"><span id="kbLabelDownload"></span> <span class="kb-key">D</span></div>
+            <div class="kb-hint-row"><span id="kbLabelNavigate"></span> <span class="kb-key">←</span><span class="kb-key">→</span></div>
         </div>
 
         <!-- Mobile Overlay (portrait + landscape) -->
@@ -1399,7 +1399,13 @@
                 commentGuest: 'Guest',
                 commentPosted: 'Comment posted',
                 commentError: 'Could not post comment',
-                commentEmpty: 'No comments yet. Be the first!'
+                commentEmpty: 'No comments yet. Be the first!',
+                kbClose: 'Close',
+                kbFullscreen: 'Fullscreen',
+                kbComment: 'Comment',
+                kbFavorite: 'Favorite',
+                kbDownload: 'Download',
+                kbNavigate: 'Navigate'
             },
             pt: {
                 yourPhotos: 'Suas Fotos',
@@ -1422,7 +1428,13 @@
                 commentGuest: 'Convidado',
                 commentPosted: 'Comentário publicado',
                 commentError: 'Não foi possível publicar o comentário',
-                commentEmpty: 'Ainda não há comentários. Seja o primeiro!'
+                commentEmpty: 'Ainda não há comentários. Seja o primeiro!',
+                kbClose: 'Fechar',
+                kbFullscreen: 'Tela cheia',
+                kbComment: 'Comentar',
+                kbFavorite: 'Favorito',
+                kbDownload: 'Baixar',
+                kbNavigate: 'Navegar'
             },
             es: {
                 yourPhotos: 'Tus Fotos',
@@ -1445,7 +1457,13 @@
                 commentGuest: 'Invitado',
                 commentPosted: 'Comentario publicado',
                 commentError: 'No se pudo publicar el comentario',
-                commentEmpty: 'Aún no hay comentarios. ¡Sé el primero!'
+                commentEmpty: 'Aún no hay comentarios. ¡Sé el primero!',
+                kbClose: 'Cerrar',
+                kbFullscreen: 'Pantalla completa',
+                kbComment: 'Comentar',
+                kbFavorite: 'Favorito',
+                kbDownload: 'Descargar',
+                kbNavigate: 'Navegar'
             },
             it: {
                 yourPhotos: 'Le Tue Foto',
@@ -1468,7 +1486,13 @@
                 commentGuest: 'Ospite',
                 commentPosted: 'Commento pubblicato',
                 commentError: 'Impossibile pubblicare il commento',
-                commentEmpty: 'Ancora nessun commento. Sii il primo!'
+                commentEmpty: 'Ancora nessun commento. Sii il primo!',
+                kbClose: 'Chiudi',
+                kbFullscreen: 'Schermo intero',
+                kbComment: 'Commenta',
+                kbFavorite: 'Preferito',
+                kbDownload: 'Scarica',
+                kbNavigate: 'Naviga'
             },
             fr: {
                 yourPhotos: 'Vos Photos',
@@ -1491,7 +1515,13 @@
                 commentGuest: 'Invité',
                 commentPosted: 'Commentaire publié',
                 commentError: 'Impossible de publier le commentaire',
-                commentEmpty: 'Aucun commentaire pour le moment. Soyez le premier !'
+                commentEmpty: 'Aucun commentaire pour le moment. Soyez le premier !',
+                kbClose: 'Fermer',
+                kbFullscreen: 'Plein écran',
+                kbComment: 'Commenter',
+                kbFavorite: 'Favori',
+                kbDownload: 'Télécharger',
+                kbNavigate: 'Naviguer'
             }
         };
 
@@ -1514,6 +1544,12 @@
             document.getElementById('lightboxCommentBtn').title = t.comments;
             document.getElementById('lightboxCommentBtn').setAttribute('aria-label', t.comments);
             document.getElementById('lbMobileComment').setAttribute('aria-label', t.comments);
+            document.getElementById('kbLabelClose').textContent = t.kbClose;
+            document.getElementById('kbLabelFullscreen').textContent = t.kbFullscreen;
+            document.getElementById('kbLabelComment').textContent = t.kbComment;
+            document.getElementById('kbLabelFavorite').textContent = t.kbFavorite;
+            document.getElementById('kbLabelDownload').textContent = t.kbDownload;
+            document.getElementById('kbLabelNavigate').textContent = t.kbNavigate;
         }
         applyStaticTranslations();
 
@@ -2085,13 +2121,24 @@
             images.forEach(img => observer.observe(img));
         }
 
+        // Auto-masquage du rappel clavier après un court instant — sur petit écran
+        // (13") il chevauche sinon la photo en permanence.
+        let _kbHintTimer = null;
+        function showKbHint() {
+            clearTimeout(_kbHintTimer);
+            document.getElementById('kbHint').classList.add('visible');
+            _kbHintTimer = setTimeout(() => {
+                document.getElementById('kbHint').classList.remove('visible');
+            }, 4000);
+        }
+
         function openLightbox(index) {
             currentPhotoIndex = index;
             if (typeof resetZoom === 'function') resetZoom();
             updateLightbox();
             document.getElementById('lightbox').classList.add('active');
             document.body.style.overflow = 'hidden';
-            document.getElementById('kbHint').classList.add('visible');
+            showKbHint();
             // Mobile : initialiser les dots et afficher l'overlay
             if (window.innerWidth <= 768) {
                 buildDots();
@@ -2107,6 +2154,7 @@
             if (videoEl) videoEl.pause();
             closeCommentDrawer();
             if (typeof resetZoom === 'function') resetZoom();
+            clearTimeout(_kbHintTimer);
             document.getElementById('kbHint').classList.remove('visible');
             // Quitter le plein écran si actif
             if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
