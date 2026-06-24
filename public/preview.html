@@ -484,36 +484,32 @@
             display: flex;
             align-items: center;
             justify-content: center;
-            width: 36px;
-            height: 36px;
-            background: rgba(255,255,255,0.15);
-            backdrop-filter: blur(4px);
+            width: 20px;
+            height: 20px;
+            background: none;
             border: none;
-            border-radius: 50%;
             color: white;
             cursor: pointer;
-            transition: all 0.2s;
+            transition: color 0.2s;
             flex-shrink: 0;
         }
 
         .photo-favorite:hover {
-            background: rgba(255,255,255,0.25);
-            transform: scale(1.1);
+            color: #dc3250;
         }
 
         .photo-favorite.favorited {
-            background: rgba(220, 50, 80, 0.85);
-            color: white;
+            color: #dc3250;
         }
 
         .photo-favorite svg {
-            width: 18px;
-            height: 18px;
+            width: 16px;
+            height: 16px;
             transition: fill 0.2s;
         }
 
         .photo-favorite.favorited svg {
-            fill: white;
+            fill: #dc3250;
         }
 
         .lightbox-favorite-btn {
@@ -916,24 +912,22 @@
             display: flex;
             align-items: center;
             justify-content: center;
-            width: 36px;
-            height: 36px;
-            background: var(--accent);
-            color: var(--bg-primary);
-            border-radius: 50%;
+            width: 20px;
+            height: 20px;
+            background: none;
+            color: white;
             text-decoration: none;
-            transition: all 0.2s;
+            transition: color 0.2s;
             flex-shrink: 0;
         }
 
         .photo-download:hover {
-            background: var(--accent-hover);
-            transform: scale(1.1);
+            color: var(--accent);
         }
 
         .photo-download svg {
-            width: 18px;
-            height: 18px;
+            width: 16px;
+            height: 16px;
         }
 
         /* Lightbox */
@@ -1229,11 +1223,71 @@
             100% { transform: scale(1); }
         }
 
+        #lightboxSocialWidget {
+            position: fixed;
+            bottom: 20px;
+            left: 24px;
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 8px;
+            z-index: 1020;
+        }
+        @media (max-width: 768px), (hover: none) {
+            #lightboxSocialWidget { display: none; }
+        }
+        #lightboxSocialLinks {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 10px;
+            pointer-events: none;
+            max-height: 200px;
+            opacity: 1;
+            overflow: hidden;
+            transform-origin: bottom left;
+            transform: scale(1) translateY(0);
+            transition: max-height 0.35s cubic-bezier(0.34, 1.56, 0.64, 1),
+                        opacity 0.25s ease,
+                        transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+        #lightboxSocialLinks.folded {
+            max-height: 0;
+            opacity: 0;
+            transform: scale(0.8) translateY(10px);
+            transition: max-height 0.3s ease-in, opacity 0.2s ease-in, transform 0.3s ease-in;
+        }
+        #lightboxSocialLinks a {
+            pointer-events: auto;
+            color: rgba(255,255,255,0.7);
+            display: flex;
+            align-items: center;
+            transition: color 0.2s;
+        }
+        #lightboxSocialLinks a:hover { color: var(--accent); }
+        #lightboxSocialLinks svg { width: 16px; height: 16px; fill: currentColor; }
+        .lightbox-social-toggle-btn {
+            width: 20px;
+            height: 20px;
+            background: none;
+            border: none;
+            color: rgba(255,255,255,0.7);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+            transition: color 0.2s;
+        }
+        .lightbox-social-toggle-btn svg { width: 16px; height: 16px; }
+        .lightbox-social-toggle-btn:hover { color: var(--accent); }
+        .lightbox-social-toggle-btn.pulse { animation: kbPulse 0.5s ease; }
+
         .social-footer {
             position: fixed;
             bottom: 0; left: 0; right: 0;
             z-index: 90;
-            padding: 12px 24px;
+            padding: 10px 20px;
             border-top: 1px solid var(--border);
             text-align: center;
             background: rgba(10,10,11,0.75);
@@ -1252,7 +1306,7 @@
             display: flex;
             align-items: center;
             justify-content: center;
-            gap: 20px;
+            gap: 17px;
             flex-wrap: wrap;
         }
 
@@ -1268,8 +1322,8 @@
         }
 
         .social-footer-links svg {
-            width: 20px;
-            height: 20px;
+            width: 17px;
+            height: 17px;
             fill: currentColor;
         }
     </style>
@@ -1361,6 +1415,19 @@
             </div>
             <button class="kb-toggle-btn" id="kbToggleBtn" onclick="toggleKbHint()" title="Keyboard shortcuts" aria-label="Keyboard shortcuts">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M6 14h12" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </button>
+        </div>
+
+        <!-- Social links — inside lightbox so it survives fullscreen. Hidden entirely if no links configured. -->
+        <div id="lightboxSocialWidget" style="display:none;">
+            <div id="lightboxSocialLinks"></div>
+            <button class="lightbox-social-toggle-btn" id="lightboxSocialToggleBtn" onclick="toggleSocialWidget()" title="Social links" aria-label="Social links">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="18" cy="5" r="3"/>
+                    <circle cx="6" cy="12" r="3"/>
+                    <circle cx="18" cy="19" r="3"/>
+                    <path d="M8.59 13.51l6.83 3.98M15.41 6.51l-6.82 3.98" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
             </button>
         </div>
 
@@ -1670,7 +1737,6 @@
             const btn = document.querySelector(`.photo-favorite[data-filename="${CSS.escape(filename)}"]`);
             if (btn) {
                 btn.classList.toggle('favorited', !wasFavorited);
-                btn.querySelector('svg').setAttribute('fill', wasFavorited ? 'none' : 'white');
             }
 
             // Update lightbox button if same photo is open
@@ -1698,7 +1764,6 @@
                 if (wasFavorited) { localFavorites.add(filename); } else { localFavorites.delete(filename); }
                 if (btn) {
                     btn.classList.toggle('favorited', wasFavorited);
-                    btn.querySelector('svg').setAttribute('fill', wasFavorited ? 'white' : 'none');
                 }
             }
         }
@@ -2078,7 +2143,6 @@
                     card.style.height = row.height + 'px';
                     card.onclick = () => openLightbox(index);
 
-                    const favFill = isFav ? 'white' : 'none';
                     const favClass = isFav ? 'favorited' : '';
                     const downloadBtn = downloadsEnabled ? `
                             <a class="photo-download" href="/api/gallery/${galleryId}/download/${encodeURIComponent(photo.filename)}" onclick="event.stopPropagation();" download>
@@ -2107,7 +2171,7 @@
                         <div class="photo-overlay">
                             <span class="photo-name"></span>
                             <button class="photo-favorite ${favClass}" data-filename="" data-index="${index}" aria-label="Add to favorites">
-                                <svg viewBox="0 0 24 24" fill="${favFill}" stroke="currentColor" stroke-width="2">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                     <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" stroke-linecap="round" stroke-linejoin="round"/>
                                 </svg>
                             </button>
@@ -2186,6 +2250,37 @@
             if (folded) showKbHint(); else foldKbHint();
         }
 
+        let _socialHintTimer = null;
+        function showSocialHint() {
+            clearTimeout(_socialHintTimer);
+            document.getElementById('lightboxSocialLinks').classList.remove('folded');
+            _socialHintTimer = setTimeout(foldSocialHint, 4000);
+        }
+        function foldSocialHint() {
+            clearTimeout(_socialHintTimer);
+            document.getElementById('lightboxSocialLinks').classList.add('folded');
+            const btn = document.getElementById('lightboxSocialToggleBtn');
+            btn.classList.remove('pulse');
+            requestAnimationFrame(() => btn.classList.add('pulse'));
+            setTimeout(() => btn.classList.remove('pulse'), 600);
+        }
+        function toggleSocialWidget() {
+            const folded = document.getElementById('lightboxSocialLinks').classList.contains('folded');
+            if (folded) showSocialHint(); else foldSocialHint();
+        }
+        function populateLightboxSocialLinks() {
+            const widget = document.getElementById('lightboxSocialWidget');
+            const target = document.getElementById('lightboxSocialLinks');
+            const sourceLinks = document.querySelector('#socialFooter .social-footer-links');
+            if (!sourceLinks || sourceLinks.children.length === 0) {
+                widget.style.display = 'none';
+                return;
+            }
+            target.innerHTML = sourceLinks.innerHTML;
+            widget.style.display = 'flex';
+            showSocialHint();
+        }
+
         function openLightbox(index) {
             currentPhotoIndex = index;
             if (typeof resetZoom === 'function') resetZoom();
@@ -2193,6 +2288,7 @@
             document.getElementById('lightbox').classList.add('active');
             document.body.style.overflow = 'hidden';
             showKbHint();
+            populateLightboxSocialLinks();
             // Mobile : initialiser les dots et afficher l'overlay
             if (window.innerWidth <= 768) {
                 buildDots();
@@ -2209,6 +2305,7 @@
             closeCommentDrawer();
             if (typeof resetZoom === 'function') resetZoom();
             clearTimeout(_kbHintTimer);
+            clearTimeout(_socialHintTimer);
             // Quitter le plein écran si actif
             if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
             clearTimeout(_lbHideTimer);
