@@ -90,6 +90,7 @@
             font-size: clamp(2rem, 5vw, 3rem);
             font-weight: 300;
             letter-spacing: -0.01em;
+            color: #fff;
             text-shadow: 0 2px 6px rgba(0,0,0,0.55);
             opacity: 0;
             transform: translateY(20px);
@@ -188,14 +189,15 @@
             background: rgba(255,255,255,0.12);
         }
 
-        html.light .show-gallery-btn,
+        /* .show-gallery-btn n'est jamais soumis au thème clair : il vit toujours
+           sur la photo de couverture non assombrie, donc il garde la même
+           couleur claire que le titre, quel que soit le thème du site. */
         html.light .back-to-collection {
             border-color: rgba(0,0,0,0.55);
             color: rgba(0,0,0,0.85);
             text-shadow: none;
         }
 
-        html.light .show-gallery-btn:hover,
         html.light .back-to-collection:hover {
             background: rgba(0,0,0,0.06);
         }
