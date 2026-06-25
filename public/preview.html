@@ -116,9 +116,15 @@
 
         @media (max-width: 480px) {
             .hero-logo { top: 16px; left: 16px; max-height: 36px; }
-            .hero h1 { bottom: 16px; left: 16px; max-width: calc(100vw - 32px); }
+            .hero h1 {
+                bottom: 70px;
+                left: 16px;
+                max-width: calc(100vw - 32px);
+                font-size: 1.6rem;
+            }
             .hero-actions {
                 bottom: 16px;
+                left: 16px;
                 right: 16px;
                 flex-wrap: wrap;
                 justify-content: flex-end;
@@ -666,7 +672,8 @@
         }
 
         .lb-top-bar.hidden,
-        .lb-bottom-bar.hidden {
+        .lb-bottom-bar.hidden,
+        #lightboxSocialWidget.hidden {
             opacity: 0;
             pointer-events: none;
         }
@@ -800,6 +807,11 @@
             font-weight: 600;
             font-size: 12.5px;
             color: var(--text-primary);
+            flex: 1;
+            min-width: 0;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
         }
         .comment-row-time {
             font-size: 11px;
@@ -862,6 +874,7 @@
         }
         .comment-text-input {
             flex: 1;
+            min-width: 0;
             resize: none;
             min-height: 38px;
             max-height: 100px;
@@ -1235,9 +1248,6 @@
             gap: 8px;
             z-index: 1020;
         }
-        @media (max-width: 768px), (hover: none) {
-            #lightboxSocialWidget { display: none; }
-        }
         #lightboxSocialLinks {
             display: flex;
             flex-direction: column;
@@ -1288,6 +1298,25 @@
         .lightbox-social-toggle-btn svg { width: 16px; height: 16px; }
         .lightbox-social-toggle-btn:hover { color: var(--accent); }
         .lightbox-social-toggle-btn.pulse { animation: kbPulse 0.5s ease; }
+
+        @media (max-width: 768px) {
+            #lightboxSocialWidget {
+                bottom: calc(76px + env(safe-area-inset-bottom, 0px));
+                left: auto;
+                right: 20px;
+            }
+            .lightbox-social-toggle-btn {
+                width: 44px;
+                height: 44px;
+                border-radius: 50%;
+                background: rgba(0,0,0,0.45);
+                backdrop-filter: blur(8px);
+                border: 1px solid rgba(255,255,255,0.15);
+            }
+            .lightbox-social-toggle-btn svg { width: 20px; height: 20px; }
+            #lightboxSocialLinks a { width: 44px; height: 44px; }
+            #lightboxSocialLinks svg { width: 20px; height: 20px; }
+        }
 
         .social-footer {
             position: fixed;
@@ -2289,7 +2318,11 @@
             }
             target.innerHTML = sourceLinks.innerHTML;
             widget.style.display = 'flex';
-            showSocialHint();
+            if (_isMobileLB()) {
+                target.classList.add('folded');
+            } else {
+                showSocialHint();
+            }
         }
 
         function openLightbox(index) {
@@ -2512,16 +2545,20 @@
         function showLbBars() {
             const top = document.getElementById('lbTopBar');
             const bot = document.getElementById('lbBottomBar');
+            const social = document.getElementById('lightboxSocialWidget');
             if (top) top.classList.remove('hidden');
             if (bot) bot.classList.remove('hidden');
+            if (social) social.classList.remove('hidden');
             _lbBarsVisible = true;
         }
 
         function hideLbBars() {
             const top = document.getElementById('lbTopBar');
             const bot = document.getElementById('lbBottomBar');
+            const social = document.getElementById('lightboxSocialWidget');
             if (top) top.classList.add('hidden');
             if (bot) bot.classList.add('hidden');
+            if (social) social.classList.add('hidden');
             _lbBarsVisible = false;
         }
 
