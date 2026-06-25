@@ -662,11 +662,12 @@
             position: absolute;
             bottom: 0; left: 0; right: 0;
             display: flex;
-            align-items: center;
-            justify-content: space-between;
-            padding: 16px 20px;
+            align-items: flex-end;
+            justify-content: flex-end;
+            gap: 16px;
+            padding: 90px 20px 16px;
             padding-bottom: max(16px, env(safe-area-inset-bottom));
-            background: linear-gradient(to top, rgba(0,0,0,0.7) 0%, transparent 100%);
+            background: linear-gradient(to top, rgba(0,0,0,0.7) 0%, rgba(0,0,0,0.55) 55%, transparent 100%);
             pointer-events: auto;
             transition: opacity 0.35s;
         }
@@ -800,6 +801,10 @@
             display: flex;
             flex-direction: column;
             gap: 14px;
+            scrollbar-width: none;
+        }
+        .comment-drawer-list::-webkit-scrollbar {
+            display: none;
         }
         .comment-row-head {
             display: flex;
