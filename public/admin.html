@@ -4362,7 +4362,7 @@
         function handleFavDownloadSelect(selectEl) {
             const minVotes = selectEl.value;
             if (!minVotes) return;
-            window.location.href = `/api/gallery/${_favGalleryId}/favorites/download?minVotes=${minVotes}`;
+            window.location.href = `/api/gallery/${_favGalleryId}/favorites/download?minVotes=${encodeURIComponent(minVotes)}`;
             selectEl.value = '';
         }
 
