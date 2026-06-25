@@ -48,7 +48,7 @@
         .hero {
             position: relative;
             height: 100vh;
-            height: 100dvh; /* unité dynamique mobile — la déclaration vh ci-dessus sert de fallback si dvh n'est pas supporté */
+            height: 100svh; /* viewport mobile minimal — figé, ne grandit pas quand la barre d'adresse se cache au scroll */
             display: flex;
             align-items: center;
             justify-content: center;
@@ -2165,7 +2165,6 @@
         function renderGallery(downloadsEnabled = true) {
             _lastDownloadsEnabled = downloadsEnabled;
             const grid = document.getElementById('galleryGrid');
-            grid.innerHTML = '';
 
             const container = document.getElementById('galleryContainer');
             // Use the container's client width (accounts for its padding)
@@ -2173,6 +2172,8 @@
             const padL = parseFloat(style.paddingLeft) || 0;
             const padR = parseFloat(style.paddingRight) || 0;
             const containerWidth = container.clientWidth - padL - padR;
+
+            grid.innerHTML = '';
 
             const targetHeight = getTargetRowHeight();
             const gap = getRowGap();
@@ -2254,11 +2255,17 @@
             lazyLoadImages();
         }
 
-        // Re-layout on resize (debounced)
+        // Re-layout on resize (debounced) — only when width actually changes,
+        // since the justified grid only depends on width, but mobile browsers
+        // also fire resize when the address bar collapses/expands on scroll
+        // (height-only change).
         let _resizeTimer = null;
+        let _lastGalleryWidth = window.innerWidth;
         window.addEventListener('resize', () => {
             clearTimeout(_resizeTimer);
             _resizeTimer = setTimeout(() => {
+                if (window.innerWidth === _lastGalleryWidth) return;
+                _lastGalleryWidth = window.innerWidth;
                 if (photos && photos.length > 0) {
                     renderGallery(_lastDownloadsEnabled);
                 }
