@@ -155,6 +155,8 @@
             .actions-bar {
                 padding: 10px 12px;
                 gap: 8px;
+                backdrop-filter: none;
+                background: color-mix(in srgb, var(--bg-primary) 97%, transparent);
             }
             .back-to-collection {
                 flex: 1;
@@ -660,21 +662,20 @@
         /* Barre du bas : fav + télécharger + compteur */
         .lb-bottom-bar {
             position: absolute;
-            bottom: 0; left: 0; right: 0;
+            bottom: calc(20px + env(safe-area-inset-bottom));
+            right: 20px;
+            left: auto;
             display: flex;
-            align-items: flex-end;
-            justify-content: flex-end;
-            gap: 16px;
-            padding: 90px 20px 16px;
-            padding-bottom: max(16px, env(safe-area-inset-bottom));
-            background: linear-gradient(to top, rgba(0,0,0,0.7) 0%, rgba(0,0,0,0.55) 55%, transparent 100%);
+            flex-direction: column;
+            align-items: center;
+            gap: 14px;
             pointer-events: auto;
             transition: opacity 0.35s;
         }
 
         .lightbox:fullscreen .lb-bottom-bar,
         .lightbox:-webkit-full-screen .lb-bottom-bar {
-            padding-bottom: max(28px, env(safe-area-inset-bottom));
+            bottom: calc(28px + env(safe-area-inset-bottom));
         }
 
         .lb-top-bar.hidden,
@@ -755,6 +756,7 @@
             z-index: 1030;
             display: flex;
             flex-direction: column;
+            overflow: hidden;
             transform: translateX(100%);
             transition: transform 0.25s ease;
         }
@@ -762,7 +764,7 @@
         @media (max-width: 768px), (max-height: 500px) {
             .comment-drawer {
                 top: auto; right: 0; left: 0; bottom: 0;
-                width: 100%;
+                width: auto;
                 height: 70vh;
                 border-left: none;
                 border-top: 1px solid var(--border);
@@ -1311,9 +1313,9 @@
 
         @media (max-width: 768px) {
             #lightboxSocialWidget {
-                bottom: calc(76px + env(safe-area-inset-bottom, 0px));
-                left: auto;
-                right: 20px;
+                bottom: calc(20px + env(safe-area-inset-bottom, 0px));
+                left: 20px;
+                right: auto;
             }
             .lightbox-social-toggle-btn {
                 width: 44px;
