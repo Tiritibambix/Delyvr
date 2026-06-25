@@ -671,6 +671,11 @@
             transition: opacity 0.35s;
         }
 
+        .lightbox:fullscreen .lb-bottom-bar,
+        .lightbox:-webkit-full-screen .lb-bottom-bar {
+            padding-bottom: max(28px, env(safe-area-inset-bottom));
+        }
+
         .lb-top-bar.hidden,
         .lb-bottom-bar.hidden,
         #lightboxSocialWidget.hidden {
@@ -2573,6 +2578,7 @@
             if (_wasGesture) { _wasGesture = false; return; }
             if (e.target.closest('#lightboxVideo')) return;
             if (e.target.closest('.lb-top-bar') || e.target.closest('.lb-bottom-bar')) return;
+            if (e.target.closest('#lightboxSocialWidget')) return;
             if (e.target.closest('#commentDrawer')) return;
             if (_lbBarsVisible) {
                 hideLbBars();
