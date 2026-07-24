@@ -77,6 +77,14 @@ function isVideoFile(filename) {
     return VIDEO_EXTENSIONS.has(ext);
 }
 
+// Formats that MAY be animated (multi-frame). Used to decide whether it's worth
+// probing an image for animation; other formats are never animated.
+const ANIMATABLE_EXTENSIONS = new Set(['gif', 'webp']);
+function isAnimatableFile(filename) {
+    const ext = path.extname(filename).toLowerCase().slice(1);
+    return ANIMATABLE_EXTENSIONS.has(ext);
+}
+
 // Admin session tokens — cleared on restart (intentional: forces re-login)
 const sessions = new Map();
 const SESSION_TTL_MS = 24 * 60 * 60 * 1000; // 24 h
@@ -387,14 +395,16 @@ function safeResolvePath(base, ...segments) {
 // Store photo dimensions on the gallery object so the justified layout
 // can render immediately without waiting for images to load.
 // Format: gallery.dimensions = { [filename]: { w, h } }
-function setPhotoDimensions(galleryId, filename, w, h) {
+function setPhotoDimensions(galleryId, filename, w, h, animated) {
     const gallery = galleries.get(galleryId);
     if (!gallery) return;
     if (!gallery.dimensions) gallery.dimensions = {};
     if (!w || !h) return;
     const prev = gallery.dimensions[filename];
-    if (prev && prev.w === w && prev.h === h) return;
-    gallery.dimensions[filename] = { w, h };
+    if (prev && prev.w === w && prev.h === h && !!prev.animated === !!animated) return;
+    // Store `animated` explicitly (true/false) once known, so animatable formats
+    // (gif/webp) aren't re-probed on every request. Absent = never checked (legacy).
+    gallery.dimensions[filename] = { w, h, animated: !!animated };
     saveGalleries();
 }
 
@@ -403,11 +413,15 @@ async function readDimensions(srcPath) {
     try {
         const meta = await sharp(srcPath).metadata();
         const orientation = meta.orientation || 1;
+        // Animated images (GIF / animated WebP) are a vertical filmstrip: meta.height
+        // is pageHeight × pages, so use pageHeight for the true single-frame height.
+        const animated = (meta.pages || 1) > 1;
+        const frameHeight = animated ? (meta.pageHeight || meta.height) : meta.height;
         // Orientations 5-8 swap width and height
         const swap = orientation >= 5 && orientation <= 8;
-        const w = swap ? meta.height : meta.width;
-        const h = swap ? meta.width : meta.height;
-        return { w, h };
+        const w = swap ? frameHeight : meta.width;
+        const h = swap ? meta.width : frameHeight;
+        return { w, h, animated };
     } catch (_) {
         return null;
     }
@@ -556,7 +570,7 @@ async function generateThumbnail(galleryId, filename) {
     const gallery = galleries.get(galleryId);
     if (gallery && (!gallery.dimensions || !gallery.dimensions[filename])) {
         const dims = await readDimensions(src);
-        if (dims) setPhotoDimensions(galleryId, filename, dims.w, dims.h);
+        if (dims) setPhotoDimensions(galleryId, filename, dims.w, dims.h, dims.animated);
     }
 
     if (fs.existsSync(dest)) return;
@@ -583,8 +597,12 @@ async function generatePreview(galleryId, filename) {
     const gallery = galleries.get(galleryId);
     if (gallery && (!gallery.dimensions || !gallery.dimensions[filename])) {
         const dims = await readDimensions(src);
-        if (dims) setPhotoDimensions(galleryId, filename, dims.w, dims.h);
+        if (dims) setPhotoDimensions(galleryId, filename, dims.w, dims.h, dims.animated);
     }
+
+    // Animated images (GIF / animated WebP) are served as the original in the
+    // lightbox so they play — a flattened JPEG preview would freeze them.
+    if (gallery && gallery.dimensions && gallery.dimensions[filename] && gallery.dimensions[filename].animated) return;
 
     if (fs.existsSync(dest)) return;
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
@@ -1281,7 +1299,7 @@ app.get('/api/gallery/:galleryId/photos', publicReadLimiter, validateGalleryId, 
             }
             const dims = await readDimensions(src);
             if (dims) {
-                gallery.dimensions[filename] = { w: dims.w, h: dims.h };
+                gallery.dimensions[filename] = { w: dims.w, h: dims.h, animated: !!dims.animated };
             }
         }));
         saveGalleries();
@@ -1301,6 +1319,7 @@ app.get('/api/gallery/:galleryId/photos', publicReadLimiter, validateGalleryId, 
             width:  dims ? dims.w : null,
             height: dims ? dims.h : null,
             duration: video ? (dims && dims.duration != null ? dims.duration : null) : undefined,
+            animated: !video && !!(dims && dims.animated),
             commentCount: (comments[filename] || []).length
         };
     });
@@ -1337,6 +1356,25 @@ app.get('/api/gallery/:galleryId/photo/:filename', imageLimiter, validateGallery
     }
 
     if (req.query.preview === '1') {
+        // Animated images (GIF / animated WebP) are served as the original so they
+        // play in the lightbox — a flattened JPEG preview would freeze them on
+        // frame 1. This must come BEFORE the existsSync check below so a stale/legacy
+        // static preview JPEG isn't served instead. Probe once for animatable formats
+        // whose animation flag hasn't been recorded yet (legacy files self-heal here).
+        const originalPath = safeResolvePath(safeResolvePath(path.join(DATA_DIR, 'uploads'), galleryId), filename);
+        const gallery = galleries.get(galleryId);
+        let dims = gallery && gallery.dimensions ? gallery.dimensions[filename] : null;
+        if (!isVideo && isAnimatableFile(filename) && (!dims || dims.animated === undefined) && fs.existsSync(originalPath)) {
+            const d = await readDimensions(originalPath);
+            if (d) {
+                setPhotoDimensions(galleryId, filename, d.w, d.h, d.animated);
+                dims = gallery && gallery.dimensions ? gallery.dimensions[filename] : null;
+            }
+        }
+        if (dims && dims.animated && fs.existsSync(originalPath)) {
+            return res.sendFile(originalPath);
+        }
+
         const previewPath = safeResolvePath(safeResolvePath(PREVIEWS_DIR, galleryId), filename + '.jpg');
 
         if (fs.existsSync(previewPath)) {

@@ -66,6 +66,8 @@ Drop photos or entire folders onto the upload zone. The gallery name is pre-fill
 
 **Video clips:** You can also drop `.mp4`, `.mov`, and `.webm` video files into a gallery alongside photos. Delyvr automatically generates a poster thumbnail for each video, shows a play badge in the gallery grid, and plays the video with full controls (including seeking) in the lightbox.
 
+**Animated GIFs & WebP:** Animated `.gif` and `.webp` files keep their animation. The gallery grid shows a still frame with a small `GIF` badge to keep scrolling fast, and the animation plays when a client opens the image in the lightbox.
+
 You can also add a cover image (hero photo) to each gallery. This appears as the full-bleed background on the client download page and as the preview thumbnail in collections.
 
 **Multiple galleries at once:** Drop two or more folders together and Delyvr creates one gallery per folder, named after each folder. Each pending gallery gets its own small cover-image drop zone, so you can set a different cover per gallery before creating them — then a single "Create N galleries" button uploads everything with one overall progress bar. Any loose files dropped alongside the folders are ignored, with a note explaining why.

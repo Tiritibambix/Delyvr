@@ -100,8 +100,8 @@ delyvr/
   favorites: {              // filename → [visitorId, ...]
     [filename: string]: string[]
   },
-  dimensions: {             // filename → cached dimensions (and duration for videos)
-    [filename: string]: { w: number, h: number, duration?: number }
+  dimensions: {             // filename → cached dimensions (duration for videos, animated for GIF/WebP)
+    [filename: string]: { w: number, h: number, duration?: number, animated?: boolean }
   },
   commentsEnabled: boolean, // default true (missing = true) — per-gallery toggle
   comments: {               // filename → comments, oldest first
@@ -227,6 +227,17 @@ Galleries can contain video clips (`.mp4`, `.mov`, `.webm`, `.m4v`) alongside ph
 - **Fast-start remux**: `remuxVideoFastStart()` runs `ffmpeg -c copy -movflags +faststart` on `.mp4`/`.mov`/`.m4v` files (container rewrite only, no re-encode) so the moov atom is at the front. Without this, `<video>` often shows a stuck/gray frame on first play until a seek forces a range request that happens to land on the moov atom at the end of the file. Run via `processUploadedVideo()` on upload (before poster/probe), and lazily once per legacy file via `ensureVideoFastStart()` on first original-file request, guarded by a `data/tmp/{galleryId}-{filename}.faststart-checked` marker so ffmpeg isn't re-run on every request. No-op for `.webm` (no faststart equivalent).
 - `MAX_VIDEO_MB` (default 500) is enforced separately from `MAX_UPLOAD_MB` (photos) via `enforcePerTypeFileSizeLimits()`, which deletes oversized files post-upload and returns a `rejected` list in the API response.
 - OG image generation (gallery and collection) skips video files when picking a fallback source image, using `files.find(f => !isVideoFile(f))`; if a gallery is all-video, the gallery OG route generates a poster for the first video and uses that.
+
+### Animated images (GIF / animated WebP)
+
+Animated images play in the lightbox while keeping a static thumbnail in the grid — the same "original served for playback, static derivative for the grid" split used for video. They are still `type: 'image'` (no separate media type); animation is detected structurally, not by extension.
+
+- **Detection**: `readDimensions()` reads `meta.pages` from sharp; `animated = pages > 1`. For animated images it uses `meta.pageHeight` (a single frame's height) rather than `meta.height`, which is the full vertical filmstrip height (`pageHeight × pages`) — without this the justified grid computes absurdly tall cells. The flag is cached in `gallery.dimensions[filename].animated` (stored explicitly as `true`/`false` once probed, so animatable formats aren't re-probed every request; absent = legacy record, never checked). `isAnimatableFile()` (ext ∈ `gif`/`webp`) gates whether probing is even worthwhile.
+- **Thumbnail (`?thumb=1`)**: unchanged — `generateThumbnail()` writes a static first-frame JPEG (sharp reads only frame 1 without `{ animated: true }`), keeping the grid light.
+- **Preview (`?preview=1`)**: for animated images the route serves the **original file** (`res.sendFile`, correct `image/gif`/`image/webp` Content-Type → the `<img>` animates natively). This branch runs **before** the `existsSync(previewPath)` check so a stale/legacy flattened JPEG is never served, and probes once (self-healing) for animatable files whose flag isn't recorded yet. `generatePreview()` early-returns for animated images so no JPEG preview is ever generated for them.
+- **`/photos` response**: each photo gains `animated: boolean`. `previewUrl`/`thumbnailUrl` are unchanged — the server decides per-file what those URLs return.
+- **preview.html**: a `GIF` pill badge (`.gif-badge`) is shown on grid cards where `photo.animated` (and not a video). The lightbox needs no change: `imgEl.src = photo.previewUrl` already resolves to the animated original, and mobile pinch-zoom (CSS transform on the `<img>`) stays compatible.
+- **Deliberately unchanged**: OG images (sharp flattens to a static first-frame JPEG — correct, crawlers require static); gallery/collection backgrounds (GIF normalized to static JPEG); `favorites.html` (shows the static thumbnail).
 
 ### Justified gallery layout
 
@@ -412,6 +423,7 @@ Loaded by all client pages via `<script src="/shared.js">` before their inline `
 - Photos sorted alphabetically by filename (server-side).
 - Lightbox preloads N-1 and N+1 previews via `new Image()` on each navigation.
 - Mobile lightbox: pinch-to-zoom (up to 5x), one-finger pan while zoomed, swipe navigation when not zoomed. `touch-action: none` disables native browser zoom.
+- Animated images (GIF / animated WebP) show a static thumbnail + `GIF` badge in the grid and play in the lightbox — see "Animated images". The badge is driven by `photo.animated` from `/photos`; the lightbox `<img src=previewUrl>` resolves to the animated original with no extra code.
 - **Critique mode:** `critiqueMode = URLSearchParams.get('critique') === '1'`. When true: photo number badges rendered on grid cards, `#lbCritiqueNum` shown in lightbox, `#critiqueIndicator` shown in actions bar.
 - Favorites toast: `showFavToast(added)` shown on toggle, localized in all 5 languages, auto-dismisses after 2s.
 - Social footer is hidden (`opacity: 0; pointer-events: none`) over the full-screen hero and only fades in once the page is scrolled past 100px (`updateFooterVisibility()`, on a `scroll` listener), so it never overlaps the hero's action buttons.
