@@ -944,6 +944,11 @@
         .gallery-item.drag-over-gallery { border-top: 2px solid var(--accent); }
 
         /* ── GALLERY GROUPS (accordion by collection) ── */
+        .manual-order-hint {
+            font-size: 11px; color: var(--muted); background: var(--bg3);
+            border: 1px solid var(--border2); border-radius: 4px;
+            padding: 6px 10px; margin-bottom: 12px;
+        }
         .gallery-group { margin-bottom: 16px; }
         .gallery-group-header {
             display: flex; align-items: center; gap: 8px; width: 100%;
@@ -1668,6 +1673,7 @@
                             <option value="photos">Photos</option>
                             <option value="comments">Comments</option>
                             <option value="favorites">Favorites</option>
+                            <option value="manual">Manual order</option>
                         </select>
                         <button class="btn-icon" id="gallerySortDirBtn" onclick="toggleGallerySortDirection()" title="Descending">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M19 12l-7 7-7-7" stroke-linecap="round" stroke-linejoin="round"/></svg>
@@ -1803,6 +1809,8 @@
                 couldNotUpdateDownloadSetting: msg => `Could not update download setting: ${msg}`,
                 couldNotUpdateCommentsSetting: msg => `Could not update comments setting: ${msg}`,
                 photosCouldNotBeDeleted: n => `${n} ${n > 1 ? 'photos' : 'photo'} could not be deleted.`,
+                deletingPhotosProgress: (i, n) => `Deleting ${i} / ${n}…`,
+                photosDeletedDone: n => `${n} ${n > 1 ? 'photos' : 'photo'} deleted.`,
                 couldNotLoadPhotos: 'Could not load photos',
                 couldNotDeletePhoto: msg => `Could not delete photo: ${msg}`,
                 couldNotLoadFavorites: 'Could not load favorites', couldNotLoadComments: 'Could not load comments',
@@ -1822,6 +1830,7 @@
                 uploadFailedMsg: msg => `Upload failed: ${msg}`,
                 sortName: 'Name', sortDate: 'Date', sortViews: 'Views', sortDownloads: 'Downloads',
                 sortPhotos: 'Photos', sortComments: 'Comments', sortFavorites: 'Favorites',
+                sortManual: 'Manual order', sortManualHint: 'Drag galleries or use the arrows to arrange them; your order is saved.',
                 sortAscending: 'Ascending', sortDescending: 'Descending',
                 filterNoCollection: 'No collection', filterDownloadsOff: 'Downloads off',
                 collapseAll: 'Collapse all', expandAll: 'Expand all',
@@ -1926,6 +1935,8 @@
                 couldNotUpdateDownloadSetting: msg => `Impossible de mettre à jour le réglage des téléchargements : ${msg}`,
                 couldNotUpdateCommentsSetting: msg => `Impossible de mettre à jour le réglage des commentaires : ${msg}`,
                 photosCouldNotBeDeleted: n => `${n} photo${n > 1 ? 's' : ''} n'${n > 1 ? 'ont' : 'a'} pas pu être supprimée${n > 1 ? 's' : ''}.`,
+                deletingPhotosProgress: (i, n) => `Suppression ${i} / ${n}…`,
+                photosDeletedDone: n => `${n} photo${n > 1 ? 's' : ''} supprimée${n > 1 ? 's' : ''}.`,
                 couldNotLoadPhotos: 'Impossible de charger les photos',
                 couldNotDeletePhoto: msg => `Impossible de supprimer la photo : ${msg}`,
                 couldNotLoadFavorites: 'Impossible de charger les favoris', couldNotLoadComments: 'Impossible de charger les commentaires',
@@ -1944,6 +1955,7 @@
                 couldNotResetSharePreview: 'Impossible de réinitialiser l\'aperçu de partage',
                 uploadFailedMsg: msg => `Échec de l'envoi : ${msg}`,
                 sortName: 'Nom', sortDate: 'Date', sortViews: 'Vues', sortDownloads: 'Téléchargements',
+                sortManual: 'Ordre manuel', sortManualHint: 'Glissez les galeries ou utilisez les flèches pour les ranger ; votre ordre est enregistré.',
                 sortPhotos: 'Photos', sortComments: 'Commentaires', sortFavorites: 'Favoris',
                 sortAscending: 'Croissant', sortDescending: 'Décroissant',
                 filterNoCollection: 'Sans collection', filterDownloadsOff: 'Téléchargements désactivés',
@@ -2049,6 +2061,8 @@
                 couldNotUpdateDownloadSetting: msg => `No se pudo actualizar la opción de descargas: ${msg}`,
                 couldNotUpdateCommentsSetting: msg => `No se pudo actualizar la opción de comentarios: ${msg}`,
                 photosCouldNotBeDeleted: n => `${n} foto${n > 1 ? 's' : ''} no se ${n > 1 ? 'pudieron' : 'pudo'} eliminar.`,
+                deletingPhotosProgress: (i, n) => `Eliminando ${i} / ${n}…`,
+                photosDeletedDone: n => `${n} foto${n > 1 ? 's' : ''} eliminada${n > 1 ? 's' : ''}.`,
                 couldNotLoadPhotos: 'No se pudieron cargar las fotos',
                 couldNotDeletePhoto: msg => `No se pudo eliminar la foto: ${msg}`,
                 couldNotLoadFavorites: 'No se pudieron cargar los favoritos', couldNotLoadComments: 'No se pudieron cargar los comentarios',
@@ -2067,6 +2081,7 @@
                 couldNotResetSharePreview: 'No se pudo restablecer la vista previa de compartir',
                 uploadFailedMsg: msg => `Error al subir: ${msg}`,
                 sortName: 'Nombre', sortDate: 'Fecha', sortViews: 'Vistas', sortDownloads: 'Descargas',
+                sortManual: 'Orden manual', sortManualHint: 'Arrastra las galerías o usa las flechas para ordenarlas; tu orden se guarda.',
                 sortPhotos: 'Fotos', sortComments: 'Comentarios', sortFavorites: 'Favoritos',
                 sortAscending: 'Ascendente', sortDescending: 'Descendente',
                 filterNoCollection: 'Sin colección', filterDownloadsOff: 'Descargas desactivadas',
@@ -2172,6 +2187,8 @@
                 couldNotUpdateDownloadSetting: msg => `Não foi possível atualizar a configuração de downloads: ${msg}`,
                 couldNotUpdateCommentsSetting: msg => `Não foi possível atualizar a configuração de comentários: ${msg}`,
                 photosCouldNotBeDeleted: n => `${n} foto${n > 1 ? 's' : ''} não p${n > 1 ? 'uderam' : 'ôde'} ser excluída${n > 1 ? 's' : ''}.`,
+                deletingPhotosProgress: (i, n) => `Excluindo ${i} / ${n}…`,
+                photosDeletedDone: n => `${n} foto${n > 1 ? 's' : ''} excluída${n > 1 ? 's' : ''}.`,
                 couldNotLoadPhotos: 'Não foi possível carregar as fotos',
                 couldNotDeletePhoto: msg => `Não foi possível excluir a foto: ${msg}`,
                 couldNotLoadFavorites: 'Não foi possível carregar os favoritos', couldNotLoadComments: 'Não foi possível carregar os comentários',
@@ -2190,6 +2207,7 @@
                 couldNotResetSharePreview: 'Não foi possível redefinir a pré-visualização de compartilhamento',
                 uploadFailedMsg: msg => `Falha no envio: ${msg}`,
                 sortName: 'Nome', sortDate: 'Data', sortViews: 'Visualizações', sortDownloads: 'Downloads',
+                sortManual: 'Ordem manual', sortManualHint: 'Arraste as galerias ou use as setas para organizá-las; sua ordem é salva.',
                 sortPhotos: 'Fotos', sortComments: 'Comentários', sortFavorites: 'Favoritos',
                 sortAscending: 'Crescente', sortDescending: 'Decrescente',
                 filterNoCollection: 'Sem coleção', filterDownloadsOff: 'Downloads desativados',
@@ -2295,6 +2313,8 @@
                 couldNotUpdateDownloadSetting: msg => `Impossibile aggiornare l'impostazione dei download: ${msg}`,
                 couldNotUpdateCommentsSetting: msg => `Impossibile aggiornare l'impostazione dei commenti: ${msg}`,
                 photosCouldNotBeDeleted: n => `${n} fot${n > 1 ? 'o' : 'o'} non pot${n > 1 ? 'ute' : 'uta'} essere eliminat${n > 1 ? 'e' : 'a'}.`,
+                deletingPhotosProgress: (i, n) => `Eliminazione ${i} / ${n}…`,
+                photosDeletedDone: n => `${n} fot${n > 1 ? 'o' : 'o'} eliminat${n > 1 ? 'e' : 'a'}.`,
                 couldNotLoadPhotos: 'Impossibile caricare le foto',
                 couldNotDeletePhoto: msg => `Impossibile eliminare la foto: ${msg}`,
                 couldNotLoadFavorites: 'Impossibile caricare i preferiti', couldNotLoadComments: 'Impossibile caricare i commenti',
@@ -2313,6 +2333,7 @@
                 couldNotResetSharePreview: 'Impossibile ripristinare l\'anteprima di condivisione',
                 uploadFailedMsg: msg => `Caricamento non riuscito: ${msg}`,
                 sortName: 'Nome', sortDate: 'Data', sortViews: 'Visualizzazioni', sortDownloads: 'Download',
+                sortManual: 'Ordine manuale', sortManualHint: 'Trascina le gallerie o usa le frecce per ordinarle; il tuo ordine viene salvato.',
                 sortPhotos: 'Foto', sortComments: 'Commenti', sortFavorites: 'Preferiti',
                 sortAscending: 'Crescente', sortDescending: 'Decrescente',
                 filterNoCollection: 'Senza collezione', filterDownloadsOff: 'Download disattivati',
@@ -2372,7 +2393,7 @@
             if (gallerySearch) gallerySearch.placeholder = t.searchPlaceholder;
             const sortSelect = document.getElementById('gallerySortField');
             if (sortSelect) {
-                const sortLabels = { date: t.sortDate, name: t.sortName, views: t.sortViews, downloads: t.sortDownloads, photos: t.sortPhotos, comments: t.sortComments, favorites: t.sortFavorites };
+                const sortLabels = { date: t.sortDate, name: t.sortName, views: t.sortViews, downloads: t.sortDownloads, photos: t.sortPhotos, comments: t.sortComments, favorites: t.sortFavorites, manual: t.sortManual };
                 Array.from(sortSelect.options).forEach(opt => { if (sortLabels[opt.value]) opt.textContent = sortLabels[opt.value]; });
             }
             const sortDirBtn = document.getElementById('gallerySortDirBtn');
@@ -3319,8 +3340,20 @@
                 comments: (a, b) => (a.commentsCount || 0) - (b.commentsCount || 0),
                 favorites: (a, b) => (a.favoritesCount || 0) - (b.favoritesCount || 0),
             };
+            // Manual order: honour the saved `order` field (set by drag / arrow reordering),
+            // undefined orders last, tie-broken by newest first. Direction toggle is ignored.
+            const manualSorter = (a, b) => {
+                const aHas = a.order !== undefined && a.order !== null;
+                const bHas = b.order !== undefined && b.order !== null;
+                if (aHas && bHas) return a.order - b.order;
+                if (aHas) return -1;
+                if (bHas) return 1;
+                return new Date(b.created) - new Date(a.created);
+            };
             const baseSorter = sorters[sortBy] || sorters.date;
-            const sorter = sortDir === 'asc' ? baseSorter : (a, b) => -baseSorter(a, b);
+            const sorter = sortBy === 'manual'
+                ? manualSorter
+                : (sortDir === 'asc' ? baseSorter : (a, b) => -baseSorter(a, b));
 
             const byCollection = new Map();
             const ungrouped = [];
@@ -3350,8 +3383,11 @@
             const _col = g.collectionId ? (_collectionsData || []).find(c => c.id === g.collectionId) : null;
             const _dlBlocked = !!(_col && _col.downloadsEnabled === false);
             const _cmBlocked = !!(_col && _col.commentsEnabled === false);
+            // Reordering (drag + up/down arrows) only makes sense — and only persists —
+            // in "Manual order" mode; other sort modes would re-sort on any re-render.
+            const _manual = _gallerySort === 'manual';
             return `
-                <div class="gallery-item" draggable="true"
+                <div class="gallery-item" draggable="${_manual}"
                      id="gallery-item-${g.id}"
                      ondragstart="handleGalleryDragStart(event, '${g.id}')"
                      ondragend="handleGalleryDragEnd(event)"
@@ -3439,8 +3475,8 @@
                     </div>
 
                     <div class="gallery-actions">
-                        <button class="gallery-move-btn" onclick="moveGallery('${g.id}', -1)" title="${t.moveUp}">▲</button>
-                        <button class="gallery-move-btn" onclick="moveGallery('${g.id}', 1)" title="${t.moveDown}">▼</button>
+                        ${_manual ? `<button class="gallery-move-btn" onclick="moveGallery('${g.id}', -1)" title="${t.moveUp}">▲</button>
+                        <button class="gallery-move-btn" onclick="moveGallery('${g.id}', 1)" title="${t.moveDown}">▼</button>` : ''}
                         <button class="btn-icon" onclick="copyGalleryLink('${g.id}', 'preview', this)" title="${t.copyClientLink}">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
                         </button>
@@ -3473,7 +3509,10 @@
                     : `<div class="empty-state">${t.noGalleriesYet}</div>`;
                 return;
             }
-            container.innerHTML = vm.groups.map(group => {
+            const manualHint = _gallerySort === 'manual'
+                ? `<div class="manual-order-hint">${t.sortManualHint}</div>`
+                : '';
+            container.innerHTML = manualHint + vm.groups.map(group => {
                 const collapsed = _collapsedGroups.has(group.id);
                 const n = group.galleries.length;
                 const countLabel = `${n} ${n === 1 ? t.gallerySingular : t.galleryPlural}`;
@@ -3545,6 +3584,9 @@
         function filterGalleries(query) {
             if (!_galleriesData) return;
             _gallerySort = document.getElementById('gallerySortField')?.value || 'date';
+            // Direction toggle is meaningless in manual mode (order is fixed) — hide it.
+            const dirBtn = document.getElementById('gallerySortDirBtn');
+            if (dirBtn) dirBtn.style.display = _gallerySort === 'manual' ? 'none' : '';
             const vm = buildGalleryViewModel(_galleriesData, _collectionsData, { query, sortBy: _gallerySort, sortDir: _gallerySortDir, filters: _galleryFilters });
             renderGalleryItems(vm);
         }
@@ -4178,14 +4220,39 @@
                 const card = document.getElementById(`photo-item-${CSS.escape(f)}`);
                 if (card) card.classList.add('deleting');
             });
-            let errors = 0;
+            // Progress toast — bulk deletes of many photos otherwise give no feedback.
+            const toast = document.getElementById('uploadToast');
+            const spinner = document.getElementById('toastSpinner');
+            const successIcon = document.getElementById('toastSuccess');
+            const errorIcon = document.getElementById('toastError');
+            const message = document.getElementById('toastMessage');
+            spinner.style.display = 'block';
+            successIcon.style.display = 'none';
+            errorIcon.style.display = 'none';
+            message.textContent = t.deletingPhotosProgress(0, n);
+            toast.className = 'upload-toast visible';
+            let errors = 0, done = 0;
             for (const filename of filenames) {
                 try {
                     const res = await fetch(`/api/gallery/${galleryId}/photo/${encodeURIComponent(filename)}`, { method: 'DELETE' });
                     if (!res.ok) errors++;
                 } catch { errors++; }
+                done++;
+                message.textContent = t.deletingPhotosProgress(done, n);
             }
-            if (errors) showError(t.photosCouldNotBeDeleted(errors));
+            // Final toast state
+            spinner.style.display = 'none';
+            if (errors) {
+                errorIcon.style.display = 'block';
+                message.textContent = t.photosCouldNotBeDeleted(errors);
+                toast.className = 'upload-toast visible error';
+                setTimeout(() => toast.classList.remove('visible', 'error'), 4000);
+            } else {
+                successIcon.style.display = 'block';
+                message.textContent = t.photosDeletedDone(n);
+                toast.className = 'upload-toast visible success';
+                setTimeout(() => toast.classList.remove('visible', 'success'), 3000);
+            }
             togglePhotoSelection();
             if (_photosResizeObs) { _photosResizeObs.disconnect(); _photosResizeObs = null; }
             await refreshPhotosGrid(galleryId);
@@ -4266,8 +4333,14 @@
                         ${videoBadge}
                         <div class="photo-overlay-info">
                             <span class="photo-filename">${escapeHtml(photo.filename)}</span>
-                            <button class="photo-delete-btn" onclick="event.stopPropagation(); deletePhoto('${galleryId}', '${escapeAttr(photo.filename)}')" title="${t.delete}">${trashSvg}</button>
+                            <button class="photo-delete-btn" title="${t.delete}">${trashSvg}</button>
                         </div>`;
+                    // Attach via closure (not inline onclick) so filenames containing
+                    // apostrophes/quotes — common in French, e.g. "l'été.jpg" — don't break.
+                    card.querySelector('.photo-delete-btn').onclick = (e) => {
+                        e.stopPropagation();
+                        deletePhoto(galleryId, photo.filename);
+                    };
                     rowEl.appendChild(card);
                 });
                 grid.appendChild(rowEl);
@@ -4458,13 +4531,21 @@
                                 </div>
                                 <div class="comment-admin-text">${escapeHtml(c.text)}</div>
                             </div>
-                            <button class="comment-admin-delete" onclick="deleteComment('${galleryId}', '${escapeAttr(filename)}', '${escapeAttr(c.id)}')" title="${t.delete}">
+                            <button class="comment-admin-delete" data-filename="${escapeAttr(filename)}" data-comment-id="${escapeAttr(c.id)}" title="${t.delete}">
                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
                             </button>
                         </div>`).join('')}
                     </div>
                 </div>`;
             }).join('');
+
+            // Delegated handler (not inline onclick) so filenames with apostrophes/quotes
+            // — common in French, e.g. "l'été.jpg" — don't break the call.
+            list.onclick = (e) => {
+                const btn = e.target.closest('.comment-admin-delete');
+                if (!btn || !list.contains(btn)) return;
+                deleteComment(galleryId, btn.dataset.filename, btn.dataset.commentId);
+            };
         }
 
         async function deleteComment(galleryId, filename, commentId) {
@@ -5134,6 +5215,12 @@
         async function saveGalleryOrder() {
             const ids = Array.from(document.getElementById('galleryList').querySelectorAll('.gallery-item'))
                 .map(el => el.id.replace('gallery-item-', ''));
+            // Mirror the server's `order = index` locally so any later re-render keeps the
+            // manual arrangement instead of snapping back (server response isn't refetched).
+            if (Array.isArray(_galleriesData)) {
+                const orderMap = new Map(ids.map((id, idx) => [id, idx]));
+                _galleriesData.forEach(g => { if (orderMap.has(g.id)) g.order = orderMap.get(g.id); });
+            }
             try {
                 await fetch('/api/galleries/reorder', {
                     method: 'PATCH',

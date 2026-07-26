@@ -861,10 +861,15 @@ const imageLimiter = rateLimit({
     message: { error: 'Too many image requests, please slow down' }
 });
 
-// Rate limiter for admin routes that perform filesystem operations — 60 per minute per IP
+// Rate limiter for admin routes that perform filesystem operations — 300 per minute per IP.
+// These routes are already behind requireAuth (+ optional IP allowlist), so the abuse
+// surface is low; the cap only exists to bound runaway filesystem work. It also covers the
+// list routes (/api/galleries, /api/collections) that the dashboard re-fetches after every
+// action, so it must be high enough for legitimate bulk work (e.g. resetting favorites/views/
+// comments across many galleries in a row) not to trip "Too many requests, please slow down".
 const adminLimiter = rateLimit({
     windowMs: 60 * 1000,
-    max: 60,
+    max: 300,
     standardHeaders: true,
     legacyHeaders: false,
     message: { error: 'Too many requests, please slow down' }
@@ -2426,6 +2431,7 @@ app.get('/api/galleries', adminLimiter, requireAuth, (req, res) => {
                     viewCount: gallery.viewCount || 0,
                     downloadCount: gallery.downloadCount || 0,
                     collectionId,
+                    order: gallery.order,
                     downloadsEnabled: gallery.downloadsEnabled !== false,
                     commentsEnabled: gallery.commentsEnabled !== false,
                     clientLanguage: gallery.clientLanguage || 'auto'
