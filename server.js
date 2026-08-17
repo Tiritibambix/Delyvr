@@ -241,9 +241,15 @@ function purgeExpiredTrash() {
     let changed = false;
     for (const [id, g] of galleries.entries()) {
         if (g.deleted && g.deletedAt && (now - new Date(g.deletedAt).getTime()) > TRASH_RETENTION_MS) {
-            console.log(`[STARTUP] Auto-purge: gallery "${g.eventName}" (${id}) deleted at ${g.deletedAt}`);
-            hardDeleteGallery(id);
-            changed = true;
+            // Guard each hard-delete: this also runs on a timer (see setInterval below),
+            // so an fs failure on one gallery must not abort the loop or crash the process.
+            try {
+                console.log(`[TRASH] Auto-purge: gallery "${g.eventName}" (${id}) deleted at ${g.deletedAt}`);
+                hardDeleteGallery(id);
+                changed = true;
+            } catch (e) {
+                console.warn(`[TRASH] Auto-purge failed for ${id}: ${e.message}`);
+            }
         }
     }
     if (changed) saveGalleries();
@@ -356,6 +362,12 @@ loadGalleries();
 loadCollections();
 reconcileGalleries();
 purgeExpiredTrash();
+// Re-run on a timer too: the startup-only call never fires on a long-running server
+// (self-hosted Docker), so trash that crosses the retention threshold while the process
+// stays up would otherwise sit forever until the next restart. `.unref()` so the timer
+// alone doesn't keep the process alive (the HTTP server keeps it alive anyway).
+const TRASH_PURGE_INTERVAL_MS = 60 * 60 * 1000; // hourly
+setInterval(purgeExpiredTrash, TRASH_PURGE_INTERVAL_MS).unref();
 
 // Ensure directories exist
 ['uploads', 'backgrounds', 'thumbnails', 'previews', 'og-cache'].forEach(dir => {

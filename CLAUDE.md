@@ -265,7 +265,7 @@ All client pages (`preview.html`, `collection.html`) call `GET /api/settings` on
 
 ### Soft-delete and trash
 
-`DELETE /api/gallery/:id` soft-deletes only: sets `gallery.deleted = true` and `gallery.deletedAt = ISO date`, leaves files on disk. `hardDeleteGallery(id)` removes all files (uploads, thumbnails, previews, background, OG cache) and removes the gallery from any collections. `purgeExpiredTrash()` is called at startup and auto-purges galleries where `deletedAt` is older than `TRASH_RETENTION_MS` (3 days). All public routes check `getActiveGallery(galleryId)` and return 404 for deleted galleries.
+`DELETE /api/gallery/:id` soft-deletes only: sets `gallery.deleted = true` and `gallery.deletedAt = ISO date`, leaves files on disk. `hardDeleteGallery(id)` removes all files (uploads, thumbnails, previews, background, OG cache) and removes the gallery from any collections. `purgeExpiredTrash()` auto-purges galleries where `deletedAt` is older than `TRASH_RETENTION_MS` (3 days). It runs at startup **and** on an hourly `setInterval` (`.unref()`ed) — the startup-only call never fired on a long-running server, so expired trash sat forever until the next restart. Each `hardDeleteGallery` inside the loop is wrapped in `try/catch` so an fs failure can't abort the sweep or crash the timer. All public routes check `getActiveGallery(galleryId)` and return 404 for deleted galleries.
 
 ### OG images
 
@@ -465,7 +465,7 @@ Loaded by all client pages via `<script src="/shared.js">` before their inline `
 - **`?password` query param removed.** `requireAuth` only checks `X-Admin-Password` header.
 - **Visitor IDs are not authenticated.** Random client-generated strings, not security-sensitive.
 - **Gallery links are public by UUID.** No per-gallery password system.
-- **Soft-delete only.** `DELETE /api/gallery/:id` never removes files. `hardDeleteGallery(id)` does. Always call `saveGalleries()` after `hardDeleteGallery`. Auto-purge runs on startup via `purgeExpiredTrash()`.
+- **Soft-delete only.** `DELETE /api/gallery/:id` never removes files. `hardDeleteGallery(id)` does. Always call `saveGalleries()` after `hardDeleteGallery`. Auto-purge runs on startup **and** hourly via `purgeExpiredTrash()` (a `setInterval` — not startup-only, or expired trash never clears on a long-running server).
 - **`getActiveGallery(galleryId)`** returns the gallery only if it exists and `!gallery.deleted`. Use it in all public routes to return 404 for trashed galleries.
 - **ZIP downloads use `store: true`** (no compression). Content-Length is intentionally omitted — archiver adds variable per-file data descriptors during streaming that make pre-calculation unreliable and cause "unexpected end of archive" errors.
 - **Filename sanitisation allows Unicode.** Only truly dangerous filesystem characters are stripped (`<>:"/\|?*` and control chars). Accents, spaces, ampersands, and **apostrophes** are preserved. `SAFE_FILENAME_RE` reflects this.
