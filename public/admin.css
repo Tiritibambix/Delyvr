@@ -1003,6 +1003,8 @@ body { display: flex; flex-direction: column; height: 100%; }
     cursor: pointer; font-family: inherit; flex-shrink: 0;
 }
 .section-select-btn:hover { color: var(--text); border-color: var(--muted); }
+/* Used as an <a> too (e.g. "Back to galleries" on the comments page) */
+a.section-select-btn { text-decoration: none; display: inline-flex; align-items: center; }
 .section-select-btn.active { color: var(--accent); border-color: var(--accent); }
 
 /* ── BULK ACTION BAR ── */
@@ -1510,12 +1512,36 @@ body { display: flex; flex-direction: column; height: 100%; }
    Overrides the earlier rules. The source switches from ?thumb=1 (a 200px
    server-side *square crop*) to ?card=1 (800px, fit:inside) so the real
    aspect ratio survives, and object-fit:contain shows the whole frame. */
-.gallery-picker-list { grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; }
+.gallery-picker-list {
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 10px;
+    /* The list scrolls inside the card; align rows to the start so they keep
+       their natural height instead of being stretched or squeezed. */
+    flex: 1 1 auto;
+    min-height: 0;
+    align-content: start;
+}
 /* Reserve the meta line even when empty (e.g. the "no collection" entry), so
    every tile keeps the same internal rhythm. */
 .gallery-picker-count { min-height: 1.2em; }
-.gallery-picker-thumb { aspect-ratio: 4/3; background: var(--bg); }
-.gallery-picker-thumb img { object-fit: contain; }
+
+/* Explicit, non-shrinkable thumbnail box. `aspect-ratio` alone was not enough:
+   as a column flex child the thumb got squashed to zero height, which hid every
+   thumbnail and clipped the caption underneath (the tiles rendered as bare rows).
+   flex: 0 0 <height> pins it whatever the container does. */
+.gallery-picker-thumb {
+    flex: 0 0 140px;
+    height: 140px;
+    width: 100%;
+    aspect-ratio: auto;
+    background: var(--bg);
+    overflow: hidden;
+    display: flex; align-items: center; justify-content: center;
+}
+.gallery-picker-thumb img { width: 100%; height: 100%; object-fit: contain; display: block; }
+.gallery-picker-info { flex-shrink: 0; }
+
 @media (max-width: 600px) {
     .gallery-picker-list { grid-template-columns: repeat(2, 1fr); gap: 8px; }
+    .gallery-picker-thumb { flex-basis: 110px; height: 110px; }
 }

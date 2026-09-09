@@ -631,6 +631,17 @@ async function generateGalleryPreviews(galleryId, files) {
 }
 
 // Configure multer for photo uploads
+// busboy hands multipart filenames back latin1-decoded, so a UTF-8 name arrives
+// mojibaked ("Préparatifs" -> "PrÃ©paratifs") and would be written to disk that way,
+// where it sticks forever. Re-decode only when the bytes really are UTF-8: a
+// genuinely latin1 name yields invalid UTF-8 (U+FFFD) and is left untouched.
+function decodeUploadFilename(name) {
+    // Skip names with no high-latin1 characters — nothing to re-decode there.
+    if (typeof name !== 'string' || !/[À-ÿ]/.test(name)) return name;
+    const redecoded = Buffer.from(name, 'latin1').toString('utf8');
+    return redecoded.includes('�') ? name : redecoded;
+}
+
 const storage = multer.diskStorage({
     destination: (req, file, cb) => {
         const galleryId = req.galleryId || req.params.galleryId;
@@ -642,7 +653,7 @@ const storage = multer.diskStorage({
     },
     filename: (req, file, cb) => {
         // Allow accented characters, spaces, &, etc. — only strip truly unsafe filesystem chars
-        const safeName = file.originalname
+        const safeName = decodeUploadFilename(file.originalname)
             .normalize('NFC')
             .replace(/[<>:"/\\|?*\x00-\x1f]/g, '_')  // forbidden on Windows & Unix
             .replace(/^\.+/, '_')                       // no hidden files
