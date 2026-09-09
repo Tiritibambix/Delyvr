@@ -3314,44 +3314,66 @@
         // cross-column drag & drop is gone; this is its replacement.
         let _colPickerGalleryId = null;
 
+        // ── SHARED PICKER RENDERER ─────────────────────────────────────
+        // Both pickers — "add galleries to a collection" and "add this gallery to
+        // a collection" — render their list through this one function, so their
+        // markup is identical by construction and can never drift apart.
+        // items: { value, name, meta, thumbHtml, disabled, title, selected }
+        function renderPickerItems(listEl, items, emptyMsg, onPick) {
+            if (!items.length) {
+                listEl.innerHTML = `<div class="gallery-picker-empty">${emptyMsg}</div>`;
+                listEl.onclick = null;
+                return;
+            }
+            listEl.innerHTML = items.map(it => `
+                <button class="gallery-picker-item${it.selected ? ' selected' : ''}" data-value="${escapeAttr(it.value)}"
+                        ${it.disabled ? `disabled title="${escapeAttr(it.title || '')}"` : ''}>
+                    <div class="gallery-picker-thumb">${it.thumbHtml}</div>
+                    <div class="gallery-picker-info">
+                        <div class="gallery-picker-name">${escapeHtml(it.name)}</div>
+                        <div class="gallery-picker-count">${escapeHtml(it.meta || '')}</div>
+                    </div>
+                </button>`).join('');
+            // Delegated — names/ids must never sit inside an inline onclick.
+            listEl.onclick = (e) => {
+                const btn = e.target.closest('.gallery-picker-item');
+                if (!btn || !listEl.contains(btn) || btn.disabled) return;
+                onPick(btn.dataset.value, btn);
+            };
+        }
+
         function openCollectionPicker(galleryId) {
             _colPickerGalleryId = galleryId;
             const gallery = (_galleriesData || []).find(g => g.id === galleryId);
             const currentId = gallery ? gallery.collectionId : null;
-            const list = document.getElementById('collectionPickerList');
-            const cols = _collectionsData || [];
-
             const thumbSvg = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 2 2 7l10 5 10-5-10-5Z"/><path d="m2 17 10 5 10-5"/><path d="m2 12 10 5 10-5"/></svg>`;
-            let html = '';
 
-            // Offer "remove" only when the gallery actually belongs somewhere
+            const items = [];
+            // "Remove" is only meaningful when the gallery belongs somewhere
             if (currentId) {
-                html += `<button class="gallery-picker-item" onclick="pickCollectionForGallery(null)">
-                    <div class="gallery-picker-thumb">${thumbSvg}</div>
-                    <div class="gallery-picker-info">
-                        <div class="gallery-picker-name">${escapeHtml(t.pickerNoCollection)}</div>
-                    </div>
-                </button>`;
+                items.push({ value: '', name: t.pickerNoCollection, meta: '', thumbHtml: thumbSvg });
             }
-
-            html += cols.map(c => {
+            (_collectionsData || []).forEach(c => {
                 const already = c.id === currentId;
-                const thumbHtml = c.hasBackground
-                    ? `<img src="/api/collection/${c.id}/background?card=1&v=${c.bgVersion || 0}" alt="" loading="lazy">`
-                    : thumbSvg;
                 const n = c.galleryIds.length;
-                return `<button class="gallery-picker-item"
-                        ${already ? `disabled title="${t.alreadyInCollection}"` : `onclick="pickCollectionForGallery('${c.id}')"`}>
-                    <div class="gallery-picker-thumb">${thumbHtml}</div>
-                    <div class="gallery-picker-info">
-                        <div class="gallery-picker-name">${escapeHtml(c.name)}</div>
-                        <div class="gallery-picker-count">${n} ${n === 1 ? t.gallerySingular : t.galleryPlural}${already ? ' · ✓' : ''}</div>
-                    </div>
-                </button>`;
-            }).join('');
+                items.push({
+                    value: c.id,
+                    name: c.name,
+                    meta: `${n} ${n === 1 ? t.gallerySingular : t.galleryPlural}${already ? ' · ✓' : ''}`,
+                    thumbHtml: c.hasBackground
+                        ? `<img src="/api/collection/${c.id}/background?card=1&v=${c.bgVersion || 0}" alt="" loading="lazy">`
+                        : thumbSvg,
+                    disabled: already,
+                    title: already ? t.alreadyInCollection : ''
+                });
+            });
 
-            if (!cols.length && !currentId) html = `<div class="gallery-picker-empty">${t.noCollectionsYet}</div>`;
-            list.innerHTML = html;
+            renderPickerItems(
+                document.getElementById('collectionPickerList'),
+                items,
+                t.noCollectionsYet,
+                (value) => pickCollectionForGallery(value || null)
+            );
             document.getElementById('collectionPickerModal').classList.add('active');
         }
 
@@ -3399,43 +3421,39 @@
             _pickerSelected = new Set();
             const collection = (_collectionsData || []).find(c => c.id === collectionId);
             const inCollection = new Set(collection ? collection.galleryIds : []);
-            const all = _galleriesData || [];
-            const list = document.getElementById('galleryPickerList');
-            if (all.length === 0) {
-                list.innerHTML = `<div class="gallery-picker-empty">${t.noGalleriesYetPicker}</div>`;
-            } else {
-                const thumbSvg = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>`;
-                list.innerHTML = all.map(g => {
-                    const already = inCollection.has(g.id);
+            const thumbSvg = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>`;
+            const items = (_galleriesData || []).map(g => {
+                const already = inCollection.has(g.id);
+                const n = g.fileCount;
+                return {
+                    value: g.id,
+                    name: g.eventName,
+                    meta: `${n} ${n !== 1 ? t.photoPlural : t.photoSingular}${already ? ' · ✓' : ''}`,
                     // ?card=1 (fit:inside) instead of ?thumb=1 (a 200px square crop)
                     // so the picker shows the real aspect ratio, uncropped.
-                    const thumbHtml = g.hasBackground
+                    thumbHtml: g.hasBackground
                         ? `<img src="/api/gallery/${g.id}/background?card=1&v=${g.bgVersion || 0}" alt="" loading="lazy">`
-                        : thumbSvg;
-                    return `<button class="gallery-picker-item" id="picker-item-${g.id}"
-                            ${already ? `disabled title="${t.alreadyInCollection}"` : `onclick="togglePickerItem('${g.id}')"`}>
-                        <div class="gallery-picker-thumb">${thumbHtml}</div>
-                        <div class="gallery-picker-info">
-                            <div class="gallery-picker-name">${escapeHtml(g.eventName)}</div>
-                            <div class="gallery-picker-count">${g.fileCount} ${g.fileCount !== 1 ? t.photoPlural : t.photoSingular}${already ? ' · ✓' : ''}</div>
-                        </div>
-                    </button>`;
-                }).join('');
-            }
+                        : thumbSvg,
+                    disabled: already,
+                    title: already ? t.alreadyInCollection : ''
+                };
+            });
+
+            renderPickerItems(
+                document.getElementById('galleryPickerList'),
+                items,
+                t.noGalleriesYetPicker,
+                // Multi-select here: the footer button applies the whole batch at once.
+                (id, btn) => {
+                    if (_pickerSelected.has(id)) { _pickerSelected.delete(id); btn.classList.remove('selected'); }
+                    else { _pickerSelected.add(id); btn.classList.add('selected'); }
+                    updatePickerConfirmBtn();
+                }
+            );
             updatePickerConfirmBtn();
             document.getElementById('galleryPickerModal').classList.add('active');
         }
 
-        function togglePickerItem(galleryId) {
-            if (_pickerSelected.has(galleryId)) {
-                _pickerSelected.delete(galleryId);
-                document.getElementById(`picker-item-${galleryId}`)?.classList.remove('selected');
-            } else {
-                _pickerSelected.add(galleryId);
-                document.getElementById(`picker-item-${galleryId}`)?.classList.add('selected');
-            }
-            updatePickerConfirmBtn();
-        }
 
         function updatePickerConfirmBtn() {
             const btn = document.getElementById('galleryPickerConfirm');
