@@ -1003,8 +1003,25 @@ body { display: flex; flex-direction: column; height: 100%; }
     cursor: pointer; font-family: inherit; flex-shrink: 0;
 }
 .section-select-btn:hover { color: var(--text); border-color: var(--muted); }
-/* Used as an <a> too (e.g. "Back to galleries" on the comments page) */
-a.section-select-btn { text-decoration: none; display: inline-flex; align-items: center; }
+
+/* Mirrors the client-side action buttons (.show-gallery-btn / .back-to-collection
+   in preview.html): same inline-flex shape, 10px/18px padding, 3px radius and
+   13px medium text. Colours come from the admin theme tokens instead of the
+   hardcoded white the client uses, since that version always sits over a photo. */
+.client-btn {
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 10px 18px;
+    background: transparent;
+    border: 1px solid var(--border2);
+    color: var(--text);
+    text-decoration: none;
+    border-radius: 3px;
+    font-size: 13px; font-weight: 500;
+    cursor: pointer; font-family: inherit;
+    white-space: nowrap;
+    transition: background 0.2s, border-color 0.2s, color 0.2s;
+}
+.client-btn:hover { background: var(--bg3); border-color: var(--muted); }
 .section-select-btn.active { color: var(--accent); border-color: var(--accent); }
 
 /* ── BULK ACTION BAR ── */
@@ -1525,10 +1542,16 @@ a.section-select-btn { text-decoration: none; display: inline-flex; align-items:
    every tile keeps the same internal rhythm. */
 .gallery-picker-count { min-height: 1.2em; }
 
-/* Explicit, non-shrinkable thumbnail box. `aspect-ratio` alone was not enough:
-   as a column flex child the thumb got squashed to zero height, which hid every
-   thumbnail and clipped the caption underneath (the tiles rendered as bare rows).
-   flex: 0 0 <height> pins it whatever the container does. */
+/* Hard floor on the tile height. Pinning only the thumbnail was not enough: the
+   grid row itself was collapsing to ~42px, so the 140px thumb was simply clipped
+   by the tile's overflow:hidden and the caption never showed. Sizing the row
+   explicitly removes any dependency on how the grid/flex intrinsic sizing
+   resolves inside the scrolling card. */
+.gallery-picker-list { grid-auto-rows: minmax(190px, auto); }
+.gallery-picker-item { min-height: 190px; }
+
+/* Explicit, non-shrinkable thumbnail box — `aspect-ratio` alone let it be
+   squashed to zero as a column flex child. */
 .gallery-picker-thumb {
     flex: 0 0 140px;
     height: 140px;
