@@ -764,7 +764,9 @@
         .comment-drawer {
             position: fixed;
             top: 0; right: 0;
-            width: 360px;
+            /* Kept narrow on purpose: the drawer stays pinned open on desktop and
+               must eat as little of the photo as possible (see updateDrawerShift). */
+            width: 300px;
             height: 100vh;
             background: var(--bg-secondary);
             border-left: 1px solid var(--border);
@@ -1057,6 +1059,11 @@
         .lightbox-next {
             right: 20px;
         }
+
+        /* Pinned drawer: the photo keeps its exact size and is shifted left by JS.
+           The next arrow moves clear of the drawer so it stays clickable. */
+        .lightbox-content { transition: transform 0.25s ease; }
+        .lightbox.drawer-open .lightbox-next { right: 320px; }
 
         .lightbox-content {
             position: relative;
@@ -1948,13 +1955,41 @@
             }
         });
 
+        // Drawer geometry. The photo is NEVER resized when the drawer opens:
+        // the lightbox reserves no space, the content is shifted left instead.
+        const DRAWER_WIDTH = 300;
+        const DRAWER_SHIFT = DRAWER_WIDTH / 2; // re-centres content in the space left over
+
+        function isDrawerMobile() {
+            return window.matchMedia('(max-width: 768px), (max-height: 500px)').matches;
+        }
+
+        // Shifts .lightbox-content left so the drawer doesn't sit on top of the
+        // photo — without touching its size (a transform doesn't affect layout).
+        // Clamped to the free margin actually available on the left, otherwise a
+        // very wide photo would be pushed off the left edge of the screen.
+        function updateDrawerShift() {
+            const content = document.querySelector('.lightbox-content');
+            if (!content) return;
+            const open = document.getElementById('lightbox').classList.contains('drawer-open');
+            content.style.transform = '';               // measure untransformed
+            if (!open || isDrawerMobile()) return;
+            const left = content.getBoundingClientRect().left;
+            const shift = Math.min(DRAWER_SHIFT, Math.max(0, left));
+            if (shift > 0) content.style.transform = `translateX(-${shift}px)`;
+        }
+
         function openCommentDrawer() {
             if (!commentsEnabled) return;
             const photo = photos[currentPhotoIndex];
             if (!photo) return;
             _commentDrawerFilename = photo.filename;
             document.getElementById('commentDrawer').classList.add('open');
-            document.getElementById('commentDrawerBackdrop').classList.add('open');
+            // Backdrop on mobile only — on desktop it would dim the very photo
+            // we are keeping visible next to the thread.
+            if (isDrawerMobile()) document.getElementById('commentDrawerBackdrop').classList.add('open');
+            document.getElementById('lightbox').classList.add('drawer-open');
+            updateDrawerShift();
             refreshCommentNameUI();
             loadCommentsForCurrentPhoto();
         }
@@ -1962,6 +1997,16 @@
         function closeCommentDrawer() {
             document.getElementById('commentDrawer').classList.remove('open');
             document.getElementById('commentDrawerBackdrop').classList.remove('open');
+            document.getElementById('lightbox').classList.remove('drawer-open');
+            updateDrawerShift();
+        }
+
+        // Recompute the shift whenever the content box changes size — covers the
+        // async preview load, switching photos and window resizes in one place.
+        // A transform doesn't alter the observed box, so this can't loop.
+        if (window.ResizeObserver) {
+            const _lbContent = document.querySelector('.lightbox-content');
+            if (_lbContent) new ResizeObserver(() => updateDrawerShift()).observe(_lbContent);
         }
 
         function renderCommentDrawerList() {
@@ -2428,7 +2473,16 @@
             const photo = photos[currentPhotoIndex];
             const downloadUrl = `/api/gallery/${galleryId}/download/${encodeURIComponent(photo.filename)}`;
 
-            closeCommentDrawer();
+            // On desktop the drawer is pinned: it stays open across photos (peer
+            // critique reading) and simply reloads the new photo's thread. On
+            // mobile it still closes on navigation, as before.
+            const drawerOpen = document.getElementById('commentDrawer').classList.contains('open');
+            if (drawerOpen && !isDrawerMobile()) {
+                _commentDrawerFilename = photo.filename;
+                loadCommentsForCurrentPhoto();
+            } else {
+                closeCommentDrawer();
+            }
             updateCommentButtonBadges(photo.commentCount || 0);
 
             if (critiqueMode) {

@@ -117,20 +117,6 @@
         </div>
     </div>
 
-    <!-- Comments Modal -->
-    <div class="comments-modal" id="commentsModal" onclick="if(event.target===this) closeCommentsModal()">
-        <div class="comments-modal-card">
-            <div class="comments-modal-header">
-                <h3 id="commentsModalTitle">Comments</h3>
-                <div style="display:flex;align-items:center;gap:8px;">
-                    <button class="btn-fav-action" id="commentsClearAllBtn" onclick="resetComments(_commentsGalleryId)" style="display:none"><span id="commentsClearAllBtnText">Clear all</span></button>
-                    <button class="comments-modal-close" onclick="closeCommentsModal()">×</button>
-                </div>
-            </div>
-            <div class="comments-list" id="commentsList"></div>
-        </div>
-    </div>
-
     <!-- Profile Modal -->
     <div class="profile-modal" id="profileModal" onclick="if(event.target===this) closeProfileModal()">
         <div class="profile-modal-card">
@@ -416,6 +402,21 @@
             </div>
             </section>
 
+            <!-- VIEW: Gallery comments — full-page reading, built for peer critique.
+                 Left rail lists commented photos, right pane shows the selected
+                 photo large with its whole thread. -->
+            <section class="view" id="view-gallery-comments">
+                <div class="view-header">
+                    <a class="btn-secondary" href="#/galleries" id="commentsBackBtn">Back to galleries</a>
+                    <h1 class="view-title" id="commentsPageTitle">Comments</h1>
+                    <button class="btn-secondary view-header-action" id="commentsPageClearBtn" onclick="clearAllCommentsFromPage()">Clear all</button>
+                </div>
+                <div class="comments-page">
+                    <div class="comments-rail" id="commentsRail"></div>
+                    <div class="comments-detail" id="commentsDetail"></div>
+                </div>
+            </section>
+
         </main>
     </div>
 
@@ -522,7 +523,8 @@
             byId('favCopyRankingBtnText', t.copyRankingLink);
             byId('favExportBtn', t.exportCsv);
             byId('favDownloadPlaceholderOption', t.downloadPhotos);
-            byId('commentsClearAllBtnText', t.clearAll);
+            byId('commentsBackBtn', t.backToGalleries);
+            byId('commentsPageClearBtn', t.clearAll);
 
             byId('profileModalTitle', t.profileTitle);
             byId('profileWebsiteLabel', t.website);
@@ -589,26 +591,33 @@
         // _galleriesData cache, no build step, no extra server route) while
         // giving a real page hierarchy. Unknown routes fall back to the list.
         const ROUTES = {
-            'galleries':   'view-galleries',
-            'collections': 'view-collections',
-            'new':         'view-new'
+            'galleries':        'view-galleries',
+            'collections':      'view-collections',
+            'new':              'view-new',
+            'gallery-comments': 'view-gallery-comments'
         };
         // Gallery and collection creation share one view, so the older
         // per-entity URLs still resolve there instead of 404-ing to the list.
         const ROUTE_ALIASES = { 'new-gallery': 'new', 'new-collection': 'new' };
         const DEFAULT_ROUTE = 'galleries';
 
-        // '#/new/gallery' -> 'new-gallery' -> 'new'; unknown -> DEFAULT_ROUTE.
-        function routeFromHash() {
+        // Returns { route, params }. Parameterised routes are matched on segments:
+        // '#/gallery/<id>/comments' -> { route: 'gallery-comments', params: { galleryId } }.
+        // Flat routes keep the old behaviour: '#/new/gallery' -> 'new-gallery' -> 'new'.
+        function parseHash() {
             const raw = (location.hash || '').replace(/^#\/?/, '').replace(/\/+$/, '');
-            if (!raw) return DEFAULT_ROUTE;
-            const key = raw.replace(/\//g, '-');
+            if (!raw) return { route: DEFAULT_ROUTE, params: {} };
+            const seg = raw.split('/');
+            if (seg[0] === 'gallery' && seg[1] && seg[2] === 'comments') {
+                return { route: 'gallery-comments', params: { galleryId: seg[1] } };
+            }
+            const key = seg.join('-');
             const resolved = ROUTE_ALIASES[key] || key;
-            return ROUTES[resolved] ? resolved : DEFAULT_ROUTE;
+            return ROUTES[resolved] ? { route: resolved, params: {} } : { route: DEFAULT_ROUTE, params: {} };
         }
 
         function renderRoute() {
-            const route = routeFromHash();
+            const { route, params } = parseHash();
             Object.entries(ROUTES).forEach(([key, viewId]) => {
                 const el = document.getElementById(viewId);
                 if (el) el.classList.toggle('active', key === route);
@@ -621,6 +630,7 @@
             if (sb) sb.classList.remove('open');
             const main = document.querySelector('.admin-main');
             if (main) main.scrollTop = 0;
+            if (route === 'gallery-comments') loadGalleryCommentsPage(params.galleryId);
         }
 
         function toggleSidebar() {
@@ -2649,115 +2659,163 @@
             document.getElementById('favoritesModal').classList.remove('active');
         }
 
-        let _commentsGalleryId = null;
+        // ── GALLERY COMMENTS PAGE ──────────────────────────────────────
+        // Full-page reading view (#/gallery/:id/comments), replacing the old
+        // 700px modal: peer critique needs the photo visible beside its thread.
+        let _cpGalleryId = null;
+        let _cpEventName = '';
+        let _cpPhotos = [];      // commented photos, gallery order, each with .comments
+        let _cpSelected = null;  // filename of the selected photo
 
-        async function viewComments(galleryId) {
-            _commentsGalleryId = galleryId;
+        // Gallery card action -> navigate to the page (the modal is gone).
+        function viewComments(galleryId) {
+            location.hash = `#/gallery/${galleryId}/comments`;
+        }
+
+        async function loadGalleryCommentsPage(galleryId) {
+            if (!galleryId) { location.hash = '#/galleries'; return; }
+            _cpGalleryId = galleryId;
             try {
-                const res = await fetch(`/api/gallery/${galleryId}/comments`);
-                if (!res.ok) throw new Error('Failed');
-                const data = await res.json();
-                const list = document.getElementById('commentsList');
-                const clearBtn = document.getElementById('commentsClearAllBtn');
-                document.getElementById('commentsModalTitle').textContent = t.commentsTitleWithCount(data.comments.length);
+                // /comments carries the threads; /photos gives the gallery order —
+                // hence the critique number, same convention as preview.html.
+                const [cRes, pRes] = await Promise.all([
+                    fetch(`/api/gallery/${galleryId}/comments`),
+                    fetch(`/api/gallery/${galleryId}/photos`)
+                ]);
+                if (!cRes.ok) throw new Error('Failed');
+                const cData = await cRes.json();
+                const pData = pRes.ok ? await pRes.json() : { photos: [], eventName: '' };
+                _cpEventName = pData.eventName || '';
 
-                if (data.comments.length === 0) {
-                    list.innerHTML = `<p class="comments-empty">${t.noCommentsYet}</p>`;
-                    clearBtn.style.display = 'none';
-                } else {
-                    _renderCommentGroups(galleryId, data.comments, list);
-                    clearBtn.style.display = 'inline';
+                const byFile = new Map();
+                (cData.comments || []).forEach(c => {
+                    if (!byFile.has(c.filename)) byFile.set(c.filename, []);
+                    byFile.get(c.filename).push(c);
+                });
+                byFile.forEach(arr => arr.sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt)));
+
+                _cpPhotos = (pData.photos || [])
+                    .map((p, i) => ({ ...p, number: i + 1, comments: byFile.get(p.filename) || [] }))
+                    .filter(p => p.comments.length > 0);
+
+                // Comments whose photo was deleted must still be readable and removable
+                byFile.forEach((arr, filename) => {
+                    if (_cpPhotos.some(p => p.filename === filename)) return;
+                    _cpPhotos.push({
+                        filename, number: null, comments: arr,
+                        thumbnailUrl: `/api/gallery/${galleryId}/photo/${encodeURIComponent(filename)}?thumb=1`,
+                        previewUrl: `/api/gallery/${galleryId}/photo/${encodeURIComponent(filename)}?preview=1`
+                    });
+                });
+
+                if (!_cpPhotos.some(p => p.filename === _cpSelected)) {
+                    _cpSelected = _cpPhotos.length ? _cpPhotos[0].filename : null;
                 }
-
-                document.getElementById('commentsModal').classList.add('active');
+                renderCommentsPage();
             } catch (err) {
                 showError(t.couldNotLoadComments);
             }
         }
 
-        // Groups flattened comments by photo so the modal recaps "which photos got
-        // commented, with what" rather than a flat list — photo with the most
-        // recent comment activity shown first.
-        function _renderCommentGroups(galleryId, comments, list) {
-            const groups = new Map();
-            comments.forEach(c => {
-                if (!groups.has(c.filename)) groups.set(c.filename, { thumbnailUrl: c.thumbnailUrl, items: [] });
-                groups.get(c.filename).items.push(c);
-            });
+        function renderCommentsPage() {
+            const total = _cpPhotos.reduce((n, p) => n + p.comments.length, 0);
+            const titleEl = document.getElementById('commentsPageTitle');
+            if (titleEl) {
+                titleEl.textContent = _cpEventName
+                    ? `${_cpEventName} — ${t.commentsTitleWithCount(total)}`
+                    : t.commentsTitleWithCount(total);
+            }
+            const clearBtn = document.getElementById('commentsPageClearBtn');
+            if (clearBtn) clearBtn.style.display = total > 0 ? '' : 'none';
+            renderCommentsRail();
+            renderCommentsDetail();
+        }
 
-            const filenames = [...groups.keys()].sort((a, b) => {
-                const latest = items => Math.max(...items.map(c => new Date(c.createdAt).getTime()));
-                return latest(groups.get(b).items) - latest(groups.get(a).items);
-            });
-
-            list.innerHTML = filenames.map(filename => {
-                const group = groups.get(filename);
-                const items = [...group.items].sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
-                return `
-                <div class="comment-photo-group">
-                    <div class="comment-photo-header">
-                        <img class="comment-photo-thumb" src="${group.thumbnailUrl}" alt="" loading="lazy">
-                        <div class="comment-photo-meta">
-                            <span class="comment-photo-filename">${escapeHtml(filename)}</span>
-                            <span class="comment-photo-count">${items.length} ${items.length > 1 ? t.commentPlural : t.commentSingular}</span>
-                        </div>
+        function renderCommentsRail() {
+            const rail = document.getElementById('commentsRail');
+            if (!rail) return;
+            rail.innerHTML = _cpPhotos.map(p => {
+                const n = p.comments.length;
+                return `<button class="comments-rail-item${p.filename === _cpSelected ? ' selected' : ''}" data-filename="${escapeAttr(p.filename)}">
+                    <div class="comments-rail-thumb"><img src="${p.thumbnailUrl}" alt="" loading="lazy"></div>
+                    <div class="comments-rail-meta">
+                        <span class="comments-rail-name">${p.number ? `<b>#${p.number}</b> ` : ''}${escapeHtml(p.filename)}</span>
+                        <span class="comments-rail-count">${n} ${n > 1 ? t.commentPlural : t.commentSingular}</span>
                     </div>
-                    <div class="comment-photo-items">
-                        ${items.map(c => `
-                        <div class="comment-admin-row" id="comment-row-${escapeAttr(c.id)}">
-                            <div class="comment-admin-body">
-                                <div class="comment-admin-head">
-                                    <span class="comment-admin-name">${escapeHtml(c.name || t.guest)}</span>
-                                    <span class="comment-admin-date">${new Date(c.createdAt).toLocaleString()}</span>
-                                </div>
-                                <div class="comment-admin-text">${escapeHtml(c.text)}</div>
-                            </div>
-                            <button class="comment-admin-delete" data-filename="${escapeAttr(filename)}" data-comment-id="${escapeAttr(c.id)}" title="${t.delete}">
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
-                            </button>
-                        </div>`).join('')}
-                    </div>
-                </div>`;
+                </button>`;
             }).join('');
-
-            // Delegated handler (not inline onclick) so filenames with apostrophes/quotes
-            // — common in French, e.g. "l'été.jpg" — don't break the call.
-            list.onclick = (e) => {
-                const btn = e.target.closest('.comment-admin-delete');
-                if (!btn || !list.contains(btn)) return;
-                deleteComment(galleryId, btn.dataset.filename, btn.dataset.commentId);
+            // Delegated: a filename must never sit inside an inline onclick (apostrophes).
+            rail.onclick = (e) => {
+                const btn = e.target.closest('.comments-rail-item');
+                if (!btn || !rail.contains(btn)) return;
+                _cpSelected = btn.dataset.filename;
+                renderCommentsPage();
             };
         }
 
+        function renderCommentsDetail() {
+            const box = document.getElementById('commentsDetail');
+            if (!box) return;
+            if (!_cpPhotos.length) {
+                box.innerHTML = `<div class="empty-state">${t.noCommentsYet}</div>`;
+                box.onclick = null;
+                return;
+            }
+            const photo = _cpPhotos.find(p => p.filename === _cpSelected);
+            if (!photo) {
+                box.innerHTML = `<div class="empty-state">${t.selectAPhoto}</div>`;
+                box.onclick = null;
+                return;
+            }
+
+            const trashSvg = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>`;
+
+            box.innerHTML = `
+                <div class="comments-photo-wrap">
+                    <img class="comments-photo" src="${photo.previewUrl}" alt="">
+                    <div class="comments-photo-caption">${photo.number ? `<b>#${photo.number}</b> · ` : ''}${escapeHtml(photo.filename)}</div>
+                </div>
+                <div class="comments-thread">
+                    ${photo.comments.map(c => `
+                    <div class="comment-row">
+                        <div class="comment-row-head">
+                            <span class="comment-row-name">${escapeHtml(c.name || t.guest)}</span>
+                            <span class="comment-row-date">${new Date(c.createdAt).toLocaleString()}</span>
+                            <button class="comment-row-del" data-filename="${escapeAttr(photo.filename)}" data-comment-id="${escapeAttr(c.id)}" title="${t.delete}">${trashSvg}</button>
+                        </div>
+                        <div class="comment-row-text">${escapeHtml(c.text)}</div>
+                    </div>`).join('')}
+                </div>`;
+
+            box.onclick = (e) => {
+                const btn = e.target.closest('.comment-row-del');
+                if (!btn || !box.contains(btn)) return;
+                deleteComment(_cpGalleryId, btn.dataset.filename, btn.dataset.commentId);
+            };
+        }
+
+        // Deletes one comment, then re-renders from local state — no DOM surgery.
         async function deleteComment(galleryId, filename, commentId) {
             try {
                 const res = await fetch(`/api/gallery/${galleryId}/comments/${encodeURIComponent(filename)}/${encodeURIComponent(commentId)}`, { method: 'DELETE' });
                 if (!res.ok) throw new Error('Failed');
-
-                const row = document.getElementById(`comment-row-${CSS.escape(commentId)}`);
-                const group = row ? row.closest('.comment-photo-group') : null;
-                if (row) row.remove();
-
-                if (group) {
-                    const remainingInGroup = group.querySelectorAll('.comment-admin-row').length;
-                    if (remainingInGroup === 0) {
-                        group.remove();
-                    } else {
-                        const countEl = group.querySelector('.comment-photo-count');
-                        if (countEl) countEl.textContent = `${remainingInGroup} ${remainingInGroup > 1 ? t.commentPlural : t.commentSingular}`;
+                const photo = _cpPhotos.find(p => p.filename === filename);
+                if (photo) {
+                    photo.comments = photo.comments.filter(c => c.id !== commentId);
+                    if (photo.comments.length === 0) {
+                        _cpPhotos = _cpPhotos.filter(p => p.filename !== filename);
+                        if (_cpSelected === filename) _cpSelected = _cpPhotos.length ? _cpPhotos[0].filename : null;
                     }
                 }
-
-                const remaining = document.querySelectorAll('#commentsList .comment-admin-row').length;
-                document.getElementById('commentsModalTitle').textContent = t.commentsTitleWithCount(remaining);
-                if (remaining === 0) {
-                    document.getElementById('commentsList').innerHTML = `<p class="comments-empty">${t.noCommentsYet}</p>`;
-                    document.getElementById('commentsClearAllBtn').style.display = 'none';
-                }
+                renderCommentsPage();
                 loadGalleries();
             } catch (err) {
                 showError(t.couldNotDeleteComment);
             }
+        }
+
+        function clearAllCommentsFromPage() {
+            resetComments(_cpGalleryId);
         }
 
         async function resetComments(galleryId) {
@@ -2765,15 +2823,15 @@
             try {
                 const res = await fetch(`/api/gallery/${galleryId}/comments`, { method: 'DELETE' });
                 if (!res.ok) throw new Error('Failed');
-                closeCommentsModal();
+                if (galleryId === _cpGalleryId) {
+                    _cpPhotos = [];
+                    _cpSelected = null;
+                    renderCommentsPage();
+                }
                 loadGalleries();
             } catch (err) {
                 showError(t.couldNotResetComments);
             }
-        }
-
-        function closeCommentsModal() {
-            document.getElementById('commentsModal').classList.remove('active');
         }
 
         async function toggleCollectionDownloads(collectionId, enabled, checkbox) {
