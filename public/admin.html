@@ -272,7 +272,7 @@
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2 2 7l10 5 10-5-10-5Z"/><path d="m2 17 10 5 10-5"/><path d="m2 12 10 5 10-5"/></svg>
                     <span id="navCollectionsLabel">Collections</span>
                 </a>
-                <a class="nav-item" href="#/new/gallery" data-route="new-gallery">
+                <a class="nav-item" href="#/new" data-route="new">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
                     <span id="navNewLabel">Create</span>
                 </a>
@@ -296,13 +296,17 @@
         <main class="admin-main">
             <button class="sidebar-toggle" id="sidebarToggle" onclick="toggleSidebar()" title="Menu">☰</button>
 
-            <!-- VIEW: New gallery -->
-            <section class="view" id="view-new-gallery">
+            <!-- VIEW: Create — gallery and collection forms side by side on
+                 desktop, stacked on mobile (see .new-grid). -->
+            <section class="view" id="view-new">
                 <div class="view-header">
-                    <h1 class="view-title" id="viewNewGalleryTitle">New gallery</h1>
+                    <h1 class="view-title" id="viewNewTitle">Create</h1>
                 </div>
 
+                <div class="new-grid">
+
             <div id="uploadSection" class="form-card">
+                <div class="form-section-label" id="newGalleryLabel">New gallery</div>
                 <input type="text" class="form-input" id="eventName" placeholder="Event name">
                 <div class="drop-zone" id="dropZone">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 16V4m0 0L8 8m4-4l4 4M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2" stroke-linecap="round" stroke-linejoin="round"/></svg>
@@ -339,7 +343,6 @@
                     <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
                     <p class="progress-text" id="progressText">Uploading...</p>
                 </div>
-            </div>
 
                 <div class="result-section" id="resultSection">
                     <h3 id="resultTitle">Gallery created</h3>
@@ -350,15 +353,10 @@
                     </div>
                     <button class="new-upload-btn" id="dismissResultBtn" onclick="document.getElementById('resultSection').classList.remove('visible')">Dismiss</button>
                 </div>
-            </section>
-
-            <!-- VIEW: New collection -->
-            <section class="view" id="view-new-collection">
-                <div class="view-header">
-                    <h1 class="view-title" id="viewNewCollectionTitle">New collection</h1>
-                </div>
+            </div>
 
             <div class="form-card">
+                <div class="form-section-label" id="newCollectionLabel">New collection</div>
                 <input type="text" class="form-input" id="newCollectionName" placeholder="Collection name" maxlength="200">
                 <div class="drop-zone-small" id="colBgDropZone">
                     <img class="bg-preview-small" id="colBgPreview">
@@ -367,13 +365,14 @@
                 <input type="file" id="colBgInput" accept="image/*" style="display:none">
                 <button class="btn-secondary" id="createCollectionBtn" onclick="createCollection()">Create collection</button>
             </div>
+
+                </div>
             </section>
 
             <!-- VIEW: Collections -->
             <section class="view" id="view-collections">
                 <div class="view-header">
                     <h1 class="view-title" id="collectionsSectionLabel">Collections</h1>
-                    <a class="btn-secondary view-header-action" href="#/new/collection" id="viewCollectionsNewBtn">New collection</a>
                 </div>
                 <div id="collectionList"><div class="empty-state" id="noCollectionsYetMsg">No collections yet.</div></div>
             </section>
@@ -483,9 +482,9 @@
             byId('navGalleriesLabel', t.galleries);
             byId('navCollectionsLabel', t.collections);
             byId('navNewLabel', t.navCreate);
-            byId('viewNewGalleryTitle', t.newGallery);
-            byId('viewNewCollectionTitle', t.newCollection);
-            byId('viewCollectionsNewBtn', t.createNewCollection);
+            byId('viewNewTitle', t.navCreate);
+            byId('newGalleryLabel', t.newGallery);
+            byId('newCollectionLabel', t.newCollection);
             byId('collectionPickerTitle', t.addToCollectionPlaceholder);
             byId('collectionPickerCancelBtn', t.cancel);
             const gallerySearch = document.getElementById('gallerySearch');
@@ -590,19 +589,22 @@
         // _galleriesData cache, no build step, no extra server route) while
         // giving a real page hierarchy. Unknown routes fall back to the list.
         const ROUTES = {
-            'galleries':      'view-galleries',
-            'collections':    'view-collections',
-            'new-gallery':    'view-new-gallery',
-            'new-collection': 'view-new-collection'
+            'galleries':   'view-galleries',
+            'collections': 'view-collections',
+            'new':         'view-new'
         };
+        // Gallery and collection creation share one view, so the older
+        // per-entity URLs still resolve there instead of 404-ing to the list.
+        const ROUTE_ALIASES = { 'new-gallery': 'new', 'new-collection': 'new' };
         const DEFAULT_ROUTE = 'galleries';
 
-        // '#/new/gallery' -> 'new-gallery'; unknown -> DEFAULT_ROUTE.
+        // '#/new/gallery' -> 'new-gallery' -> 'new'; unknown -> DEFAULT_ROUTE.
         function routeFromHash() {
             const raw = (location.hash || '').replace(/^#\/?/, '').replace(/\/+$/, '');
             if (!raw) return DEFAULT_ROUTE;
             const key = raw.replace(/\//g, '-');
-            return ROUTES[key] ? key : DEFAULT_ROUTE;
+            const resolved = ROUTE_ALIASES[key] || key;
+            return ROUTES[resolved] ? resolved : DEFAULT_ROUTE;
         }
 
         function renderRoute() {

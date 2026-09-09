@@ -1440,8 +1440,22 @@ body { display: flex; flex-direction: column; height: 100%; }
     padding: 20px;
     display: flex; flex-direction: column; gap: 12px;
 }
-#view-new-gallery .form-card { max-width: 720px; }
 .form-card > .form-section-label { margin-bottom: 0; }
+
+/* Create view: the two creation forms sit side by side on desktop and stack
+   on mobile. The grid owns the width here, so the cards drop their own cap. */
+.new-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+    align-items: start;
+    max-width: 1100px;
+}
+.new-grid > .form-card { max-width: none; }
+
+@media (max-width: 900px) {
+    .new-grid { grid-template-columns: 1fr; gap: 16px; }
+}
 
 /* Inline "new collection" block revealed by the collection <select> */
 .inline-new-collection {
