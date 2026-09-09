@@ -878,22 +878,27 @@ const imageLimiter = rateLimit({
 // surface is low; the cap only exists to bound runaway filesystem work. It also covers the
 // list routes (/api/galleries, /api/collections) that the dashboard re-fetches after every
 // action, so it must be high enough for legitimate bulk work (e.g. resetting favorites/views/
-// comments across many galleries in a row) not to trip "Too many requests, please slow down".
+// comments across many galleries in a row) not to trip its limit. Note that background/cover
+// images are NOT under this limiter — they use publicReadLimiter (see below).
 const adminLimiter = rateLimit({
     windowMs: 60 * 1000,
     max: 300,
     standardHeaders: true,
     legacyHeaders: false,
-    message: { error: 'Too many requests, please slow down' }
+    message: { error: 'Too many admin requests, please slow down' }
 });
 
-// Rate limiter for general public GET endpoints — 300 requests per minute per IP
+// Rate limiter for general public GET endpoints — 300 requests per minute per IP.
+// Also covers background/cover image serving (`/api/gallery/:id/background`,
+// `/api/collection/:id/background`), which the admin dashboard requests once per card.
+// Messages are deliberately distinct per limiter: they used to be identical, which made
+// it impossible to tell which limiter had tripped when debugging a report.
 const publicReadLimiter = rateLimit({
     windowMs: 60 * 1000,
     max: 300,
     standardHeaders: true,
     legacyHeaders: false,
-    message: { error: 'Too many requests, please slow down' }
+    message: { error: 'Too many read requests, please slow down' }
 });
 
 // Rate limiter for public write endpoints (favorites toggle) — 120 per minute per IP
@@ -902,7 +907,7 @@ const publicWriteLimiter = rateLimit({
     max: 120,
     standardHeaders: true,
     legacyHeaders: false,
-    message: { error: 'Too many requests, please slow down' }
+    message: { error: 'Too many write requests, please slow down' }
 });
 
 // Rate limiter for ZIP downloads — 10 per minute per IP (CPU + bandwidth intensive)
@@ -1143,10 +1148,13 @@ app.post('/api/gallery/:galleryId/background', adminLimiter, requireAuth, valida
         const ogFile = safeResolvePath(OG_CACHE_DIR, `${galleryId}.jpg`);
         if (fs.existsSync(ogFile)) fs.unlinkSync(ogFile);
 
-        // Convert and save as JPEG
+        // Convert and save as JPEG. `.withMetadata()` keeps the source ICC profile
+        // (Adobe RGB / Display P3) — without it the hero renders as sRGB and looks
+        // warmer/oversaturated next to the gallery photos, which do keep theirs.
         const dest = path.join(backgroundsDir, `${galleryId}.jpg`);
         await sharp(req.file.buffer)
             .resize(2400, null, { withoutEnlargement: true })
+            .withMetadata()
             .jpeg({ quality: 85 })
             .toFile(dest);
 
@@ -1189,6 +1197,7 @@ app.get('/api/gallery/:galleryId/background', publicReadLimiter, validateGallery
                 res.setHeader('Cache-Control', 'public, max-age=86400');
                 return sharp(fullPath)
                     .resize(200, 200, { fit: 'cover' })
+                    .withMetadata()
                     .jpeg({ quality: 75 })
                     .pipe(res);
             }
@@ -1197,6 +1206,7 @@ app.get('/api/gallery/:galleryId/background', publicReadLimiter, validateGallery
                 res.setHeader('Cache-Control', 'public, max-age=86400');
                 return sharp(fullPath)
                     .resize(800, null, { fit: 'inside', withoutEnlargement: true })
+                    .withMetadata()
                     .jpeg({ quality: 82 })
                     .pipe(res);
             }
@@ -2078,17 +2088,29 @@ app.get('/api/collections', adminLimiter, requireAuth, (req, res) => {
     const bgFilesC = fs.existsSync(bgDirC) ? new Set(fs.readdirSync(bgDirC)) : new Set();
     const list = Array.from(collections.values())
         .sort((a, b) => new Date(b.created) - new Date(a.created))
-        .map(c => ({
-            id: c.id,
-            name: c.name,
-            created: c.created,
-            galleryIds: c.galleryIds,
-            collectionUrl: `${baseUrl}/collection/${c.id}`,
-            hasBackground: [...bgFilesC].some(f => f.startsWith(`collection-${c.id}`)),
-            downloadsEnabled: c.downloadsEnabled !== false,
-            commentsEnabled: c.commentsEnabled !== false,
-            clientLanguage: c.clientLanguage || 'auto'
-        }));
+        .map(c => {
+            // See /api/galleries: bgVersion is the cover mtime so the admin card
+            // thumbnail can be cached and only refetched when the cover changes.
+            const bgFile = [...bgFilesC].find(f => f.startsWith(`collection-${c.id}`)) || null;
+            let bgVersion = null;
+            if (bgFile) {
+                try {
+                    bgVersion = Math.floor(fs.statSync(path.join(bgDirC, bgFile)).mtimeMs);
+                } catch (_) { /* file vanished between readdir and stat */ }
+            }
+            return {
+                id: c.id,
+                name: c.name,
+                created: c.created,
+                galleryIds: c.galleryIds,
+                collectionUrl: `${baseUrl}/collection/${c.id}`,
+                hasBackground: bgFile !== null,
+                bgVersion,
+                downloadsEnabled: c.downloadsEnabled !== false,
+                commentsEnabled: c.commentsEnabled !== false,
+                clientLanguage: c.clientLanguage || 'auto'
+            };
+        });
     res.json(list);
 });
 
@@ -2166,8 +2188,10 @@ app.post('/api/collection/:collectionId/background', adminLimiter, requireAuth, 
         const existing = fs.readdirSync(backgroundsDir).find(f => f.startsWith(`collection-${collectionId}`));
         if (existing) fs.unlinkSync(path.join(backgroundsDir, existing));
         const dest = path.join(backgroundsDir, `collection-${collectionId}.jpg`);
+        // `.withMetadata()` keeps the source ICC profile — see the gallery background route.
         await sharp(req.file.buffer)
             .resize(2400, null, { withoutEnlargement: true })
+            .withMetadata()
             .jpeg({ quality: 85 })
             .toFile(dest);
         collection.background = `collection-${collectionId}.jpg`;
@@ -2193,6 +2217,7 @@ app.get('/api/collection/:collectionId/background', publicReadLimiter, validateC
                 res.setHeader('Cache-Control', 'public, max-age=86400');
                 return sharp(fullPath)
                     .resize(200, 200, { fit: 'cover' })
+                    .withMetadata()
                     .jpeg({ quality: 75 })
                     .pipe(res);
             }
@@ -2201,6 +2226,7 @@ app.get('/api/collection/:collectionId/background', publicReadLimiter, validateC
                 res.setHeader('Cache-Control', 'public, max-age=86400');
                 return sharp(fullPath)
                     .resize(800, null, { fit: 'inside', withoutEnlargement: true })
+                    .withMetadata()
                     .jpeg({ quality: 82 })
                     .pipe(res);
             }
@@ -2424,7 +2450,18 @@ app.get('/api/galleries', adminLimiter, requireAuth, (req, res) => {
                     saveGalleries();
                 }
 
-                const hasBackground = [...bgFiles].some(f => f.startsWith(galleryId));
+                // `bgVersion` (background file mtime) lets the admin cards cache their
+                // cover thumbnail: the URL only changes when the cover is actually
+                // replaced. Never use Date.now() there — a per-render cache-buster
+                // refetches every thumbnail on every keystroke and trips publicReadLimiter.
+                const bgFile = [...bgFiles].find(f => f.startsWith(galleryId)) || null;
+                const hasBackground = bgFile !== null;
+                let bgVersion = null;
+                if (bgFile) {
+                    try {
+                        bgVersion = Math.floor(fs.statSync(path.join(backgroundsDir, bgFile)).mtimeMs);
+                    } catch (_) { /* file vanished between readdir and stat — treat as unversioned */ }
+                }
 
                 // Find which collection this gallery belongs to (if any)
                 let collectionId = null;
@@ -2438,6 +2475,7 @@ app.get('/api/galleries', adminLimiter, requireAuth, (req, res) => {
                     created: gallery.created || stats.birthtime.toISOString(),
                     fileCount: files.length,
                     hasBackground,
+                    bgVersion,
                     favoritesCount: Object.keys(gallery.favorites || {}).length,
                     commentsCount: Object.values(gallery.comments || {}).reduce((sum, arr) => sum + arr.length, 0),
                     viewCount: gallery.viewCount || 0,
