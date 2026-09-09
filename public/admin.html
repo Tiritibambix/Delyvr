@@ -211,6 +211,22 @@
         </div>
     </div>
 
+    <!-- Collection picker — assigns ONE gallery to a collection. Replaces the
+         cross-column drag & drop, impossible now that galleries and collections
+         live in separate views. Reuses the gallery-picker styling. -->
+    <div class="gallery-picker-modal" id="collectionPickerModal" onclick="if(event.target===this) closeCollectionPicker()">
+        <div class="gallery-picker-card">
+            <div class="gallery-picker-header">
+                <h3 id="collectionPickerTitle">Add to collection…</h3>
+                <button class="gallery-picker-close" onclick="closeCollectionPicker()">&#x2715;</button>
+            </div>
+            <div class="gallery-picker-list" id="collectionPickerList"></div>
+            <div class="gallery-picker-footer">
+                <button class="gallery-picker-cancel" id="collectionPickerCancelBtn" onclick="closeCollectionPicker()">Cancel</button>
+            </div>
+        </div>
+    </div>
+
     <!-- Delete Collection Modal -->
     <div class="delete-col-modal" id="deleteColModal" onclick="if(event.target===this)closeDeleteColModal()">
         <div class="delete-col-modal-card">
@@ -286,8 +302,7 @@
                     <h1 class="view-title" id="viewNewGalleryTitle">New gallery</h1>
                 </div>
 
-            <div id="uploadSection">
-                <div class="form-section-label" id="newGalleryLabel">New gallery</div>
+            <div id="uploadSection" class="form-card">
                 <input type="text" class="form-input" id="eventName" placeholder="Event name">
                 <div class="drop-zone" id="dropZone">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 16V4m0 0L8 8m4-4l4 4M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2" stroke-linecap="round" stroke-linejoin="round"/></svg>
@@ -307,6 +322,16 @@
                 <select class="form-input" id="galleryCollectionSelect" onchange="updateCollectionLink()">
                     <option value="" disabled selected id="collectionSelectPlaceholder">Add to existing collection (optional)</option>
                 </select>
+                <!-- Revealed when "+ New collection…" is picked above: lets a gallery and
+                     a brand-new collection be created in one go. -->
+                <div class="inline-new-collection" id="inlineNewCollectionWrap">
+                    <input type="text" class="form-input" id="inlineNewCollectionName" placeholder="Collection name" maxlength="200" oninput="updateCollectionLink()">
+                    <div class="drop-zone-small" id="inlineColBgDropZone">
+                        <img class="bg-preview-small" id="inlineColBgPreview">
+                        <p id="inlineColBgDropZoneText">Drop image or click to browse</p>
+                    </div>
+                    <input type="file" id="inlineColBgInput" accept="image/*" style="display:none">
+                </div>
                 <button class="btn-primary" id="createBtn" onclick="createGallery()" disabled>Create & copy link</button>
                 <button class="btn-primary" id="createMultiBtn" onclick="createMultipleGalleries()" style="display:none"></button>
                 <button class="btn-secondary" id="cancelMultiBtn" onclick="cancelMultiGalleryMode()" style="display:none">Cancel</button>
@@ -333,18 +358,13 @@
                     <h1 class="view-title" id="viewNewCollectionTitle">New collection</h1>
                 </div>
 
-            <div>
-                <div class="form-section-label" id="newCollectionLabel">New collection</div>
+            <div class="form-card">
                 <input type="text" class="form-input" id="newCollectionName" placeholder="Collection name" maxlength="200">
                 <div class="drop-zone-small" id="colBgDropZone">
                     <img class="bg-preview-small" id="colBgPreview">
                     <p id="colBgDropZoneText">Drop image or click to browse</p>
                 </div>
                 <input type="file" id="colBgInput" accept="image/*" style="display:none">
-                <label id="includeGalleryLabel" style="display:none;align-items:center;gap:8px;margin-top:10px;font-size:13px;color:var(--muted);cursor:pointer">
-                    <input type="checkbox" id="includeInNewCollection" onchange="updateCollectionLink()">
-                    <span id="includeGalleryLabelText">Include the gallery being created</span>
-                </label>
                 <button class="btn-secondary" id="createCollectionBtn" onclick="createCollection()">Create collection</button>
             </div>
             </section>
@@ -438,7 +458,6 @@
             const themeBtn = document.getElementById('themeToggleBtn');
             if (themeBtn) themeBtn.textContent = document.documentElement.classList.contains('light') ? t.themeDark : t.themeLight;
 
-            byId('newGalleryLabel', t.newGallery);
             const eventNameInput = document.getElementById('eventName');
             if (eventNameInput) eventNameInput.placeholder = t.eventNamePlaceholder;
             byId('dropZonePhotosText', t.dropPhotosOrFolders);
@@ -448,11 +467,12 @@
             if (createBtn) createBtn.textContent = t.createAndCopyLink;
             byId('cancelMultiBtn', t.cancel);
             byId('progressText', t.uploadingDots);
-            byId('newCollectionLabel', t.newCollection);
             const colNameInput = document.getElementById('newCollectionName');
             if (colNameInput) colNameInput.placeholder = t.collectionNamePlaceholder;
             byId('colBgDropZoneText', t.dropImage);
-            byId('includeGalleryLabelText', _multiGalleryGroups.length > 1 ? t.includeGalleryMulti : t.includeGallerySingle);
+            const inlineColName = document.getElementById('inlineNewCollectionName');
+            if (inlineColName) inlineColName.placeholder = t.collectionNamePlaceholder;
+            byId('inlineColBgDropZoneText', t.dropImage);
             byId('createCollectionBtn', t.createCollection);
 
             byId('resultTitle', t.galleryCreated);
@@ -465,7 +485,9 @@
             byId('navNewLabel', t.navCreate);
             byId('viewNewGalleryTitle', t.newGallery);
             byId('viewNewCollectionTitle', t.newCollection);
-            byId('viewCollectionsNewBtn', t.createCollection);
+            byId('viewCollectionsNewBtn', t.createNewCollection);
+            byId('collectionPickerTitle', t.addToCollectionPlaceholder);
+            byId('collectionPickerCancelBtn', t.cancel);
             const gallerySearch = document.getElementById('gallerySearch');
             if (gallerySearch) gallerySearch.placeholder = t.searchPlaceholder;
             const sortSelect = document.getElementById('gallerySortField');
@@ -947,6 +969,33 @@
             reader.readAsDataURL(file);
         }
 
+        // Inline "new collection" cover (new-gallery view) — mirrors the wiring above
+        // but keeps its own file handle so the two forms never clash.
+        let _inlineColBgFile = null;
+        const inlineColBgDropZone = document.getElementById('inlineColBgDropZone');
+        const inlineColBgInput = document.getElementById('inlineColBgInput');
+        const inlineColBgPreview = document.getElementById('inlineColBgPreview');
+
+        if (inlineColBgDropZone && inlineColBgInput) {
+            inlineColBgDropZone.addEventListener('click', () => inlineColBgInput.click());
+            ['dragenter', 'dragover'].forEach(e => inlineColBgDropZone.addEventListener(e, () => inlineColBgDropZone.classList.add('drag-over'), false));
+            ['dragleave', 'drop'].forEach(e => inlineColBgDropZone.addEventListener(e, () => inlineColBgDropZone.classList.remove('drag-over'), false));
+            inlineColBgDropZone.addEventListener('drop', (e) => {
+                const f = e.dataTransfer.files[0];
+                if (f && f.type.startsWith('image/')) handleInlineColBgFile(f);
+            });
+            inlineColBgInput.addEventListener('change', () => {
+                if (inlineColBgInput.files.length > 0) handleInlineColBgFile(inlineColBgInput.files[0]);
+            });
+        }
+
+        function handleInlineColBgFile(file) {
+            _inlineColBgFile = file;
+            const reader = new FileReader();
+            reader.onload = e => { inlineColBgPreview.src = e.target.result; inlineColBgPreview.style.display = 'block'; };
+            reader.readAsDataURL(file);
+        }
+
         bgDropZone.addEventListener('click', () => bgInput.click());
 
         ['dragenter', 'dragover'].forEach(eventName => {
@@ -1026,11 +1075,12 @@
         async function resolveCollectionTarget() {
             const colSel = document.getElementById('galleryCollectionSelect');
             const colVal = colSel ? colSel.value : '';
-            if (colVal) return { collectionId: colVal };
+            if (colVal && colVal !== '__new__') return { collectionId: colVal };
 
-            const includeInNew = document.getElementById('includeInNewCollection');
-            if (includeInNew && includeInNew.checked) {
-                const colName = (document.getElementById('newCollectionName').value || '').trim();
+            // "+ New collection…" — create it now, then hand its id back so the
+            // gallery is assigned to it in the same flow.
+            if (colVal === '__new__') {
+                const colName = (document.getElementById('inlineNewCollectionName')?.value || '').trim();
                 if (colName) {
                     try {
                         const colRes = await fetch('/api/collection/create', {
@@ -1040,23 +1090,31 @@
                         });
                         if (colRes.ok) {
                             const colData = await colRes.json();
-                            if (selectedColBgFile) {
+                            if (_inlineColBgFile) {
                                 const bgFd = new FormData();
-                                bgFd.append('background', selectedColBgFile);
+                                bgFd.append('background', _inlineColBgFile);
                                 await fetch(`/api/collection/${colData.id}/background`, { method: 'POST', body: bgFd }).catch(() => {});
                             }
-                            // Reset collection form
-                            document.getElementById('newCollectionName').value = '';
-                            selectedColBgFile = null;
-                            colBgPreview.style.display = 'none';
-                            colBgPreview.src = '';
-                            colBgInput.value = '';
+                            resetInlineNewCollection();
                             return { collectionId: colData.id, isNew: true };
                         }
                     } catch (_) {}
                 }
             }
             return { collectionId: null };
+        }
+
+        // Clears the inline "new collection" fields after a successful creation.
+        function resetInlineNewCollection() {
+            const nameEl = document.getElementById('inlineNewCollectionName');
+            if (nameEl) nameEl.value = '';
+            _inlineColBgFile = null;
+            const prev = document.getElementById('inlineColBgPreview');
+            if (prev) { prev.style.display = 'none'; prev.src = ''; }
+            const input = document.getElementById('inlineColBgInput');
+            if (input) input.value = '';
+            const wrap = document.getElementById('inlineNewCollectionWrap');
+            if (wrap) wrap.classList.remove('visible');
         }
 
         async function assignGalleryToCollection(collectionId, galleryId) {
@@ -1260,10 +1318,7 @@
             document.getElementById('progressFill').style.width = '0%';
             const colSel = document.getElementById('galleryCollectionSelect');
             if (colSel) colSel.value = '';
-            const cb = document.getElementById('includeInNewCollection');
-            if (cb) cb.checked = false;
-            const cbLabel = document.getElementById('includeGalleryLabel');
-            if (cbLabel) cbLabel.style.display = 'none';
+            resetInlineNewCollection();
         }
 
         let _errorToastTimer = null;
@@ -1598,6 +1653,9 @@
                     <div class="gallery-actions">
                         ${_manual ? `<button class="gallery-move-btn" onclick="moveGallery('${g.id}', -1)" title="${t.moveUp}">▲</button>
                         <button class="gallery-move-btn" onclick="moveGallery('${g.id}', 1)" title="${t.moveDown}">▼</button>` : ''}
+                        <button class="btn-icon" onclick="openCollectionPicker('${g.id}')" title="${t.addToCollectionPlaceholder}">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2 2 7l10 5 10-5-10-5Z"/><path d="m2 17 10 5 10-5"/><path d="m2 12 10 5 10-5"/></svg>
+                        </button>
                         <button class="btn-icon" onclick="copyGalleryLink('${g.id}', 'preview', this)" title="${t.copyClientLink}">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
                         </button>
@@ -3005,6 +3063,12 @@
                 opt.textContent = c.name;
                 sel.appendChild(opt);
             });
+            // "+ New collection…" — creates the gallery and its collection in one go.
+            // Rebuilt here because this function replaces the select's innerHTML.
+            const newOpt = document.createElement('option');
+            newOpt.value = '__new__';
+            newOpt.textContent = t.newCollectionOption;
+            sel.appendChild(newOpt);
             if (prev && sel.querySelector(`option[value="${CSS.escape(prev)}"]`)) sel.value = prev;
             else sel.value = '';
         }
@@ -3012,20 +3076,17 @@
         function updateCollectionLink() {
             const hasFiles = selectedFiles.length > 0;
             const multiCount = _multiGalleryGroups.length;
-            const label = document.getElementById('includeGalleryLabel');
-            if (label) label.style.display = (hasFiles || multiCount > 0) ? 'flex' : 'none';
-            const labelText = document.getElementById('includeGalleryLabelText');
-            if (labelText) {
-                labelText.textContent = multiCount > 1
-                    ? t.includeGalleryMulti
-                    : t.includeGallerySingle;
-            }
 
             const colSel = document.getElementById('galleryCollectionSelect');
             const colVal = colSel ? colSel.value : '';
-            const cb = document.getElementById('includeInNewCollection');
-            const colName = (document.getElementById('newCollectionName').value || '').trim();
-            const willAssignCollection = !!colVal || !!(cb && cb.checked && colName);
+            const creatingNewCol = colVal === '__new__';
+
+            // Reveal the inline name/cover fields only for "+ New collection…"
+            const inlineWrap = document.getElementById('inlineNewCollectionWrap');
+            if (inlineWrap) inlineWrap.classList.toggle('visible', creatingNewCol);
+            const inlineName = (document.getElementById('inlineNewCollectionName')?.value || '').trim();
+
+            const willAssignCollection = creatingNewCol ? !!inlineName : !!colVal;
 
             const btn = document.getElementById('createBtn');
             if (hasFiles && willAssignCollection) {
@@ -3188,6 +3249,69 @@
             }
         }
 
+        // ── COLLECTION PICKER (one gallery -> one collection) ──────────
+        // Galleries and collections now live in separate views, so the old
+        // cross-column drag & drop is gone; this is its replacement.
+        let _colPickerGalleryId = null;
+
+        function openCollectionPicker(galleryId) {
+            _colPickerGalleryId = galleryId;
+            const gallery = (_galleriesData || []).find(g => g.id === galleryId);
+            const currentId = gallery ? gallery.collectionId : null;
+            const list = document.getElementById('collectionPickerList');
+            const cols = _collectionsData || [];
+
+            const thumbSvg = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 2 2 7l10 5 10-5-10-5Z"/><path d="m2 17 10 5 10-5"/><path d="m2 12 10 5 10-5"/></svg>`;
+            let html = '';
+
+            // Offer "remove" only when the gallery actually belongs somewhere
+            if (currentId) {
+                html += `<button class="gallery-picker-item" onclick="pickCollectionForGallery(null)">
+                    <div class="gallery-picker-thumb">${thumbSvg}</div>
+                    <div class="gallery-picker-info">
+                        <div class="gallery-picker-name">${escapeHtml(t.pickerNoCollection)}</div>
+                    </div>
+                </button>`;
+            }
+
+            html += cols.map(c => {
+                const already = c.id === currentId;
+                const thumbHtml = c.hasBackground
+                    ? `<img src="/api/collection/${c.id}/background?card=1&v=${c.bgVersion || 0}" alt="" loading="lazy">`
+                    : thumbSvg;
+                const n = c.galleryIds.length;
+                return `<button class="gallery-picker-item"
+                        ${already ? `disabled title="${t.alreadyInCollection}"` : `onclick="pickCollectionForGallery('${c.id}')"`}>
+                    <div class="gallery-picker-thumb">${thumbHtml}</div>
+                    <div class="gallery-picker-info">
+                        <div class="gallery-picker-name">${escapeHtml(c.name)}</div>
+                        <div class="gallery-picker-count">${n} ${n === 1 ? t.gallerySingular : t.galleryPlural}${already ? ' · ✓' : ''}</div>
+                    </div>
+                </button>`;
+            }).join('');
+
+            if (!cols.length && !currentId) html = `<div class="gallery-picker-empty">${t.noCollectionsYet}</div>`;
+            list.innerHTML = html;
+            document.getElementById('collectionPickerModal').classList.add('active');
+        }
+
+        function closeCollectionPicker() {
+            document.getElementById('collectionPickerModal').classList.remove('active');
+            _colPickerGalleryId = null;
+        }
+
+        // A gallery belongs to a single collection in the UI: leave the current
+        // one before joining the target. `null` just removes it.
+        async function pickCollectionForGallery(collectionId) {
+            const galleryId = _colPickerGalleryId;
+            if (!galleryId) return;
+            const gallery = (_galleriesData || []).find(g => g.id === galleryId);
+            const currentId = gallery ? gallery.collectionId : null;
+            closeCollectionPicker();
+            if (currentId && currentId !== collectionId) await removeFromCollection(currentId, galleryId);
+            if (collectionId) await addToCollection(collectionId, galleryId);
+        }
+
         async function addToCollection(collectionId, galleryId) {
             try {
                 const res = await fetch(`/api/collection/${collectionId}/galleries`, {
@@ -3223,8 +3347,10 @@
                 const thumbSvg = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>`;
                 list.innerHTML = all.map(g => {
                     const already = inCollection.has(g.id);
+                    // ?card=1 (fit:inside) instead of ?thumb=1 (a 200px square crop)
+                    // so the picker shows the real aspect ratio, uncropped.
                     const thumbHtml = g.hasBackground
-                        ? `<img src="/api/gallery/${g.id}/background?thumb=1" alt="" loading="lazy">`
+                        ? `<img src="/api/gallery/${g.id}/background?card=1&v=${g.bgVersion || 0}" alt="" loading="lazy">`
                         : thumbSvg;
                     return `<button class="gallery-picker-item" id="picker-item-${g.id}"
                             ${already ? `disabled title="${t.alreadyInCollection}"` : `onclick="togglePickerItem('${g.id}')"`}>

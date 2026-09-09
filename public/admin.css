@@ -1430,3 +1430,37 @@ body { display: flex; flex-direction: column; height: 100%; }
     .sidebar-toggle { display: inline-block; }
     .admin-main { padding: 16px 14px; }
 }
+
+/* ── Creation forms: compact centred card, not a full-width slab ── */
+.form-card {
+    max-width: 560px;
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 20px;
+    display: flex; flex-direction: column; gap: 12px;
+}
+#view-new-gallery .form-card { max-width: 720px; }
+.form-card > .form-section-label { margin-bottom: 0; }
+
+/* Inline "new collection" block revealed by the collection <select> */
+.inline-new-collection {
+    display: none;
+    flex-direction: column; gap: 8px;
+    padding: 12px;
+    border: 1px dashed var(--border2);
+    border-radius: 5px;
+    background: var(--bg3);
+}
+.inline-new-collection.visible { display: flex; }
+
+/* ── Picker: larger tiles, uncropped thumbnails ──
+   Overrides the earlier rules. The source switches from ?thumb=1 (a 200px
+   server-side *square crop*) to ?card=1 (800px, fit:inside) so the real
+   aspect ratio survives, and object-fit:contain shows the whole frame. */
+.gallery-picker-list { grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; }
+.gallery-picker-thumb { aspect-ratio: 4/3; background: var(--bg); }
+.gallery-picker-thumb img { object-fit: contain; }
+@media (max-width: 600px) {
+    .gallery-picker-list { grid-template-columns: repeat(2, 1fr); gap: 8px; }
+}
