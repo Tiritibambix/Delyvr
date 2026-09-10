@@ -38,6 +38,34 @@
         <span id="toastMessage">Uploading...</span>
     </div>
 
+    <!-- Corner upload panel: shows live progress on every view EXCEPT Create (which has
+         its own inline bar). Clicking it jumps to the Create page. Toggled by syncUploadUI. -->
+    <div class="upload-mini" id="uploadMiniPanel" onclick="location.hash='#/new'" title="Create">
+        <div class="upload-mini-spinner"></div>
+        <div class="upload-mini-body">
+            <div class="upload-mini-title" id="uploadMiniTitle">Upload in progress</div>
+            <div class="upload-mini-bar"><div class="upload-mini-fill" id="uploadMiniFill"></div></div>
+            <div class="upload-mini-text" id="uploadMiniText"></div>
+        </div>
+    </div>
+
+    <!-- Shown when an upload finishes while the user has navigated away from Create. -->
+    <div class="confirm-dialog-overlay" id="uploadDoneOverlay">
+        <div class="confirm-dialog-card upload-done-card">
+            <svg class="upload-done-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" stroke-linecap="round" stroke-linejoin="round"/><polyline points="22 4 12 14.01 9 11.01" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            <h3 id="uploadDoneTitle">Upload complete</h3>
+            <p id="uploadDoneMsg"></p>
+            <div class="link-row" id="uploadDoneLinkRow" style="display:none">
+                <input type="text" id="uploadDoneLink" readonly>
+                <button class="copy-btn" onclick="copyLink('uploadDoneLink')" id="uploadDoneCopyBtn">Copy</button>
+            </div>
+            <div class="confirm-dialog-actions" style="margin-top:16px">
+                <button class="client-btn" id="uploadDoneDismissBtn" onclick="closeUploadDoneModal()">Dismiss</button>
+                <button class="client-btn accent" id="uploadDoneGoBtn" onclick="uploadDoneGo()">Go to the Create page</button>
+            </div>
+        </div>
+    </div>
+
     <!-- Favorites Modal -->
     <!-- Photos Modal -->
     <div class="photos-modal" id="photosModal" onclick="if(event.target===this) closePhotosModal()">
@@ -289,6 +317,12 @@
                     <h1 class="view-title" id="viewNewTitle">Create</h1>
                 </div>
 
+                <!-- Shown only while an upload is running (toggled by syncUploadUI). -->
+                <div class="upload-warning" id="uploadWarning">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" stroke-linecap="round" stroke-linejoin="round"/><line x1="12" y1="9" x2="12" y2="13" stroke-linecap="round"/><line x1="12" y1="17" x2="12.01" y2="17" stroke-linecap="round"/></svg>
+                    <span id="uploadWarningText">Upload in progress — don't close Delyvr or reload the page, it will interrupt the upload. You can keep browsing Galleries and Collections while it finishes.</span>
+                </div>
+
                 <div class="new-grid">
 
             <div id="uploadSection" class="form-card">
@@ -526,6 +560,11 @@
             byId('commentsBackBtn', t.backToGalleries);
             byId('commentsPageClearBtn', t.clearAll);
 
+            byId('uploadWarningText', t.uploadDontLeave);
+            byId('uploadMiniTitle', t.uploadInProgress);
+            byId('uploadDoneDismissBtn', t.dismiss);
+            byId('uploadDoneCopyBtn', t.copy);
+
             byId('profileModalTitle', t.profileTitle);
             byId('profileWebsiteLabel', t.website);
             byId('profileSocialLabel', t.socialNetworks);
@@ -631,6 +670,7 @@
             const main = document.querySelector('.admin-main');
             if (main) main.scrollTop = 0;
             if (route === 'gallery-comments') loadGalleryCommentsPage(params.galleryId);
+            syncUploadUI(); // banner on Create / corner panel elsewhere, per current route
         }
 
         function toggleSidebar() {
@@ -640,6 +680,15 @@
 
         window.addEventListener('hashchange', renderRoute);
         renderRoute();
+
+        // Warn before leaving the tab/reloading while an upload is running — closing the
+        // page kills the in-flight XHR and leaves a partial gallery. Browsers show their
+        // own generic dialog; the custom text is ignored but returnValue must be set.
+        window.addEventListener('beforeunload', (e) => {
+            if (!_uploadInProgress) return;
+            e.preventDefault();
+            e.returnValue = '';
+        });
 
         // Auto-restore session via HTTP-only cookie (set by server on login)
         (function restoreSession() {
@@ -1132,6 +1181,67 @@
             throw lastErr;
         }
 
+        // ── Upload activity UI (progress everywhere, warning banner, done pop-up) ──
+        // An upload is a background task: the SPA keeps running when you leave the
+        // Create view, so progress must be visible from anywhere and finishing while
+        // away must notify you. See createGallery / createMultipleGalleries.
+        let _uploadInProgress = false;
+        let _uploadResult = null; // { mode:'single'|'multi', link?, count? } — for the away pop-up
+
+        function setUploadActive(active) {
+            _uploadInProgress = active;
+            if (active) _uploadResult = null;
+            syncUploadUI();
+        }
+
+        // Single writer for both the inline Create bar and the corner mini-panel.
+        function renderUploadProgress(pct, label) {
+            const pf = document.getElementById('progressFill'); if (pf) pf.style.width = pct + '%';
+            const pt = document.getElementById('progressText'); if (pt) pt.textContent = label;
+            const mf = document.getElementById('uploadMiniFill'); if (mf) mf.style.width = pct + '%';
+            const mt = document.getElementById('uploadMiniText'); if (mt) mt.textContent = label;
+        }
+
+        // Decides what the upload chrome shows for the current route. The corner panel
+        // and the Create bar are mutually exclusive so progress is never shown twice.
+        function syncUploadUI() {
+            const onCreate = parseHash().route === 'new';
+            const warn = document.getElementById('uploadWarning');
+            if (warn) warn.classList.toggle('visible', _uploadInProgress && onCreate);
+            const mini = document.getElementById('uploadMiniPanel');
+            if (mini) mini.classList.toggle('visible', _uploadInProgress && !onCreate);
+        }
+
+        function showUploadDoneModal() {
+            const r = _uploadResult;
+            if (!r) return;
+            const linkRow = document.getElementById('uploadDoneLinkRow');
+            const msg = document.getElementById('uploadDoneMsg');
+            const goBtn = document.getElementById('uploadDoneGoBtn');
+            document.getElementById('uploadDoneTitle').textContent = t.uploadDoneTitle;
+            if (r.mode === 'single') {
+                msg.textContent = t.uploadDoneGalleryReady;
+                document.getElementById('uploadDoneLink').value = r.link || '';
+                linkRow.style.display = r.link ? '' : 'none';
+                goBtn.textContent = t.uploadDoneGoToCreate;
+                goBtn.dataset.route = 'new';
+            } else {
+                msg.textContent = t.galleriesCreated(r.count, r.count === 1 ? t.gallerySingular : t.galleryPlural);
+                linkRow.style.display = 'none';
+                goBtn.textContent = t.uploadDoneViewGalleries;
+                goBtn.dataset.route = 'galleries';
+            }
+            document.getElementById('uploadDoneOverlay').classList.add('active');
+        }
+        function closeUploadDoneModal() {
+            document.getElementById('uploadDoneOverlay').classList.remove('active');
+        }
+        function uploadDoneGo() {
+            const route = document.getElementById('uploadDoneGoBtn').dataset.route || 'new';
+            closeUploadDoneModal();
+            location.hash = '#/' + route;
+        }
+
         // Resolves which collection (if any) newly-created galleries should be added to.
         // If "new collection" is requested, creates it once (with its cover image) and
         // resets the new-collection form. Returns { collectionId } — collectionId is
@@ -1201,11 +1311,9 @@
 
             document.getElementById('createBtn').disabled = true;
             document.getElementById('progressContainer').classList.add('visible');
+            setUploadActive(true);
 
-            function setProgress(pct, label) {
-                document.getElementById('progressFill').style.width = pct + '%';
-                document.getElementById('progressText').textContent = label;
-            }
+            const setProgress = (pct, label) => renderUploadProgress(pct, label);
 
             const onProgress = (done, ttl) => {
                 const pct = Math.round((done / ttl) * 100);
@@ -1254,20 +1362,27 @@
                     refreshCollections = true;
                 }
 
-                // Show result
+                // Show result — the share link lives on the Create view (resultSection)
+                // so it's waiting there whenever the user returns.
                 const baseUrl = window.location.origin;
-                document.getElementById('downloadLinkInput').value = `${baseUrl}/preview/${galleryId}`;
+                const shareLink = `${baseUrl}/preview/${galleryId}`;
+                document.getElementById('downloadLinkInput').value = shareLink;
                 document.getElementById('resultEventName').textContent = `${eventName} • ${total} photos`;
                 document.getElementById('resultSection').classList.add('visible');
                 resetForm();
                 loadGalleries();
                 if (refreshCollections) loadCollections();
 
+                // If they wandered off during the upload, surface the link in a pop-up.
+                _uploadResult = { mode: 'single', link: shareLink };
+                if (parseHash().route !== 'new') showUploadDoneModal();
+
             } catch (err) {
                 document.getElementById('createBtn').disabled = false;
                 showError(t.errorCreatingGallery(err.message));
             } finally {
                 document.getElementById('progressContainer').classList.remove('visible');
+                setUploadActive(false);
             }
         }
 
@@ -1284,11 +1399,9 @@
             createMultiBtn.disabled = true;
             cancelMultiBtn.disabled = true;
             document.getElementById('progressContainer').classList.add('visible');
+            setUploadActive(true);
 
-            function setProgress(pct, label) {
-                document.getElementById('progressFill').style.width = pct + '%';
-                document.getElementById('progressText').textContent = label;
-            }
+            const setProgress = (pct, label) => renderUploadProgress(pct, label);
 
             let uploadedSoFar = 0;
             let createdCount = 0;
@@ -1339,7 +1452,11 @@
 
                 setProgress(100, t.galleriesCreated(createdCount, createdCount === 1 ? t.gallerySingular : t.galleryPlural));
                 cancelMultiGalleryMode();
-                showMultiGallerySuccess(createdCount);
+
+                _uploadResult = { mode: 'multi', count: createdCount };
+                // On Create the corner toast is enough; if they left, pop the modal instead.
+                if (parseHash().route === 'new') showMultiGallerySuccess(createdCount);
+                else showUploadDoneModal();
 
             } catch (err) {
                 showError(t.failedAfterCreating(createdCount, n, err.message));
@@ -1348,6 +1465,7 @@
                 document.getElementById('progressContainer').classList.remove('visible');
                 createMultiBtn.disabled = false;
                 cancelMultiBtn.disabled = false;
+                setUploadActive(false);
                 loadGalleries();
                 if (collectionId) loadCollections();
             }
