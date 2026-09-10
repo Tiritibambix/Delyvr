@@ -1022,6 +1022,21 @@ body { display: flex; flex-direction: column; height: 100%; }
     transition: background 0.2s, border-color 0.2s, color 0.2s;
 }
 .client-btn:hover { background: var(--bg3); border-color: var(--muted); }
+/* Solid variants for the comments-page header: gold "back" (like every other
+   accent button in the dashboard) and red "clear all" (destructive). */
+.client-btn.accent {
+    background: var(--accent); border-color: var(--accent);
+    color: #0c0c0e; font-weight: 600;
+}
+.client-btn.accent:hover { background: var(--accent-h); border-color: var(--accent-h); }
+.client-btn.danger {
+    background: var(--error); border-color: var(--error);
+    color: #fff; font-weight: 600;
+}
+.client-btn.danger:hover {
+    background: color-mix(in srgb, var(--error) 85%, #000);
+    border-color: color-mix(in srgb, var(--error) 85%, #000);
+}
 .section-select-btn.active { color: var(--accent); border-color: var(--accent); }
 
 /* ── BULK ACTION BAR ── */
