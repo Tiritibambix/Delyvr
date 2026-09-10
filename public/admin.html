@@ -678,6 +678,12 @@
             if (sb) sb.classList.toggle('open');
         }
 
+        // Upload-activity state. Declared here — before the initial renderRoute() call
+        // below — because renderRoute() → syncUploadUI() reads _uploadInProgress; a later
+        // `let` would be in the temporal dead zone and throw, aborting the whole script.
+        let _uploadInProgress = false;
+        let _uploadResult = null; // { mode:'single'|'multi', link?, count? } — for the away pop-up
+
         window.addEventListener('hashchange', renderRoute);
         renderRoute();
 
@@ -1185,9 +1191,9 @@
         // An upload is a background task: the SPA keeps running when you leave the
         // Create view, so progress must be visible from anywhere and finishing while
         // away must notify you. See createGallery / createMultipleGalleries.
-        let _uploadInProgress = false;
-        let _uploadResult = null; // { mode:'single'|'multi', link?, count? } — for the away pop-up
-
+        // NOTE: _uploadInProgress / _uploadResult are declared near the top of the
+        // script (before the initial renderRoute() call), because syncUploadUI() reads
+        // them from that call — declaring them here would be in the temporal dead zone.
         function setUploadActive(active) {
             _uploadInProgress = active;
             if (active) _uploadResult = null;
