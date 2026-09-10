@@ -1315,7 +1315,16 @@ app.get('/api/gallery/:galleryId/photos', publicReadLimiter, validateGalleryId, 
 
     const files = fs.readdirSync(galleryPath)
         .filter(f => !f.startsWith('.'))
-        .sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }));
+        .sort((a, b) => {
+            // Sort on the name WITHOUT its extension so a photo (mariage-…-36.jpg) always
+            // precedes a companion whose stem extends it (mariage-…-36-gif.gif) — matching
+            // the file explorer. Comparing the full name lets the differing extension
+            // (.gif vs .jpg) and separators reorder the pair unexpectedly. Extension breaks ties.
+            const stem = f => f.slice(0, f.length - path.extname(f).length);
+            const opts = { numeric: true, sensitivity: 'base' };
+            return stem(a).localeCompare(stem(b), undefined, opts)
+                || a.localeCompare(b, undefined, opts);
+        });
 
     const gallery = galleries.get(galleryId);
     if (gallery && !gallery.dimensions) gallery.dimensions = {};

@@ -251,7 +251,7 @@ Animated images play in the lightbox while keeping a static thumbnail in the gri
 
 ### Justified gallery layout
 
-`preview.html` uses a JS-built justified/row-based layout: photos are grouped into `.gallery-row` flex rows whose children preserve the photo's aspect ratio and together fill the row width. Each row is recomputed on resize. This replaces the previous CSS `columns` masonry so photos are never split and rows always justify edge-to-edge. Photos in the preview page are sorted alphabetically by filename.
+`preview.html` uses a JS-built justified/row-based layout: photos are grouped into `.gallery-row` flex rows whose children preserve the photo's aspect ratio and together fill the row width. Each row is recomputed on resize. This replaces the previous CSS `columns` masonry so photos are never split and rows always justify edge-to-edge. Photos in the preview page are sorted by filename **stem (name without extension)**, `localeCompare` with `{ numeric: true, sensitivity: 'base' }`, with the full name as a tiebreaker — so a companion file named after the photo it follows (e.g. a GIF `mariage-…-36-gif.gif` beside photo `mariage-…-36.jpg`) sorts right after that photo, matching a file explorer. Sorting on the full name instead lets the differing extension reorder such a pair. This route (`GET /api/gallery/:id/photos`) is the single source of display order — the critique numbering and the admin comments page derive from it.
 
 ### Mobile lightbox — swipe, pinch-to-zoom, pan
 
@@ -437,7 +437,7 @@ Loaded by all client pages via `<script src="/shared.js">` before their inline `
 
 - **Full-screen hero**: `.hero` is `height: 100vh`/`100dvh` (fallback cascade) with the gallery's background photo as an undimmed, full-bleed cover (`object-fit: cover`, no darkening overlay) — the site logo sits top-left, the gallery name bottom-left, and a "Show Gallery" button + the "Download All" button bottom-right. "Show Gallery" (`scrollToGallery()`) smooth-scrolls down to `#galleryContainer`. The three action-style buttons across the page (`.show-gallery-btn`, `.download-all-btn`, `.back-to-collection`) share one CSS rule set — same size/border/radius, theme-aware via an `html.light` override — rather than each having its own styling.
 - Justified/row-based gallery: photos grouped into `.gallery-row` flex rows built in JS, recomputed on resize.
-- Photos sorted alphabetically by filename (server-side).
+- Photos sorted server-side by filename stem (name without extension), extension as tiebreaker — see the preview.html layout section above.
 - Lightbox preloads N-1 and N+1 previews via `new Image()` on each navigation.
 - Mobile lightbox: pinch-to-zoom (up to 5x), one-finger pan while zoomed, swipe navigation when not zoomed. `touch-action: none` disables native browser zoom.
 - Animated images (GIF / animated WebP) show a static thumbnail + `GIF` badge in the grid and play in the lightbox — see "Animated images". The badge is driven by `photo.animated` from `/photos`; the lightbox `<img src=previewUrl>` resolves to the animated original with no extra code.
