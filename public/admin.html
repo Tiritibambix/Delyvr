@@ -38,17 +38,6 @@
         <span id="toastMessage">Uploading...</span>
     </div>
 
-    <!-- Corner upload panel: shows live progress on every view EXCEPT Create (which has
-         its own inline bar). Clicking it jumps to the Create page. Toggled by syncUploadUI. -->
-    <div class="upload-mini" id="uploadMiniPanel" onclick="location.hash='#/new'" title="Create">
-        <div class="upload-mini-spinner"></div>
-        <div class="upload-mini-body">
-            <div class="upload-mini-title" id="uploadMiniTitle">Upload in progress</div>
-            <div class="upload-mini-bar"><div class="upload-mini-fill" id="uploadMiniFill"></div></div>
-            <div class="upload-mini-text" id="uploadMiniText"></div>
-        </div>
-    </div>
-
     <!-- Shown when an upload finishes while the user has navigated away from Create. -->
     <div class="confirm-dialog-overlay" id="uploadDoneOverlay">
         <div class="confirm-dialog-card upload-done-card">
@@ -293,6 +282,14 @@
             </nav>
 
             <div class="sidebar-footer">
+                <!-- Upload progress lives here (above Profile) while an upload runs, so it's
+                     visible from any view. Toggled by syncUploadUI. -->
+                <div class="upload-mini" id="uploadMiniPanel">
+                    <div class="upload-mini-title" id="uploadMiniTitle">Upload in progress</div>
+                    <div class="upload-mini-bar"><div class="upload-mini-fill" id="uploadMiniFill"></div></div>
+                    <div class="upload-mini-text" id="uploadMiniText"></div>
+                    <button class="upload-cancel-btn" id="uploadCancelBtn" onclick="cancelUpload()">Cancel upload</button>
+                </div>
                 <button class="btn-nav" onclick="openProfileModal()">
                     <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 12c2.7 0 4.8-2.1 4.8-4.8S14.7 2.4 12 2.4 7.2 4.5 7.2 7.2 9.3 12 12 12zm0 2.4c-3.2 0-9.6 1.6-9.6 4.8v2.4h19.2v-2.4c0-3.2-6.4-4.8-9.6-4.8z"/></svg>
                     <span id="headerProfileBtnText">Profile</span>
@@ -320,7 +317,8 @@
                 <!-- Shown only while an upload is running (toggled by syncUploadUI). -->
                 <div class="upload-warning" id="uploadWarning">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" stroke-linecap="round" stroke-linejoin="round"/><line x1="12" y1="9" x2="12" y2="13" stroke-linecap="round"/><line x1="12" y1="17" x2="12.01" y2="17" stroke-linecap="round"/></svg>
-                    <span id="uploadWarningText">Upload in progress — don't close Delyvr or reload the page, it will interrupt the upload. You can keep browsing Galleries and Collections while it finishes.</span>
+                    <span id="uploadWarningText" class="upload-warning-text">Upload in progress. Don't close Delyvr or reload the page, it will interrupt the upload. You can keep browsing Galleries and Collections while it finishes.</span>
+                    <button class="upload-cancel-btn" id="uploadWarningCancelBtn" onclick="cancelUpload()">Cancel upload</button>
                 </div>
 
                 <div class="new-grid">
@@ -562,6 +560,8 @@
 
             byId('uploadWarningText', t.uploadDontLeave);
             byId('uploadMiniTitle', t.uploadInProgress);
+            byId('uploadCancelBtn', t.cancelUpload);
+            byId('uploadWarningCancelBtn', t.cancelUpload);
             byId('uploadDoneDismissBtn', t.dismiss);
             byId('uploadDoneCopyBtn', t.copy);
 
@@ -683,6 +683,10 @@
         // `let` would be in the temporal dead zone and throw, aborting the whole script.
         let _uploadInProgress = false;
         let _uploadResult = null; // { mode:'single'|'multi', link?, count? } — for the away pop-up
+        let _uploadCancelled = false;
+        let _activeUploadXHR = null;           // in-flight XHR, so cancelUpload() can abort it
+        let _uploadCreatedGalleryIds = [];     // galleries created this run — removed on cancel
+        let _uploadCreatedCollectionId = null; // a new collection created this run, if any
 
         window.addEventListener('hashchange', renderRoute);
         renderRoute();
@@ -1126,13 +1130,20 @@
 
                 let bodySent = false;
                 let timer = null;
+                let done = false; // first settle wins; guards against double-settle across handlers
                 const clear = () => { if (timer) { clearTimeout(timer); timer = null; } };
-                const failStalled = () => {
+                const settle = (fn, arg) => {
+                    if (done) return;
+                    done = true;
                     clear();
-                    try { xhr.abort(); } catch (_) {}
-                    const err = new Error(bodySent ? 'No response from server' : 'Upload stalled');
-                    err.retryable = !bodySent;
-                    reject(err);
+                    if (_activeUploadXHR === xhr) _activeUploadXHR = null;
+                    fn(arg);
+                };
+                const rejectWith = (msg, props) => { const e = new Error(msg); Object.assign(e, props || {}); settle(reject, e); };
+
+                const failStalled = () => {
+                    rejectWith(bodySent ? 'No response from server' : 'Upload stalled', { retryable: !bodySent });
+                    try { xhr.abort(); } catch (_) {} // already settled — abort is now a no-op for the promise
                 };
                 const arm = (ms) => { clear(); timer = setTimeout(failStalled, ms); };
                 arm(STALL_MS);
@@ -1146,25 +1157,22 @@
                 xhr.upload.onload = () => { bodySent = true; arm(RESPONSE_MS); }; // now waiting on server
 
                 xhr.onload = () => {
-                    clear();
                     if (xhr.status >= 200 && xhr.status < 300) {
-                        try { resolve(JSON.parse(xhr.responseText)); }
-                        catch { resolve({}); }
+                        let data = {};
+                        try { data = JSON.parse(xhr.responseText); } catch {}
+                        settle(resolve, data);
                     } else {
                         let msg = 'Upload failed';
                         try { msg = JSON.parse(xhr.responseText).error || msg; } catch {}
-                        const err = new Error(msg);
-                        err.retryable = false; // a real HTTP status — re-sending won't help
-                        reject(err);
+                        rejectWith(msg, { retryable: false }); // a real HTTP status — re-sending won't help
                     }
                 };
-                xhr.onerror = () => {
-                    clear();
-                    const err = new Error('Network error');
-                    err.retryable = !bodySent;
-                    reject(err);
-                };
-                xhr.onabort = () => clear(); // watchdog already rejected
+                xhr.onerror = () => rejectWith('Network error', { retryable: !bodySent });
+                // Manual abort from cancelUpload() — reject as cancelled so the flow cleans up.
+                // The watchdog settles before it aborts, so this is a no-op on that path.
+                xhr.onabort = () => rejectWith('Upload cancelled', { cancelled: true });
+
+                _activeUploadXHR = xhr;
                 xhr.send(fd);
             });
         }
@@ -1176,10 +1184,12 @@
             const MAX_ATTEMPTS = 3;
             let lastErr;
             for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+                throwIfCancelled();
                 try {
                     return await uploadBatchXHR(url, method, batch, extraFields, uploadedSoFar, total, onProgress);
                 } catch (err) {
                     lastErr = err;
+                    if (err.cancelled || _uploadCancelled) throw err;   // never retry a cancel
                     if (!err.retryable || attempt === MAX_ATTEMPTS) throw err;
                     await new Promise(r => setTimeout(r, 1500 * attempt)); // brief backoff, then re-send
                 }
@@ -1196,8 +1206,54 @@
         // them from that call — declaring them here would be in the temporal dead zone.
         function setUploadActive(active) {
             _uploadInProgress = active;
-            if (active) _uploadResult = null;
+            if (active) {
+                _uploadResult = null;
+                _uploadCancelled = false;
+                _uploadCreatedGalleryIds = [];
+                _uploadCreatedCollectionId = null;
+            }
             syncUploadUI();
+        }
+
+        // Throws a cancellation error if the user hit "Cancel upload" between steps —
+        // the create flows call this between awaits that aren't guarded by an XHR abort.
+        function throwIfCancelled() {
+            if (_uploadCancelled) { const e = new Error('Upload cancelled'); e.cancelled = true; throw e; }
+        }
+
+        // Cancel button (sidebar panel + Create banner). Confirms, then aborts the
+        // in-flight request; the flow's catch runs discardUploadArtifacts().
+        async function cancelUpload() {
+            if (!_uploadInProgress) return;
+            if (!(await confirmDialog(t.cancelUploadConfirm, t.cancelUpload))) return;
+            if (!_uploadInProgress) return; // finished while the dialog was open — nothing to cancel
+            _uploadCancelled = true;
+            if (_activeUploadXHR) { try { _activeUploadXHR.abort(); } catch (_) {} }
+        }
+
+        // Permanently removes what this upload created so far — galleries via /purge
+        // (hard delete, no trash trace) and a collection created in the same run.
+        async function discardUploadArtifacts() {
+            for (const gid of _uploadCreatedGalleryIds) {
+                try { await fetch(`/api/gallery/${gid}/purge`, { method: 'DELETE' }); } catch (_) {}
+            }
+            if (_uploadCreatedCollectionId) {
+                try { await fetch(`/api/collection/${_uploadCreatedCollectionId}`, { method: 'DELETE' }); } catch (_) {}
+            }
+            _uploadCreatedGalleryIds = [];
+            _uploadCreatedCollectionId = null;
+        }
+
+        // Neutral toast (reuses #uploadToast) confirming the cancel.
+        function showUploadCancelledToast() {
+            const toast = document.getElementById('uploadToast');
+            document.getElementById('toastSpinner').style.display = 'none';
+            document.getElementById('toastSuccess').style.display = 'none';
+            document.getElementById('toastError').style.display = 'none';
+            document.getElementById('toastMessage').textContent = t.uploadCancelled;
+            toast.className = 'upload-toast visible';
+            clearTimeout(_successToastTimer);
+            _successToastTimer = setTimeout(() => { toast.className = 'upload-toast'; }, 3000);
         }
 
         // Single writer for both the inline Create bar and the corner mini-panel.
@@ -1208,8 +1264,9 @@
             const mt = document.getElementById('uploadMiniText'); if (mt) mt.textContent = label;
         }
 
-        // Decides what the upload chrome shows for the current route. The corner panel
-        // and the Create bar are mutually exclusive so progress is never shown twice.
+        // Decides what the upload chrome shows for the current route. On Create the
+        // inline bar + warning banner cover it; elsewhere the sidebar panel does — kept
+        // mutually exclusive so progress is never shown twice. Both carry a cancel button.
         function syncUploadUI() {
             const onCreate = parseHash().route === 'new';
             const warn = document.getElementById('uploadWarning');
@@ -1332,6 +1389,7 @@
                 setProgress(0, t.uploadingCount(0, total));
                 const result = await uploadBatchWithRetry('/api/gallery/create', 'POST', firstBatch, { eventName }, 0, total, onProgress);
                 const galleryId = result.galleryId;
+                _uploadCreatedGalleryIds.push(galleryId); // so a cancel can remove it
                 let uploaded = firstBatch.length;
 
                 // Remaining batches: add to the existing gallery
@@ -1361,7 +1419,8 @@
                 }
 
                 // Assign to collection if requested
-                const { collectionId } = await resolveCollectionTarget();
+                const { collectionId, isNew: newCollection } = await resolveCollectionTarget();
+                if (newCollection) _uploadCreatedCollectionId = collectionId; // remove on cancel
                 let refreshCollections = false;
                 if (collectionId) {
                     await assignGalleryToCollection(collectionId, galleryId);
@@ -1385,7 +1444,14 @@
 
             } catch (err) {
                 document.getElementById('createBtn').disabled = false;
-                showError(t.errorCreatingGallery(err.message));
+                if (err.cancelled || _uploadCancelled) {
+                    await discardUploadArtifacts();
+                    resetForm();
+                    loadGalleries();
+                    showUploadCancelledToast();
+                } else {
+                    showError(t.errorCreatingGallery(err.message));
+                }
             } finally {
                 document.getElementById('progressContainer').classList.remove('visible');
                 setUploadActive(false);
@@ -1414,9 +1480,12 @@
             let collectionId = null;
 
             try {
-                ({ collectionId } = await resolveCollectionTarget());
+                const target = await resolveCollectionTarget();
+                collectionId = target.collectionId;
+                if (target.isNew) _uploadCreatedCollectionId = collectionId; // remove on cancel
 
                 for (let gi = 0; gi < n; gi++) {
+                    throwIfCancelled();
                     const g = groups[gi];
                     const total = g.files.length;
                     const baseUploaded = uploadedSoFar;
@@ -1431,6 +1500,7 @@
                     const firstBatch = g.files.slice(0, BATCH_SIZE);
                     const result = await uploadBatchWithRetry('/api/gallery/create', 'POST', firstBatch, { eventName }, 0, total, onProgress);
                     const galleryId = result.galleryId;
+                    _uploadCreatedGalleryIds.push(galleryId); // so a cancel can remove it
                     let uploaded = firstBatch.length;
                     onProgress(uploaded);
 
@@ -1465,8 +1535,14 @@
                 else showUploadDoneModal();
 
             } catch (err) {
-                showError(t.failedAfterCreating(createdCount, n, err.message));
-                renderMultiGalleryPanel();
+                if (err.cancelled || _uploadCancelled) {
+                    await discardUploadArtifacts();
+                    cancelMultiGalleryMode();
+                    showUploadCancelledToast();
+                } else {
+                    showError(t.failedAfterCreating(createdCount, n, err.message));
+                    renderMultiGalleryPanel();
+                }
             } finally {
                 document.getElementById('progressContainer').classList.remove('visible');
                 createMultiBtn.disabled = false;
