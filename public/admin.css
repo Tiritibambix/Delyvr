@@ -612,7 +612,7 @@ body { display: flex; flex-direction: column; height: 100%; }
 
 .drop-zone-small {
     background: var(--bg3); border: 1px dashed var(--border2);
-    border-radius: 3px; height: 90px;
+    border-radius: 3px; height: 190px; /* match .drop-zone so cover + photos zones align */
     display: flex; align-items: center; justify-content: center;
     cursor: pointer; margin-top: 10px; transition: border-color 0.2s;
     position: relative; overflow: hidden;
@@ -1542,7 +1542,9 @@ body { display: flex; flex-direction: column; height: 100%; }
         box-shadow: 2px 0 18px rgba(0,0,0,0.4);
     }
     .sidebar.open { transform: translateX(0); }
-    .sidebar-toggle { display: inline-block; }
+    /* Sit above the open drawer (z-index 8000) so a second tap on the burger still
+       lands on it and closes the panel, instead of hitting the sidebar underneath. */
+    .sidebar-toggle { display: inline-block; position: relative; z-index: 8001; }
     .admin-main { padding: 16px 14px; }
 }
 
