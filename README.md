@@ -58,13 +58,15 @@ When you share a gallery link with a client, here is what they get:
 
 ### The dashboard
 
-The admin dashboard is designed to work well on both desktop and mobile. On a computer you get a two-column layout with uploads on the left and your gallery/collection list on the right. On your phone, everything stacks cleanly and all the important actions remain accessible.
+The admin dashboard is a sidebar shell with separate pages you switch between: **Galleries**, **Collections**, and **Create** (where you make new galleries and collections side by side). Your logo sits at the top of the sidebar; your profile, the light/dark theme toggle, and logout are at the bottom. On desktop the sidebar is always visible; on mobile it collapses into a burger menu — tap to open, tap again to close — and every page stacks cleanly so all the important actions stay reachable.
 
 ### Uploading
 
-Drop photos or entire folders onto the upload zone. The gallery name is pre-filled from the folder name. Photos are uploaded in batches so large sessions (150+ photos) work reliably. Progress is shown throughout. If something goes wrong, you get a clear message rather than a silent failure. ICC color profiles (Adobe RGB, Display P3, etc.) are preserved in every generated thumbnail and preview, so what your clients see in the browser matches what you edited in Lightroom.
+Drop photos or entire folders onto the upload zone. The gallery name is pre-filled from the folder name. Photos are uploaded in batches so large sessions (150+ photos) work reliably, and a connection that stalls mid-transfer is retried automatically instead of hanging forever — if it truly can't recover you get a clear message rather than a silent freeze. ICC color profiles (Adobe RGB, Display P3, etc.) are preserved in every generated thumbnail and preview, so what your clients see in the browser matches what you edited in Lightroom.
 
-**Video clips:** You can also drop `.mp4`, `.mov`, and `.webm` video files into a gallery alongside photos. Delyvr automatically generates a poster thumbnail for each video, shows a play badge in the gallery grid, and plays the video with full controls (including seeking) in the lightbox.
+Uploads keep running while you work. A compact progress panel sits in the sidebar, so you can leave the Create page and browse your galleries and collections without losing sight of it — and if an upload finishes while you're on another page, a pop-up hands you the share link. A red banner reminds you not to close the tab or reload mid-upload (the browser warns you too), and a **Cancel upload** button stops the transfer and removes whatever was already uploaded, so you're never left with a half-finished gallery.
+
+**Video clips:** You can also drop `.mp4`, `.mov`, `.webm`, and `.m4v` video files into a gallery alongside photos. Delyvr automatically generates a poster thumbnail for each video, shows a play badge in the gallery grid, and plays the video with full controls (including seeking) in the lightbox.
 
 **Animated GIFs & WebP:** Animated `.gif` and `.webp` files keep their animation. The gallery grid shows a still frame with a small `GIF` badge to keep scrolling fast, and the animation plays when a client opens the image in the lightbox.
 
@@ -92,7 +94,7 @@ You can also add a cover image (hero photo) to each gallery. This appears as the
 
 **Favorites:** Click View on a gallery to see which photos were hearted and how many times. Click Reset to clear all votes when you start a new review round. You can also export the full list as a CSV file to process selections in your own tools.
 
-**Comments:** Click View on a gallery to open a recap of every commented photo, with each comment's author (or "Guest") and text grouped underneath its thumbnail — the most recently active photo first. Delete individual comments to remove spam, or click Reset to clear the whole gallery.
+**Comments:** Click View on a gallery to open a dedicated moderation page built for reading. A left rail lists every commented photo with its critique number and comment count; selecting one shows that photo large next to its full thread, so you read the feedback beside the image it's about — ideal when Delyvr doubles as a peer-critique platform. Delete individual comments to remove spam, or click Clear all to empty the whole gallery.
 
 **Bulk operations:** Click Select in the gallery section header to enter selection mode. Select individual galleries or use Select all. Then enable or disable downloads for all selected galleries at once, add them to a collection, or delete them. Click Cancel or press Escape to exit.
 
@@ -120,17 +122,17 @@ When you or a client shares a gallery or collection link on WhatsApp, iMessage, 
 
 ### Branding and settings
 
-Upload your logo from the admin header. It appears on every page including the client-facing ones. You can revert to the default logo at any time.
+Upload your logo from the top of the sidebar. It appears on every page including the client-facing ones. You can revert to the default logo at any time.
 
-The Profile modal (top of the admin header) lets you set your website URL and social links. Instagram, Facebook, Pinterest, TikTok, LinkedIn, 500px, Flickr, and Behance are supported. Only links you fill in appear on client pages.
+The Profile modal (opened from the sidebar footer) lets you set your website URL and social links. Instagram, Facebook, Pinterest, TikTok, LinkedIn, 500px, Flickr, and Behance are supported. Only links you fill in appear on client pages.
 
 The Profile modal also has two language pickers: **Dashboard language** changes the admin interface itself (saving reloads the page), and **Default client language** sets the site-wide fallback used by client pages and link previews when a gallery or collection doesn't have its own override. To override the language for a single gallery or collection, use the small language dropdown on its card in the dashboard — "Auto" inherits from the collection or the global default.
 
 Native browser confirmation popups are never used — every destructive action (delete, reset, empty trash) shows an in-app confirmation dialog styled like the rest of the dashboard.
 
-Light and dark mode can be toggled from the admin header. The theme applies instantly to every visitor.
+Light and dark mode can be toggled from the sidebar. The theme applies instantly to every visitor.
 
-Your session persists across page refreshes using a secure HTTP-only cookie, so you do not have to log in again every time. A logout button is available in the header.
+Your session persists across page refreshes using a secure HTTP-only cookie, so you do not have to log in again every time. A logout button is available in the sidebar footer.
 
 ---
 
@@ -235,7 +237,7 @@ The following measures are implemented in the codebase:
 | `publicReadLimiter` | 300 / min | All public GET routes |
 | `publicWriteLimiter` | 120 / min | Favorites toggle, posting comments |
 | `downloadLimiter` | 10 / min | ZIP downloads |
-| `adminLimiter` | 60 / min | Admin routes with filesystem access |
+| `adminLimiter` | 300 / min | Admin routes with filesystem access (high cap: the dashboard re-fetches its lists after every action) |
 
 **What is not covered**
 - Gallery links are public by design. Anyone with the UUID can access photos. UUIDs are not guessable but are not secret if the link is forwarded.
@@ -252,7 +254,7 @@ The following measures are implemented in the codebase:
 
 **Comments workflow:** Comments are public to everyone with the gallery link — great for a shared family/wedding gallery where guests react to each other's comments, but turn the Comments toggle off for galleries shared with a single private client if you'd rather they send feedback another way.
 
-**Naming files:** The filename controls sort order in the gallery. Rename files before importing if you want a specific sequence. Accents and special characters in filenames are preserved.
+**Naming files:** The filename controls sort order in the gallery. Photos are sorted by the name *without its extension*, so a companion file named after the photo it should follow (e.g. a GIF `wedding-036-gif.gif` next to `wedding-036.jpg`) lands right after it, just like in your file explorer. Rename files before importing if you want a specific sequence. Accents and special characters in filenames are preserved.
 
 **Gallery covers:** Always set a cover image. It appears as the hero background on the client download page, as the card thumbnail in the admin, and as the social media preview when someone shares the link.
 
