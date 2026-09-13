@@ -1911,7 +1911,6 @@
                                     ${g.commentsCount > 0 ? `<button class="btn-fav-action" onclick="viewComments('${g.id}')">${t.view}</button><button class="btn-fav-action" onclick="resetComments('${g.id}')">${t.reset}</button>` : ''}
                                 </div>
                             </div>
-                            ${renderAudioRow('gallery', g.id, g.audio)}
                         </div>
                     </div>
 
@@ -1921,6 +1920,8 @@
                         <button class="btn-icon" onclick="openCollectionPicker('${g.id}')" title="${t.addToCollectionPlaceholder}">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2 2 7l10 5 10-5-10-5Z"/><path d="m2 17 10 5 10-5"/><path d="m2 12 10 5 10-5"/></svg>
                         </button>
+                        ${renderAudioButtons('gallery', g.id, g.audio)}
+                        <span class="action-sep"></span>
                         <button class="btn-icon" onclick="copyGalleryLink('${g.id}', 'preview', this)" title="${t.copyClientLink}">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
                         </button>
@@ -3196,10 +3197,6 @@
                     ? `<img src="/api/collection/${c.id}/background?thumb=1&v=${c.bgVersion || 0}" alt="" loading="lazy">`
                     : `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>`;
 
-                // Audio montage row — one optional track per collection, played by the
-                // client. Duration is absent when ffprobe is unavailable.
-                const audioHtml = renderAudioRow('collection', c.id, c.audio);
-
                 return `<div class="collection-item">
                     <div class="collection-header">
                         <div class="collection-cover-thumb" onclick="document.getElementById('col-cover-input-${c.id}').click()" title="${t.changeCoverTitle}">
@@ -3251,6 +3248,8 @@
                             </div>
                         </div>
                         <div class="collection-actions">
+                            ${renderAudioButtons('collection', c.id, c.audio)}
+                            <span class="action-sep"></span>
                             <button class="btn-icon" onclick="copyCollectionLink('${c.id}', this)" title="${t.copyClientLink}">
                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
                             </button>
@@ -3261,14 +3260,13 @@
                                 <button class="btn-icon" onclick="regenerateCollectionOG('${c.id}')" title="${t.regenerateShare}">
                                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
                                 </button>
-                                <div class="og-tooltip">${t.ogTooltipCollection}</div>
+                                <div class="og-tooltip og-tooltip--down">${t.ogTooltipCollection}</div>
                             </div>
                             <button class="btn-icon btn-icon-danger" onclick="deleteCollection('${c.id}')" title="${t.delete}">
                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
                             </button>
                         </div>
                     </div>
-                    ${audioHtml}
                     <div class="collection-galleries"
                          id="col-drop-${c.id}"
                          ondragover="handleColDragOver(event, '${c.id}')"
@@ -3364,31 +3362,26 @@
             }
         }
 
-        // Shared markup for the audio row on a gallery or collection card.
-        function renderAudioRow(kind, ownerId, audio) {
-            const musicSvg = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>`;
+        // Audio control as icon button(s) for the card's action cluster (gallery or
+        // collection). Empty: one music-note button that opens the file picker. Present:
+        // the button turns gold, its click replaces the file, its tooltip names the file
+        // + duration, and a trash button appears beside it to remove. Mirrors the
+        // vocabulary of the other cluster buttons instead of a bespoke row.
+        function renderAudioButtons(kind, ownerId, audio) {
             const inputId = `${kind}-audio-input-${ownerId}`;
-            const meta = audio
-                ? [audio.duration != null ? formatAudioDuration(audio.duration) : null,
-                   audio.size != null ? formatFileSize(audio.size) : null].filter(Boolean).join(' · ')
-                : '';
-            return `<div class="collection-audio">
-                ${audio ? `
-                    ${musicSvg}
-                    <span class="collection-audio-name" title="${escapeAttr(audio.filename || '')}">${escapeHtml(audio.filename || '')}</span>
-                    <span class="collection-audio-meta">${escapeHtml(meta)}</span>
-                    <button class="section-select-btn" onclick="document.getElementById('${inputId}').click()">${t.replaceAudio}</button>
-                    <button class="btn-icon btn-icon-danger" onclick="removeOwnerAudio('${kind}', '${ownerId}')" title="${t.removeAudio}">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/></svg>
-                    </button>
-                ` : `
-                    <button class="collection-audio-add" onclick="document.getElementById('${inputId}').click()">
-                        ${musicSvg}<span>${t.addAudio}</span>
-                    </button>
-                `}
-                <input type="file" id="${inputId}" accept="audio/*,.mp3,.m4a,.aac,.ogg,.opus,.wav,.flac" style="display:none"
-                       onchange="uploadOwnerAudio('${kind}', '${ownerId}', this.files[0]); this.value='';">
-            </div>`;
+            const musicSvg = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>`;
+            const input = `<input type="file" id="${inputId}" accept="audio/*,.mp3,.m4a,.aac,.ogg,.opus,.wav,.flac" style="display:none"
+                       onchange="uploadOwnerAudio('${kind}', '${ownerId}', this.files[0]); this.value='';">`;
+            if (!audio) {
+                return `<button class="btn-icon" onclick="document.getElementById('${inputId}').click()" title="${escapeAttr(t.addAudio)}">${musicSvg}</button>${input}`;
+            }
+            const meta = [audio.duration != null ? formatAudioDuration(audio.duration) : null,
+                          audio.size != null ? formatFileSize(audio.size) : null].filter(Boolean).join(' · ');
+            const label = [audio.filename || '', meta].filter(Boolean).join(' · ');
+            return `<button class="btn-icon btn-icon-audio" onclick="document.getElementById('${inputId}').click()" title="${escapeAttr(label)}">${musicSvg}</button>
+                <button class="btn-icon btn-icon-danger" onclick="removeOwnerAudio('${kind}', '${ownerId}')" title="${escapeAttr(t.removeAudio)}">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/></svg>
+                </button>${input}`;
         }
 
         // Pill reordering drag state

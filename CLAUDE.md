@@ -285,6 +285,17 @@ reassigns `audio.src` (which would restart playback). Listeners are attached onc
 `wireMontageOnce()` — `setMontage()` runs on every gallery mount, and re-attaching would
 stack one handler set per gallery visited.
 
+**Admin control** (`renderAudioButtons(kind, ownerId, audio)`): an icon button in the
+card's action cluster (gallery and collection), not a bespoke row. Empty → one muted
+music-note button (tooltip `t.addAudio`) that opens the file picker. Present → the button
+turns gold (`.btn-icon-audio`), its click replaces the file, its `title` is
+`filename · duration · size`, and a `.btn-icon-danger` trash button appears beside it to
+remove. A thin `.action-sep` rule separates this "attach" group (audio, plus add-to-collection
+on gallery cards) from the share/manage buttons. **Collection cards set `overflow: hidden`
+for their rounded corners, which clips the OG-regenerate tooltip when it opens upward from
+the header — so that tooltip carries `.og-tooltip--down` to open downward and stay inside
+the card.**
+
 - **Never added to any gallery's `files[]`.** That array drives the photo grid, the ZIP,
   counts, dimension probing, the OG image fallback and the stem sort — an audio file has
   no business in any of them. It lives only in `collection.audio`

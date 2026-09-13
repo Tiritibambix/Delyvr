@@ -865,34 +865,17 @@ body { display: flex; flex-direction: column; height: 100%; }
 .btn-icon:hover { color: var(--text); border-color: var(--muted); background: var(--bg2); }
 .btn-icon-danger:hover { color: var(--error); border-color: var(--error); background: var(--bg2); }
 
-/* Audio montage row on a collection card — one optional track per collection. */
-.collection-audio {
-    display: flex; align-items: center; gap: 8px;
-    padding: 8px 12px;
-    border-top: 1px solid var(--border);
-    font-size: 12px; color: var(--muted);
-    min-width: 0;
+/* Audio is now an icon button in the action cluster (see renderAudioButtons):
+   muted when empty, gold when a file is attached. */
+.btn-icon-audio { color: var(--accent); border-color: var(--accent); }
+.btn-icon-audio:hover { color: var(--accent-h); border-color: var(--accent-h); background: var(--bg2); }
+
+/* Thin vertical rule separating the "attach" group (add-to-collection + audio) from
+   the share/manage buttons in a card's action cluster. */
+.action-sep {
+    width: 1px; align-self: stretch; min-height: 18px;
+    background: var(--border2); margin: 0 3px; flex-shrink: 0;
 }
-.collection-audio > svg { width: 14px; height: 14px; flex-shrink: 0; color: var(--accent); }
-.collection-audio-name {
-    color: var(--text); min-width: 0;
-    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-}
-.collection-audio-meta { flex-shrink: 0; font-variant-numeric: tabular-nums; }
-/* Push the actions to the right of the row */
-.collection-audio .section-select-btn { margin-left: auto; flex-shrink: 0; }
-.collection-audio .btn-icon { flex-shrink: 0; }
-.collection-audio-add {
-    display: inline-flex; align-items: center; gap: 8px;
-    background: none; border: none; padding: 0;
-    color: var(--muted); font-family: inherit; font-size: 12px;
-    cursor: pointer; transition: color 0.15s;
-}
-.collection-audio-add:hover { color: var(--text); }
-.collection-audio-add svg { width: 14px; height: 14px; color: var(--accent); }
-/* On a gallery card the same row is a wrapped flex item inside the detail panel,
-   not a full-width band across the card — take its own line, drop the side padding. */
-.gallery-bottom .collection-audio { flex: 0 0 100%; padding: 8px 0 0; }
 
 .collection-galleries {
     padding: 12px;
@@ -1435,6 +1418,10 @@ body { display: flex; flex-direction: column; height: 100%; }
     color: var(--muted); line-height: 1.5; z-index: 200; pointer-events: none;
 }
 .og-tooltip-wrap:hover .og-tooltip { display: block; }
+/* Collection cards set `overflow: hidden` (for their rounded corners), which clips a
+   tooltip opening upward from the header. Open it downward instead — it then stays
+   within the card's box and is fully visible. */
+.og-tooltip.og-tooltip--down { bottom: auto; top: calc(100% + 6px); }
 
 .btn-icon.copied {
     color: var(--success);
