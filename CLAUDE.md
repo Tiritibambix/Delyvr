@@ -319,14 +319,27 @@ the card.**
   `totalSizeBytes` stays **photos only**; the montage is excluded, as is the ZIP.
 - Deleting a collection removes the file via `deleteCollectionAudioFiles()`.
 - **Client player** (`preview.html`): `preload="none"` so nothing is fetched until the
-  visitor asks. The UI is a **single 44 px button** — scrubbing, skipping and the title are
+  visitor asks. The UI is a **single small button** — scrubbing, skipping and the title are
   handed to the OS lock-screen controls via the **Media Session API** instead of costing
   screen space. Progress is a `conic-gradient` ring driven by a `--audio-progress` custom
   property, so it occupies no layout. **Playback is never started automatically** (the
-  first play must be a user gesture, which every browser requires anyway). The button sits
-  at `z-index: 2100`, above the lightbox layer (1000–1030), so playback can be stopped
-  while a photo is open; it lives outside `.lightbox` in the DOM, so the lightbox's
-  swipe/pinch handlers never see its taps.
+  first play must be a user gesture, which every browser requires anyway).
+- **The button is docked into existing chrome, never floating.** As a `position: fixed`
+  overlay it collided with the hero title, the photos, the footer and the lightbox's "@"
+  widget — and, being a *sibling* of `.lightbox`, it **vanished in fullscreen**, since
+  `requestFullscreen()` renders only the fullscreen element's subtree.
+  `placeAudioButton()` moves the one element (so: one state, one ring, and re-parenting a
+  `<button>` never interrupts the `<audio>`, which stays put) between four hosts:
+  `#collAudioSlot` (collection index), `#heroAudioSlot` (hero cluster), `#barAudioSlot`
+  (sticky actions bar, once it reaches the top), and inside `.lightbox` —
+  `#lbAudioSlotDesktop` (continuing the right-hand stack at `top: 170px`, after close 20 /
+  fullscreen 50 / comments 80 / favorite 110 / download 140) or `.lb-bottom-bar` on
+  mobile, where it inherits the bars' auto-hide. It is called from `openLightbox`,
+  `closeLightbox`, `renderRoute`, `loadGallery`, the existing `scroll` listener and
+  `resize`, and **no-ops unless the host actually changed** (it runs on every scroll).
+  The lightbox host test uses `matchMedia('(max-width: 768px)')`, **not** `_isMobileLB()`:
+  the latter also matches `(max-height: 500px)`, but `.lb-mobile-overlay` only renders
+  under `max-width: 768px`, so a landscape phone would park the button in a hidden bar.
 - **The montage survives moving between galleries**, which is the whole point — see
   "One client document" below.
 
@@ -604,4 +617,11 @@ resolved from `data.clientLanguage` via `resolveClientLocale()`, gallery covers 
 - **Critique mode** is entirely client-side. `?critique=1` in the URL enables photo numbering in `preview.html`. The admin copies the critique URL via `copyCritiqueLink()`. No server-side flag.
 - **Gallery name editing** requires disabling `draggable` on the parent `.gallery-item` during edit (set in `startGalleryRename`, restored in `finishGalleryRename`) so that text selection works. Without this, the browser intercepts mousedown for drag, preventing text selection.
 - **`squarePhotoGridCells()`** in the photos management modal measures `offsetWidth` of the first grid cell after `requestAnimationFrame` and sets explicit `style.height` on all cells. CSS `aspect-ratio` is unreliable in some mobile browsers when combined with grid and `position: absolute` content.
+- **Never use `position: fixed` inside `.lightbox`.** `.lightbox` is the element passed to
+  `requestFullscreen()`, and a `fixed` descendant of a top-layer element does not resolve
+  reliably across engines — that is what made the favorite/download bar disappear in mobile
+  fullscreen. `.lb-mobile-overlay`, `#lightboxSocialWidget` and `#kbHintWidget` are
+  therefore `position: absolute`: `.lightbox` is itself `position: fixed; inset: 0`, so the
+  geometry is identical in normal mode and correct in fullscreen. Anything else that must
+  be usable in fullscreen has to live **inside** `.lightbox` (see `placeAudioButton()`).
 - **`public/shared.js`** is loaded by all client pages via `<script src="/shared.js">`. It provides `SOCIAL_ICONS`, `applyTheme()`, and `renderSocialFooter()`. `admin.html` loads it but overrides `applyTheme()` locally to also update the theme toggle button text. Do not duplicate these functions into individual HTML files.

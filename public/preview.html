@@ -648,9 +648,14 @@
         /* Mobile action bar — visible only on mobile */
         /* ── MOBILE LIGHTBOX OVERLAY ── */
         /* Floating overlay : actions auto-hide après 3s, réapparaissent au tap */
+        /* absolute, not fixed: this is a descendant of .lightbox, which is itself
+           `position: fixed; inset: 0`, so the geometry is identical — but a `fixed`
+           descendant of a top-layer (fullscreen) element does not resolve reliably
+           across engines, which is what made the favorite/download bar vanish in
+           mobile fullscreen. Anchoring to .lightbox follows it into fullscreen. */
         .lb-mobile-overlay {
             display: none;
-            position: fixed;
+            position: absolute;
             inset: 0;
             z-index: 1015;
             pointer-events: none;
@@ -1203,7 +1208,8 @@
         /* Social footer */
         /* Keyboard shortcut hint — desktop only */
         #kbHintWidget {
-            position: fixed;
+            /* absolute for the same reason as .lb-mobile-overlay — see above. */
+            position: absolute;
             bottom: 20px;
             right: 24px;
             display: flex;
@@ -1273,7 +1279,8 @@
         }
 
         #lightboxSocialWidget {
-            position: fixed;
+            /* absolute for the same reason as .lb-mobile-overlay — see above. */
+            position: absolute;
             bottom: 20px;
             left: 24px;
             display: flex;
@@ -1523,29 +1530,74 @@
            screen space. The progress ring is a conic gradient, so it takes no
            layout at all. z-index sits above the lightbox layer (1000–1030) so
            playback can be stopped even while a photo is open. */
+        /* The audio button is docked into existing chrome, never floating: a floating
+           position collided with the hero title, the photos, the footer and the
+           lightbox's "@" widget, and being a sibling of .lightbox made it vanish in
+           fullscreen. placeAudioButton() moves this one element between hosts; the
+           styling is per-host so it matches whatever cluster it currently sits in. */
         .audio-player {
-            position: fixed; left: 20px; bottom: 20px;
-            width: 44px; height: 44px;
+            position: relative;
             display: none; align-items: center; justify-content: center;
-            border: none; padding: 0; border-radius: 50%;
-            background: rgba(10,10,11,0.72);
-            backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
-            color: #f2f2f4; cursor: pointer;
-            z-index: 2100;
-            transition: transform 0.15s, background 0.15s;
+            padding: 0; background: none; border: none;
+            color: inherit; cursor: pointer;
         }
-        .audio-player.visible { display: flex; }
-        .audio-player:hover { transform: scale(1.06); }
-        .audio-player svg { width: 17px; height: 17px; position: relative; z-index: 1; }
+        .audio-player.visible { display: inline-flex; }
+        .audio-player svg { position: relative; z-index: 1; }
+        /* Progress ring — costs no layout, adapts to whatever size the host gives. */
         .audio-player::before {
-            content: ''; position: absolute; inset: -3px; border-radius: 50%;
+            content: ''; position: absolute; inset: -4px; border-radius: 50%;
             background: conic-gradient(var(--accent) calc(var(--audio-progress, 0) * 1%), transparent 0);
-            -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 3px));
-                    mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 3px));
+            -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 2px), #000 calc(100% - 2px));
+                    mask: radial-gradient(farthest-side, transparent calc(100% - 2px), #000 calc(100% - 2px));
             pointer-events: none;
         }
-        html.light .audio-player { background: rgba(245,244,240,0.9); color: #1a1a1a; }
-        @media (max-width: 640px) { .audio-player { left: 16px; bottom: 16px; } }
+
+        /* Collection index host — centred under the header. The margin lives on the
+           button, not the wrapper, so nothing takes space when there is no montage
+           (the button is display:none then). */
+        .coll-audio-wrap { display: flex; justify-content: center; position: relative; z-index: 10; }
+        .coll-audio-wrap .audio-player { margin-top: 20px; }
+
+        /* Hero + sticky actions bar + collection index: a bordered round icon, sized
+           like the buttons it sits next to. */
+        .hero-actions .audio-player,
+        .coll-audio-wrap .audio-player,
+        .actions-bar .audio-player {
+            width: 34px; height: 34px; border-radius: 50%;
+            border: 1px solid rgba(255,255,255,0.35);
+            color: #fff; background: rgba(0,0,0,0.25);
+            backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+            transition: background 0.2s, border-color 0.2s;
+        }
+        .hero-actions .audio-player:hover,
+        .coll-audio-wrap .audio-player:hover,
+        .actions-bar .audio-player:hover { background: rgba(0,0,0,0.45); border-color: #fff; }
+        .hero-actions .audio-player svg,
+        .coll-audio-wrap .audio-player svg,
+        .actions-bar .audio-player svg { width: 14px; height: 14px; }
+        html.light .actions-bar .audio-player {
+            border-color: var(--border); color: var(--text); background: transparent;
+        }
+        html.light .actions-bar .audio-player:hover { background: var(--bg2); border-color: var(--muted); }
+
+        /* Lightbox desktop: bare 20px icon continuing the right-hand control stack. */
+        .lightbox .audio-player {
+            position: absolute; top: 170px; right: 20px;
+            width: 20px; height: 20px;
+            color: rgba(255,255,255,0.7);
+            transition: color 0.2s;
+        }
+        .lightbox .audio-player:hover { color: #fff; }
+        .lightbox .audio-player svg { width: 18px; height: 18px; }
+        /* Lightbox mobile: a normal .lb-bottom-bar entry, so it inherits the bar's
+           auto-hide for free. Reset the absolute placement used on desktop. */
+        .lb-bottom-bar .audio-player {
+            position: relative; top: auto; right: auto;
+            width: 44px; height: 44px; border-radius: 50%;
+            background: rgba(0,0,0,0.45); color: #fff;
+            backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+        }
+        .lb-bottom-bar .audio-player svg { width: 20px; height: 20px; }
     </style>
 </head>
 <body>
@@ -1564,6 +1616,12 @@
                 </svg>
                 <span id="downloadAllText"></span>
             </a>
+            <span id="heroAudioSlot">
+                <button class="audio-player" id="audioPlayer" onclick="toggleMontage()">
+                    <svg id="audioIconPlay" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+                    <svg id="audioIconPause" viewBox="0 0 24 24" fill="currentColor" style="display:none"><path d="M6 5h4v14H6zM14 5h4v14h-4z"/></svg>
+                </button>
+            </span>
         </div>
     </section>
 
@@ -1579,6 +1637,7 @@
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><line x1="10" y1="6" x2="21" y2="6"/><line x1="10" y1="12" x2="21" y2="12"/><line x1="10" y1="18" x2="21" y2="18"/><path d="M4 6h1v4M4 10h2M6 18H4c0-1 2-2 2-3s-1-1.5-2-1" stroke-linecap="round" stroke-linejoin="round"/></svg>
             Critique
         </span>
+        <span id="barAudioSlot"></span>
     </div>
 
     <!-- Gallery Grid -->
@@ -1609,6 +1668,9 @@
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" stroke-linecap="round" stroke-linejoin="round"/></svg>
             <span class="lb-comment-count" id="lightboxCommentCount"></span>
         </button>
+        <!-- Desktop host for the audio button: continues the right-hand control stack
+             (close 20, fullscreen 50, comments 80, favorite 110, download 140 → 170). -->
+        <span id="lbAudioSlotDesktop"></span>
         <button class="lightbox-nav lightbox-prev" onclick="navigateLightbox(-1)">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 18l-6-6 6-6" stroke-linecap="round" stroke-linejoin="round"/></svg>
         </button>
@@ -1720,6 +1782,9 @@
             <h1 class="collection-title" id="collectionTitle"></h1>
             <p class="collection-meta" id="collectionMeta"></p>
         </header>
+        <!-- Host for the audio button on the collection index, where the hero and the
+             sticky bar are both hidden. -->
+        <div id="collAudioSlot" class="coll-audio-wrap"></div>
         <div class="coll-download-wrap" id="collDownloadWrap" style="display:none;">
             <button class="coll-download-btn" onclick="downloadCollection()">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 4v12m0 0l-4-4m4 4l4-4M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2" stroke-linecap="round" stroke-linejoin="round"/></svg>
@@ -1732,12 +1797,10 @@
     </div>
 
     <!-- Audio montage. Lives in this document, which never unloads while the
-         visitor moves between galleries of the same collection. -->
+         visitor moves between galleries of the same collection. The <audio> is
+         invisible and stays here; only the button is moved between hosts by
+         placeAudioButton() — including INTO .lightbox, so it survives fullscreen. -->
     <audio id="montageAudio" preload="none"></audio>
-    <button class="audio-player" id="audioPlayer" onclick="toggleMontage()">
-        <svg id="audioIconPlay" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
-        <svg id="audioIconPause" viewBox="0 0 24 24" fill="currentColor" style="display:none"><path d="M6 5h4v14H6zM14 5h4v14h-4z"/></svg>
-    </button>
 
     <script src="/shared.js"></script>
     <script>
@@ -2346,6 +2409,7 @@
                 document.getElementById('loadingState').style.display = 'none';
                 document.getElementById('heroSection').style.display = 'flex';
                 document.getElementById('actionsBar').style.display = 'flex';
+                placeAudioButton(); // hero/bar exist now — dock the control into them
 
                 // Critique mode indicator
                 if (critiqueMode) {
@@ -2669,6 +2733,7 @@
             updateLightbox();
             document.getElementById('lightbox').classList.add('active');
             document.body.style.overflow = 'hidden';
+            placeAudioButton(); // move the control inside .lightbox (survives fullscreen)
             showKbHint();
             populateLightboxSocialLinks();
             // Mobile : initialiser les dots et afficher l'overlay
@@ -2691,6 +2756,7 @@
             // Quitter le plein écran si actif
             if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
             clearTimeout(_lbHideTimer);
+            placeAudioButton(); // back to the page chrome
         }
 
         function navigateLightbox(direction) {
@@ -3282,6 +3348,38 @@
             else el.pause();
         }
 
+        // Docks the audio button into whichever chrome is currently on screen. Moving a
+        // single element keeps one state and one progress ring, and re-parenting a
+        // <button> has no effect on the <audio> (which never moves), so playback is
+        // never interrupted. Crucially, the lightbox hosts are INSIDE .lightbox — the
+        // fullscreen element — so the control survives fullscreen instead of vanishing.
+        function placeAudioButton() {
+            const btn = document.getElementById('audioPlayer');
+            if (!btn) return;
+            const lb = document.getElementById('lightbox');
+            let host;
+            if (lb && lb.classList.contains('active')) {
+                // Deliberately NOT _isMobileLB(): that also matches (max-height: 500px),
+                // but .lb-mobile-overlay only renders at (max-width: 768px). Using the
+                // wrong one would park the button in a hidden bar on a landscape phone.
+                const barsRendered = window.matchMedia('(max-width: 768px)').matches;
+                host = document.getElementById(barsRendered ? 'lbBottomBar' : 'lbAudioSlotDesktop');
+            } else {
+                const collView = document.getElementById('collectionView');
+                if (collView && collView.style.display !== 'none') {
+                    host = document.getElementById('collAudioSlot');
+                } else {
+                    // Once the sticky bar reaches the top it replaces the hero cluster.
+                    const bar = document.getElementById('actionsBar');
+                    const stuck = bar && bar.style.display !== 'none'
+                        && bar.getBoundingClientRect().top <= 0;
+                    host = document.getElementById(stuck ? 'barAudioSlot' : 'heroAudioSlot');
+                }
+            }
+            // Guard: this runs on every scroll event — only touch the DOM on a real change.
+            if (host && btn.parentElement !== host) host.appendChild(btn);
+        }
+
         // ── ROUTING ───────────────────────────────────────────────────────
         // Gallery mode (/preview/:id) has no routes — the gallery is the page.
         // Collection mode (/collection/:id) shows the index, and #/gallery/:id
@@ -3320,6 +3418,7 @@
                 document.getElementById('collectionView').style.display = 'block';
                 document.title = (_collectionData && _collectionData.name) || document.title;
                 window.scrollTo(0, 0);
+                placeAudioButton(); // index is visible again — move the control back to it
                 updateFooterVisibility();
             }
         }
@@ -3348,8 +3447,13 @@
             // calls this too. Guard rather than throw at the end of every load.
             const footer = document.getElementById('socialFooter');
             if (footer) footer.classList.toggle('visible', window.scrollY > 100);
+            // The audio button follows the chrome: hero cluster until the sticky bar
+            // takes over. placeAudioButton() no-ops unless the host actually changed.
+            placeAudioButton();
         }
         window.addEventListener('scroll', updateFooterVisibility, { passive: true });
+        // Desktop <-> mobile swaps the lightbox host, so re-place on resize too.
+        window.addEventListener('resize', placeAudioButton);
         updateFooterVisibility();
     </script>
     <footer class="social-footer" id="socialFooter"></footer>
