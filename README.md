@@ -48,6 +48,8 @@ When you share a gallery link with a client, here is what they get:
 
 **Comments:** Clients can leave a comment on any photo or video from the lightbox, with an optional name (no account needed — just like favorites, it's all anonymous unless they choose to type a name). Comments are public: everyone viewing the gallery sees the same conversation under each photo, like a guestbook. You can turn comments off for any gallery from your dashboard.
 
+**Music:** You can attach one audio montage to a collection — a soundtrack of the wedding day, for instance. A single small play button appears on the collection; tapping it starts the montage, and **it keeps playing while your clients move from one gallery to another**, because the whole collection browses inside a single page. Nothing plays on its own, they start it themselves, and they can stop it at any moment — including from their phone's lock screen, where the collection name and cover appear like any other track.
+
 **Language:** Client pages display in English, French, Spanish, Portuguese, or Italian. By default the language follows the visitor's browser, but you can force a specific language — globally, per collection, or per gallery (a gallery's own setting always wins over its collection's, which in turn wins over your global default). This also controls the language of the link-preview text shown when a gallery or collection is shared on WhatsApp, iMessage, or social media.
 
 **Branding:** Your logo appears on every page. Your Instagram, website, and other social links appear in the footer. The whole thing looks like yours.
@@ -113,6 +115,8 @@ Collections let you group multiple galleries under a single link. The typical se
 Creating a collection: type a name, click Create, then add galleries. There are several ways to do it: use the Add gallery button to open a picker where you can select multiple galleries at once (each shown with its cover photo and count), or drag gallery cards directly from the gallery list and drop them into the collection. Reorder galleries by dragging the pills or using the arrow buttons (always visible on mobile where drag is unreliable).
 
 Each collection can have its own cover image. The collection link shows all galleries with their covers, a total photo count, and a download-all button that packages everything into a ZIP with one subfolder per gallery.
+
+**Audio montage:** Each collection card has an audio row where you can add a montage (MP3 or M4A/AAC are the safest — they play everywhere; Ogg/Opus is uneven on Safari and WAV/FLAC are needlessly heavy). The filename, duration and size are shown once uploaded, and you can replace or remove it at any time. Your clients get a discreet play button on the collection that keeps playing as they browse from gallery to gallery. Note that a collection link is public to anyone holding it, so the montage is too.
 
 Collections have their own Downloads and Comments toggles, next to each collection's name. Turning either off blocks it for every gallery in the collection, even if that gallery's own toggle is on — useful for disabling comments or downloads across a whole event at once instead of gallery by gallery.
 
@@ -203,6 +207,7 @@ All settings live in your `docker-compose.yml` environment block or in a `.env` 
 | `MAX_UPLOAD_MB` | `200` | Max size per photo file, in MB |
 | `MAX_VIDEO_MB` | `500` | Max size per video file, in MB |
 | `MAX_BACKGROUND_MB` | `25` | Max size for background images, in MB |
+| `MAX_AUDIO_MB` | `150` | Max size for a collection's audio montage, in MB |
 | `INSTALL_DIR` | *(project dir)* | Set to `/data` in Docker. Do not change this. |
 | `TRUST_PROXY` | `0` | Set to `1` when running behind a reverse proxy (Nginx, Caddy, Traefik). Enables correct client IP detection for rate limiting. |
 | `ADMIN_ALLOWED_IPS` | *(unset)* | Comma-separated list of IPs or CIDR ranges allowed to access admin routes. Example: `88.123.45.67,192.168.1.0/24`. When unset, no IP restriction is applied. |
@@ -367,8 +372,7 @@ delyvr/
 ├── .env.example        # Template for new installs
 ├── public/
 │   ├── admin.html      # Photographer dashboard
-│   ├── preview.html    # Photo browser, justified grid + lightbox
-│   ├── collection.html # Client collection page
+│   ├── preview.html    # Client document: galleries, collection index, audio player
 │   ├── favorites.html  # Public favorites ranking page
 │   ├── shared.js       # Shared client JS (theme, social footer)
 │   └── logo.svg        # Default logo
@@ -378,6 +382,7 @@ delyvr/
     ├── thumbnails/     # 400px JPEG thumbnails, auto-generated
     ├── previews/       # 1920px JPEG lightbox previews, auto-generated
     ├── og-cache/       # 1200x630 OG images, generated on first share
+    ├── audio/          # Collection audio montages, stored verbatim
     ├── logo.*          # Custom logo if uploaded
     ├── galleries.json
     ├── collections.json
@@ -450,6 +455,9 @@ delyvr/
 | `POST` | `/api/collection/:id/galleries` | ✓ | Add gallery to collection |
 | `PATCH` | `/api/collection/:id/galleries/reorder` | ✓ | Reorder galleries |
 | `DELETE` | `/api/collection/:id/galleries/:galleryId` | ✓ | Remove gallery from collection |
+| `POST` | `/api/collection/:id/audio` | ✓ | Upload or replace the audio montage |
+| `DELETE` | `/api/collection/:id/audio` | ✓ | Remove the audio montage |
+| `GET` | `/api/collection/:id/audio` | | Stream the montage (supports seeking) |
 | `GET` | `/api/collection/:id/download` | | ZIP all galleries |
 | `DELETE` | `/api/collection/:id` | ✓ | Delete collection (galleries kept) |
 

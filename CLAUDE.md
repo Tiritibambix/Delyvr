@@ -49,8 +49,8 @@ delyvr/
 │   ├── admin.html      # Photographer dashboard (sidebar shell + hash-routed views)
 │   ├── admin.css       # Dashboard stylesheet, split out of admin.html
 │   ├── admin-i18n.js   # adminTranslations (en/fr/es/pt/it), split out of admin.html
-│   ├── preview.html    # Client photo browser (justified grid + lightbox + favorites + pinch zoom)
-│   ├── collection.html # Client collection page (multiple galleries)
+│   ├── preview.html    # THE client document: gallery view + collection index + audio player
+│   │                   # (also serves /collection/:id — see "One client document")
 │   ├── favorites.html  # Public favorites ranking page (/favorites/:id)
 │   └── shared.js       # Shared client JS — SOCIAL_ICONS, applyTheme(), renderSocialFooter()
 └── data/               # Runtime data root (Docker volume mount at /data)
@@ -60,6 +60,7 @@ delyvr/
     ├── thumbnails/     # 400px JPEG thumbnails, generated on upload or first request
     ├── previews/       # 1920px JPEG previews for lightbox, generated on upload or first request
     ├── og-cache/       # 1200×630 OG images, generated on first share
+    ├── audio/          # Collection audio montages — collection-{id}.{ext}, stored verbatim
     ├── galleries.json  # Gallery metadata
     ├── collections.json # Collection metadata
     └── settings.json   # Site-wide settings (theme + social links) — created automatically
@@ -76,6 +77,7 @@ delyvr/
 | `MAX_UPLOAD_MB` | `200` | Per-file size limit for photo uploads, in MB |
 | `MAX_VIDEO_MB` | `500` | Per-file size limit for video uploads, in MB |
 | `MAX_BACKGROUND_MB` | `25` | Size limit for background image uploads, in MB |
+| `MAX_AUDIO_MB` | `150` | Size limit for a collection's audio montage, in MB |
 | `INSTALL_DIR` | *(project dir)* | Set to `/data` in Docker. Controls where all data files are written. |
 | `TRUST_PROXY` | `0` | Set to `1` behind a single reverse proxy. Also accepts: integer hop count, IP, CIDR, comma-separated IPs/CIDRs, or `loopback`/`uniquelocal`. |
 | `ADMIN_ALLOWED_IPS` | *(unset — all IPs allowed)* | Comma-separated IPs or CIDR ranges. When set, all admin routes (including login) reject requests from unlisted IPs with 403. |
@@ -200,7 +202,7 @@ All filesystem paths incorporating user-controlled values go through `safeResolv
 Two independent language concerns, with different scopes:
 
 - **Admin dashboard language** (`settings.adminLanguage`) — a single global preference, one of `en`/`fr`/`es`/`pt`/`it`. Set via the "Dashboard language" `<select>` in `admin.html`'s Profile modal (`POST /api/settings`). `admin.html` holds a full `adminTranslations` object (5 locales) and a global `t` reference reassigned by `applyAdminTranslations(lang)`, which also re-runs `loadGalleries()`/`loadCollections()`/`loadTrash()` so dynamically-rendered card templates pick up the new language. **Saving a language change triggers `location.reload()`** rather than attempting to live-retranslate every render call site — simpler and more robust given the size of the file.
-- **Client-facing language** (for `preview.html`, `collection.html`, and the OG share-preview text) — resolved per gallery/collection through a 3-tier cascade, **most specific wins**: the gallery's own `clientLanguage` override, else the first collection containing it that has a `clientLanguage` override, else the global default `settings.clientLanguage` (`'auto'` = browser-detected, like before this feature existed). Implemented by two resolver functions reused everywhere a language decision is needed (OG tags, `/info`, `/api/collection/:id`):
+- **Client-facing language** (for the client document `preview.html` and the OG share-preview text) — resolved per gallery/collection through a 3-tier cascade, **most specific wins**: the gallery's own `clientLanguage` override, else the first collection containing it that has a `clientLanguage` override, else the global default `settings.clientLanguage` (`'auto'` = browser-detected, like before this feature existed). Implemented by two resolver functions reused everywhere a language decision is needed (OG tags, `/info`, `/api/collection/:id`):
   ```js
   function resolveGalleryClientLanguage(galleryId) { /* gallery.clientLanguage → containing collection's → settings.clientLanguage */ }
   function resolveCollectionClientLanguage(collectionId) { /* collection.clientLanguage → settings.clientLanguage */ }
@@ -249,6 +251,46 @@ Animated images play in the lightbox while keeping a static thumbnail in the gri
 - **preview.html**: a `GIF` pill badge (`.gif-badge`) is shown on grid cards where `photo.animated` (and not a video). The lightbox needs no change: `imgEl.src = photo.previewUrl` already resolves to the animated original, and mobile pinch-zoom (CSS transform on the `<img>`) stays compatible.
 - **Deliberately unchanged**: OG images (sharp flattens to a static first-frame JPEG — correct, crawlers require static); gallery/collection backgrounds (GIF normalized to static JPEG); `favorites.html` (shows the static thumbnail).
 
+### Collection audio montage
+
+A collection can carry **one optional audio track** (a wedding-day montage the couple
+listens to while browsing). Stored verbatim — no transcoding — as
+`data/audio/collection-{id}.{ext}`; `'audio'` is in the startup directory list.
+
+- **Never added to any gallery's `files[]`.** That array drives the photo grid, the ZIP,
+  counts, dimension probing, the OG image fallback and the stem sort — an audio file has
+  no business in any of them. It lives only in `collection.audio`
+  (`{ filename, stored, size, duration, uploadedAt }`).
+- **Upload**: `uploadAudio` is a third multer instance — **disk** storage (a montage is
+  50–150 MB, `memoryStorage` would be wrong), `MAX_AUDIO_MB` (default 150),
+  filter on `AUDIO_EXTENSIONS` or an `audio/*` MIME. `POST /api/collection/:id/audio`
+  replaces any existing track (multer overwrites a same-extension file; the route then
+  deletes any leftover under a *different* extension so only one montage remains).
+  `probeAudioDuration()` reads the length via ffprobe, degrading to `null` like `probeVideo`.
+- **Serving**: `GET /api/collection/:id/audio` is a plain `res.sendFile` — Express handles
+  **Range/206 on its own**, which is what makes seeking work (same reason video seeking
+  already worked). Content-Type is set from the extension *before* `sendFile`, since the
+  `send` library skips its own guess when the header already exists.
+  **It is served under `imageLimiter` (600/min), deliberately NOT `publicReadLimiter`
+  (300/min)**: a media element fires many range requests while streaming and seeking, and
+  a tripped limiter surfaces as a hard, visible error.
+- `GET /api/collection/:id` returns `audio: { url, filename, duration, size }` with an
+  **mtime `?v=` token** on the URL (same idea as `bgVersion`) so a replaced track busts the
+  24 h cache while an unchanged one stays cached — it matters a lot at this file size.
+  `totalSizeBytes` stays **photos only**; the montage is excluded, as is the ZIP.
+- Deleting a collection removes the file via `deleteCollectionAudioFiles()`.
+- **Client player** (`preview.html`): `preload="none"` so nothing is fetched until the
+  visitor asks. The UI is a **single 44 px button** — scrubbing, skipping and the title are
+  handed to the OS lock-screen controls via the **Media Session API** instead of costing
+  screen space. Progress is a `conic-gradient` ring driven by a `--audio-progress` custom
+  property, so it occupies no layout. **Playback is never started automatically** (the
+  first play must be a user gesture, which every browser requires anyway). The button sits
+  at `z-index: 2100`, above the lightbox layer (1000–1030), so playback can be stopped
+  while a photo is open; it lives outside `.lightbox` in the DOM, so the lightbox's
+  swipe/pinch handlers never see its taps.
+- **The montage survives moving between galleries**, which is the whole point — see
+  "One client document" below.
+
 ### Justified gallery layout
 
 `preview.html` uses a JS-built justified/row-based layout: photos are grouped into `.gallery-row` flex rows whose children preserve the photo's aspect ratio and together fill the row width. Each row is recomputed on resize. This replaces the previous CSS `columns` masonry so photos are never split and rows always justify edge-to-edge. Photos in the preview page are sorted by filename **stem (name without extension)**, `localeCompare` with `{ numeric: true, sensitivity: 'base' }`, with the full name as a tiebreaker — so a companion file named after the photo it follows (e.g. a GIF `mariage-…-36-gif.gif` beside photo `mariage-…-36.jpg`) sorts right after that photo, matching a file explorer. Sorting on the full name instead lets the differing extension reorder such a pair. This route (`GET /api/gallery/:id/photos`) is the single source of display order — the critique numbering and the admin comments page derive from it.
@@ -269,7 +311,7 @@ On mobile (`≤ 768px`), the lightbox image has `touch-action: none` and a unifi
 
 ### Social footer
 
-All client pages (`preview.html`, `collection.html`) call `GET /api/settings` on load and render inline SVG icons for each non-empty social/website URL. The footer is `position: fixed; bottom: 0` on all screen sizes, with a semi-transparent blurred background. Hidden entirely if no links are configured. (`preview.html` additionally fades it in/out based on scroll position — see its section below — so it never overlaps the full-screen hero.)
+All client pages (`preview.html`, `favorites.html`) call `GET /api/settings` on load and render inline SVG icons for each non-empty social/website URL. The footer is `position: fixed; bottom: 0` on all screen sizes, with a semi-transparent blurred background. Hidden entirely if no links are configured. (`preview.html` additionally fades it in/out based on scroll position — see its section below — so it never overlaps the full-screen hero.)
 
 ### Soft-delete and trash
 
@@ -377,6 +419,9 @@ Gallery names use `contenteditable="false"` by default. Double-clicking (or clic
 | `POST` | `/api/collection/:id/galleries` | ✓ | Add gallery |
 | `PATCH` | `/api/collection/:id/galleries/reorder` | ✓ | Reorder galleries |
 | `DELETE` | `/api/collection/:id/galleries/:galleryId` | ✓ | Remove gallery |
+| `POST` | `/api/collection/:id/audio` | ✓ | Upload/replace the audio montage |
+| `DELETE` | `/api/collection/:id/audio` | ✓ | Remove the audio montage |
+| `GET` | `/api/collection/:id/audio` | | Stream the montage (Range/206 via `sendFile`, `imageLimiter`) |
 | `GET` | `/api/collection/:id/download` | | ZIP all galleries (store mode, RFC 5987) |
 | `DELETE` | `/api/collection/:id` | ✓ | Delete collection (galleries kept) |
 
@@ -449,14 +494,42 @@ Loaded by all client pages via `<script src="/shared.js">` before their inline `
 - `applyTheme()` and `renderSocialFooter()` called on load.
 - Locale is finalized inside `loadGallery()`, not at page load: `let locale = 'en'; let t = translations.en;` defaults are replaced once `info.clientLanguage` comes back from `GET /api/gallery/:id/info`, via `resolveClientLocale()` (see "Language settings"). `applyStaticTranslations()` is called once with the defaults and again after resolution.
 
-### `public/collection.html`
+### One client document: `preview.html` serves both `/preview/:id` and `/collection/:id`
 
-- `applyTheme()` and `renderSocialFooter()` called on load.
-- Full i18n: EN, FR, ES, PT, IT — including `gallery`/`galleries` keys (no hardcoded French strings).
-- Locale resolved from `data.clientLanguage` (the collection's own resolved value, server-side precedence already applied) via `resolveClientLocale()` inside `loadCollection()`, same deferred pattern as the other client pages.
-- Gallery covers use `?card=1` (800px) instead of full resolution.
-- Download button shows total size (`totalSizeBytes` from `/api/collection/:id`).
-- Browse and customer-link URLs are page-relative (`../preview/...`, `../download/...`) for subpath deployment compatibility.
+**`public/collection.html` no longer exists.** An `<audio>` element belongs to its
+document, so any full navigation destroys it — and no API (Service Worker, bfcache,
+Document Picture-in-Picture) can carry playback across one. Keeping the montage alive
+while the couple moves between galleries therefore *requires* that no document
+navigation happens, so both routes now serve **`preview.html`**, which holds both views.
+
+The collection index was moved into `preview.html` (~400 lines) rather than moving the
+gallery view into `collection.html` (~2700 lines of grid, lightbox, favorites, comments
+and pinch-zoom) — same result, a fraction of the churn and the risk.
+
+- `_isCollectionMode` is derived from `location.pathname` (`/collection/…` vs `/preview/…`);
+  `collectionId` and the mutable `galleryId` follow from it. **`galleryId` is a `let`**,
+  reassigned on each mount — its ~12 read sites pick up the current value unchanged.
+- Routes: no hash → the collection index; `#/gallery/:uuid` → that gallery mounted **in
+  place**. `renderRoute()` runs on `hashchange`; the index cards link to the hash, never to
+  `../preview/:id`. Bootstrap is `loadCollectionIndex().then(renderRoute)` so the montage
+  and index exist before a deep-linked gallery mounts on top.
+- `resetGalleryViewState()` runs at the top of `loadGallery()`: it clears `photos`,
+  favorites and drawer state, closes the lightbox, resets zoom and scroll, empties the
+  grid, drops the hero image and **re-shows the download controls a previous gallery may
+  have hidden**. It deliberately does **not** re-attach listeners — those are bound once to
+  `window`/`document`/`#lightbox` and read module state, so re-attaching would stack one
+  handler per gallery visited.
+- `/preview/:id` still works standalone for a gallery link shared with family: no index, no
+  montage (the audio belongs to a collection), `?from=` still renders a normal back link.
+- Class collisions were avoided when porting: the index's download button is
+  `.coll-download-btn` because `.download-all-btn` already exists for the hero; the index
+  reuses the existing `#notFound` block with `collectionNotFoundTitle`/`Text` keys.
+- `updateFooterVisibility()` is null-guarded: `#socialFooter` sits *after* the script, so
+  the first synchronous call ran before it existed and threw on every page load.
+
+The collection index itself keeps the behaviour it had as a standalone page: locale
+resolved from `data.clientLanguage` via `resolveClientLocale()`, gallery covers at
+`?card=1` (800px), and a download button showing `totalSizeBytes`.
 
 ---
 

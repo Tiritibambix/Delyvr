@@ -865,6 +865,32 @@ body { display: flex; flex-direction: column; height: 100%; }
 .btn-icon:hover { color: var(--text); border-color: var(--muted); background: var(--bg2); }
 .btn-icon-danger:hover { color: var(--error); border-color: var(--error); background: var(--bg2); }
 
+/* Audio montage row on a collection card — one optional track per collection. */
+.collection-audio {
+    display: flex; align-items: center; gap: 8px;
+    padding: 8px 12px;
+    border-top: 1px solid var(--border);
+    font-size: 12px; color: var(--muted);
+    min-width: 0;
+}
+.collection-audio > svg { width: 14px; height: 14px; flex-shrink: 0; color: var(--accent); }
+.collection-audio-name {
+    color: var(--text); min-width: 0;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.collection-audio-meta { flex-shrink: 0; font-variant-numeric: tabular-nums; }
+/* Push the actions to the right of the row */
+.collection-audio .section-select-btn { margin-left: auto; flex-shrink: 0; }
+.collection-audio .btn-icon { flex-shrink: 0; }
+.collection-audio-add {
+    display: inline-flex; align-items: center; gap: 8px;
+    background: none; border: none; padding: 0;
+    color: var(--muted); font-family: inherit; font-size: 12px;
+    cursor: pointer; transition: color 0.15s;
+}
+.collection-audio-add:hover { color: var(--text); }
+.collection-audio-add svg { width: 14px; height: 14px; color: var(--accent); }
+
 .collection-galleries {
     padding: 12px;
     display: flex; gap: 6px; flex-wrap: wrap; align-items: center;

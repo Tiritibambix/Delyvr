@@ -1395,6 +1395,157 @@
             height: 17px;
             fill: currentColor;
         }
+
+        /* ══════════════════════════════════════════════════════════════════
+           COLLECTION INDEX VIEW
+           This document serves both /preview/:id and /collection/:id. The
+           collection index lives here (rather than the gallery view moving to
+           collection.html) so the <audio> element below survives navigating
+           between galleries — a montage must not stop when a gallery opens.
+           Ported from the old collection.html; `.download-all-btn` already
+           exists here for the hero, so the index one is `.coll-download-btn`.
+        ══════════════════════════════════════════════════════════════════ */
+        .bg-image {
+            position: fixed; inset: 0; width: 100%; height: 100%;
+            object-fit: cover; opacity: 0;
+            transition: opacity 1.2s ease; z-index: 0; pointer-events: none;
+        }
+        .bg-image.loaded { opacity: 0.3; }
+        html.light .bg-image.loaded { opacity: 0.45; }
+        .bg-overlay {
+            position: fixed; inset: 0;
+            background: linear-gradient(to bottom, rgba(10,10,11,0.15) 0%, rgba(10,10,11,0.7) 100%);
+            z-index: 1; pointer-events: none;
+        }
+        html.light .bg-overlay { background: rgba(245,244,240,0.35); }
+
+        .site-header {
+            position: relative; z-index: 10;
+            border-bottom: 1px solid var(--border);
+            padding: 20px 32px; text-align: center; overflow: hidden;
+        }
+        .logo-wrap { text-align: center; margin-bottom: 20px; }
+        .logo {
+            display: inline-block; height: auto; max-height: 96px;
+            max-width: min(380px, 75vw); width: auto; object-fit: contain;
+        }
+        .collection-title {
+            font-family: 'Fraunces', serif;
+            font-size: clamp(1.6rem, 4vw, 2.4rem);
+            font-weight: 300; letter-spacing: -0.01em;
+            color: var(--text); margin-bottom: 6px;
+            opacity: 0; transform: translateY(12px);
+            animation: fadeUp 0.6s ease 0.1s forwards;
+        }
+        .collection-meta {
+            font-size: 12px; color: var(--muted); letter-spacing: 0.06em;
+            opacity: 0; animation: fadeUp 0.6s ease 0.2s forwards;
+        }
+        @keyframes fadeUp { to { opacity: 1; transform: translateY(0); } }
+
+        .coll-download-wrap {
+            padding: 20px 32px 0; display: flex; justify-content: center;
+            position: relative; z-index: 10;
+        }
+        .coll-download-btn {
+            display: inline-flex; align-items: center; gap: 8px;
+            background: #c9a962; border: none; color: #0a0a0b;
+            padding: 10px 18px; font-size: 13px; border-radius: 3px;
+            cursor: pointer; font-family: inherit; font-weight: 500;
+            transition: background 0.2s;
+        }
+        .coll-download-btn:hover { background: #dfc07a; }
+        .coll-download-btn svg { width: 14px; height: 14px; }
+
+        .galleries-container {
+            max-width: 1100px; margin: 0 auto; padding: 32px;
+            position: relative; z-index: 10;
+        }
+        .galleries-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; padding-bottom: 64px; }
+        @media (max-width: 800px) { .galleries-grid { grid-template-columns: repeat(2, 1fr); gap: 14px; } }
+        @media (max-width: 480px) { .galleries-grid { grid-template-columns: 1fr; gap: 12px; } }
+
+        .gallery-card {
+            background: var(--bg2); border: 1px solid var(--border);
+            border-radius: 6px; overflow: hidden;
+            display: flex; flex-direction: column; transition: border-color 0.2s;
+        }
+        .gallery-card:hover { border-color: var(--border2); }
+        .gallery-card-cover {
+            display: block; position: relative; aspect-ratio: 3 / 2;
+            overflow: hidden; cursor: pointer; background: var(--bg3);
+            text-decoration: none; flex-shrink: 0;
+        }
+        .gallery-card-cover img { width: 100%; height: 100%; object-fit: cover; transition: transform 0.35s ease; }
+        .gallery-card-cover:hover img { transform: scale(1.03); }
+        .gallery-card-cover-placeholder { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; }
+        .gallery-card-cover-placeholder svg { width: 32px; height: 32px; color: var(--border2); }
+        .gallery-card-cover-overlay {
+            position: absolute; inset: 0; background: rgba(10,10,11,0.45);
+            display: flex; align-items: center; justify-content: center;
+            opacity: 0; transition: opacity 0.2s;
+        }
+        .gallery-card-cover:hover .gallery-card-cover-overlay { opacity: 1; }
+        .gallery-card-cover-overlay span {
+            font-size: 12px; font-weight: 600; letter-spacing: 0.1em;
+            text-transform: uppercase; color: #fff;
+        }
+        .gallery-card-body { padding: 12px 14px 14px; display: flex; flex-direction: column; gap: 10px; flex: 1; }
+        .gallery-card-info { flex: 1; }
+        .gallery-card-name {
+            font-size: 14px; font-weight: 500; color: var(--text);
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-bottom: 3px;
+        }
+        .gallery-card-meta { font-size: 11px; color: var(--muted); letter-spacing: 0.03em; }
+        .gallery-card-actions { display: flex; gap: 7px; align-items: center; }
+        .btn-card-icon, .btn-card-dl {
+            flex: 1; height: 32px;
+            display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+            border-radius: 3px; cursor: pointer;
+            font-size: 11px; font-weight: 600; letter-spacing: 0.05em;
+            text-transform: uppercase; font-family: inherit;
+            text-decoration: none; white-space: nowrap;
+        }
+        .btn-card-icon {
+            background: transparent; border: 1px solid var(--border2); color: var(--muted);
+            transition: color 0.15s, border-color 0.15s;
+        }
+        .btn-card-icon:hover { color: var(--text); border-color: var(--muted); }
+        .btn-card-dl { background: #c9a962; border: none; color: #0a0a0b; transition: background 0.15s; }
+        .btn-card-dl:hover { background: #dfc07a; }
+        .btn-card-icon svg, .btn-card-dl svg { width: 13px; height: 13px; flex-shrink: 0; }
+        .btn-card-icon.copied { color: #52a878; border-color: #52a878; }
+
+        /* ── Audio montage player ──────────────────────────────────────────
+           Deliberately a single 44px control: the smallest thing that can start
+           and stop playback. Scrubbing, skipping and the track title are handed
+           to the OS media controls via the Media Session API instead of costing
+           screen space. The progress ring is a conic gradient, so it takes no
+           layout at all. z-index sits above the lightbox layer (1000–1030) so
+           playback can be stopped even while a photo is open. */
+        .audio-player {
+            position: fixed; left: 20px; bottom: 20px;
+            width: 44px; height: 44px;
+            display: none; align-items: center; justify-content: center;
+            border: none; padding: 0; border-radius: 50%;
+            background: rgba(10,10,11,0.72);
+            backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+            color: #f2f2f4; cursor: pointer;
+            z-index: 2100;
+            transition: transform 0.15s, background 0.15s;
+        }
+        .audio-player.visible { display: flex; }
+        .audio-player:hover { transform: scale(1.06); }
+        .audio-player svg { width: 17px; height: 17px; position: relative; z-index: 1; }
+        .audio-player::before {
+            content: ''; position: absolute; inset: -3px; border-radius: 50%;
+            background: conic-gradient(var(--accent) calc(var(--audio-progress, 0) * 1%), transparent 0);
+            -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 3px));
+                    mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 3px));
+            pointer-events: none;
+        }
+        html.light .audio-player { background: rgba(245,244,240,0.9); color: #1a1a1a; }
+        @media (max-width: 640px) { .audio-player { left: 16px; bottom: 16px; } }
     </style>
 </head>
 <body>
@@ -1558,6 +1709,36 @@
         <p id="notFoundText"></p>
     </div>
 
+    <!-- Collection index — shown when this document is served at /collection/:id
+         and no #/gallery/:id is selected. Its cards navigate by hash, so the
+         montage below keeps playing across galleries. -->
+    <div id="collectionView" style="display:none;">
+        <img class="bg-image" id="collBgImage" alt="">
+        <div class="bg-overlay"></div>
+        <header class="site-header">
+            <div class="logo-wrap"><img src="/api/logo" alt="Logo" class="logo"></div>
+            <h1 class="collection-title" id="collectionTitle"></h1>
+            <p class="collection-meta" id="collectionMeta"></p>
+        </header>
+        <div class="coll-download-wrap" id="collDownloadWrap" style="display:none;">
+            <button class="coll-download-btn" onclick="downloadCollection()">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 4v12m0 0l-4-4m4 4l4-4M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                <span id="collDownloadText"></span>
+            </button>
+        </div>
+        <div class="galleries-container">
+            <div class="galleries-grid" id="galleriesGrid"></div>
+        </div>
+    </div>
+
+    <!-- Audio montage. Lives in this document, which never unloads while the
+         visitor moves between galleries of the same collection. -->
+    <audio id="montageAudio" preload="none"></audio>
+    <button class="audio-player" id="audioPlayer" onclick="toggleMontage()">
+        <svg id="audioIconPlay" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+        <svg id="audioIconPause" viewBox="0 0 24 24" fill="currentColor" style="display:none"><path d="M6 5h4v14H6zM14 5h4v14h-4z"/></svg>
+    </button>
+
     <script src="/shared.js"></script>
     <script>
         // Internationalization
@@ -1588,7 +1769,12 @@
                 kbFavorite: 'Favorite',
                 kbDownload: 'Download',
                 kbNavigate: 'Navigate',
-                socialLinks: 'Social links'
+                socialLinks: 'Social links',
+                galleries: 'galleries', gallery: 'gallery', photos: 'photos', photo: 'photo',
+                browse: 'Browse', copyLink: 'Copy Link', copied: 'Copied!',
+                playMontage: 'Play the montage', pauseMontage: 'Pause the montage',
+                collectionNotFoundTitle: 'Collection Not Found',
+                collectionNotFoundText: 'This collection may have been removed or the link is incorrect.'
             },
             pt: {
                 yourPhotos: 'Suas Fotos',
@@ -1616,7 +1802,12 @@
                 kbFavorite: 'Favorito',
                 kbDownload: 'Baixar',
                 kbNavigate: 'Navegar',
-                socialLinks: 'Redes sociais'
+                socialLinks: 'Redes sociais',
+                galleries: 'galerias', gallery: 'galeria', photos: 'fotos', photo: 'foto',
+                browse: 'Ver fotos', copyLink: 'Copiar link', copied: 'Copiado!',
+                playMontage: 'Ouvir a montagem', pauseMontage: 'Pausar',
+                collectionNotFoundTitle: 'Coleção Não Encontrada',
+                collectionNotFoundText: 'Esta coleção pode ter sido removida ou o link está incorreto.'
             },
             es: {
                 yourPhotos: 'Tus Fotos',
@@ -1644,7 +1835,12 @@
                 kbFavorite: 'Favorito',
                 kbDownload: 'Descargar',
                 kbNavigate: 'Navegar',
-                socialLinks: 'Redes sociales'
+                socialLinks: 'Redes sociales',
+                galleries: 'galerías', gallery: 'galería', photos: 'fotos', photo: 'foto',
+                browse: 'Ver fotos', copyLink: 'Copiar enlace', copied: '¡Copiado!',
+                playMontage: 'Escuchar el montaje', pauseMontage: 'Pausar',
+                collectionNotFoundTitle: 'Colección No Encontrada',
+                collectionNotFoundText: 'Esta colección puede haber sido eliminada o el enlace es incorrecto.'
             },
             it: {
                 yourPhotos: 'Le Tue Foto',
@@ -1672,7 +1868,12 @@
                 kbFavorite: 'Preferito',
                 kbDownload: 'Scarica',
                 kbNavigate: 'Naviga',
-                socialLinks: 'Social'
+                socialLinks: 'Social',
+                galleries: 'gallerie', gallery: 'galleria', photos: 'foto', photo: 'foto',
+                browse: 'Sfoglia', copyLink: 'Copia link', copied: 'Copiato!',
+                playMontage: 'Ascolta il montaggio', pauseMontage: 'Metti in pausa',
+                collectionNotFoundTitle: 'Collezione Non Trovata',
+                collectionNotFoundText: 'Questa collezione potrebbe essere stata rimossa o il link non è corretto.'
             },
             fr: {
                 yourPhotos: 'Vos Photos',
@@ -1700,7 +1901,12 @@
                 kbFavorite: 'Favori',
                 kbDownload: 'Télécharger',
                 kbNavigate: 'Naviguer',
-                socialLinks: 'Réseaux sociaux'
+                socialLinks: 'Réseaux sociaux',
+                galleries: 'galeries', gallery: 'galerie', photos: 'photos', photo: 'photo',
+                browse: 'Parcourir', copyLink: 'Copier le lien', copied: 'Copié !',
+                playMontage: 'Écouter le montage', pauseMontage: 'Mettre en pause',
+                collectionNotFoundTitle: 'Collection introuvable',
+                collectionNotFoundText: 'Cette collection a peut-être été supprimée ou le lien est incorrect.'
             }
         };
 
@@ -1745,12 +1951,24 @@
 
         applyTheme();
 
-        const galleryId = window.location.pathname.split('/').pop();
+        // This document serves BOTH /preview/:id and /collection/:id. In collection
+        // mode it renders the collection index itself and mounts galleries in place
+        // on #/gallery/:id — so the audio montage below is never torn down by a
+        // navigation, which a separate collection page could not achieve.
+        const _pathSegments = window.location.pathname.split('/').filter(Boolean);
+        const _isCollectionMode = _pathSegments[0] === 'collection';
+        const collectionId = _isCollectionMode ? _pathSegments[1] : null;
+
         const _params = new URLSearchParams(window.location.search);
+        // Still honoured for a gallery opened by direct link from a collection.
         const fromCollection = _params.get('from');
         const critiqueMode = _params.get('critique') === '1';
+
+        // Mutable: reassigned each time a gallery is mounted in collection mode.
+        let galleryId = _isCollectionMode ? null : _pathSegments[_pathSegments.length - 1];
         let photos = [];
         let currentPhotoIndex = 0;
+        let _collectionData = null;
 
         // ── VIDEO HELPERS ──
         const VIDEO_EXTENSIONS = ['mp4', 'mov', 'webm', 'm4v'];
@@ -2073,7 +2291,37 @@
             }
         }
 
+        // Switching galleries in collection mode reuses this same document, so
+        // anything the previous gallery hid or left open has to be put back
+        // explicitly. The window/document listeners are attached once and read
+        // module state, so they are deliberately NOT re-attached here — doing so
+        // would stack a new handler per gallery.
+        function resetGalleryViewState() {
+            photos = [];
+            currentPhotoIndex = 0;
+            localFavorites = new Set();
+            _commentDrawerFilename = null;
+            _commentDrawerComments = [];
+            closeLightbox();
+            resetZoom();
+            closeCommentDrawer();
+            document.getElementById('notFound').classList.remove('active');
+            document.getElementById('loadingState').style.display = '';
+            document.getElementById('galleryGrid').innerHTML = '';
+            const heroBg = document.getElementById('heroBg');
+            heroBg.classList.remove('loaded');
+            heroBg.removeAttribute('src');
+            // A previous gallery with downloads disabled hid these — restore them,
+            // the new gallery decides for itself below.
+            ['downloadAllBtn', 'lightboxDownload', 'lbMobileDownload'].forEach(id => {
+                const el = document.getElementById(id);
+                if (el) el.style.display = '';
+            });
+            window.scrollTo(0, 0);
+        }
+
         async function loadGallery() {
+            resetGalleryViewState();
             try {
                 // Get gallery info
                 const infoRes = await fetch(`/api/gallery/${galleryId}/info`);
@@ -2104,10 +2352,13 @@
                     document.getElementById('critiqueIndicator').style.display = 'inline-flex';
                 }
 
-                // Show back-to-collection button if ?from= param is present
-                if (fromCollection) {
+                // Back to collection. In collection mode this is a hash change, not a
+                // navigation — the document (and the montage) must stay alive.
+                if (_isCollectionMode || fromCollection) {
                     const backBtn = document.getElementById('backToCollection');
-                    backBtn.href = `/collection/${fromCollection}${critiqueMode ? '?critique=1' : ''}`;
+                    backBtn.href = _isCollectionMode
+                        ? '#'
+                        : `/collection/${fromCollection}${critiqueMode ? '?critique=1' : ''}`;
                     document.getElementById('backToCollectionText').textContent = t.backToCollection;
                     backBtn.style.display = 'inline-flex';
                 }
@@ -2825,8 +3076,215 @@
 
 
 
-        // Load gallery on page load
-        loadGallery();
+        // ══════════════════════════════════════════════════════════════════
+        // COLLECTION INDEX + AUDIO MONTAGE (collection mode only)
+        // ══════════════════════════════════════════════════════════════════
+        function escapeHtml(str) {
+            const d = document.createElement('div');
+            d.textContent = String(str);
+            return d.innerHTML;
+        }
+
+        function _formatBytes(b) {
+            if (b >= 1073741824) return (b / 1073741824).toFixed(1) + ' GB';
+            if (b >= 1048576)    return (b / 1048576).toFixed(0) + ' MB';
+            return (b / 1024).toFixed(0) + ' KB';
+        }
+
+        let _collDownloadUrl = '';
+        function downloadCollection() {
+            if (_collDownloadUrl) window.location.href = _collDownloadUrl;
+        }
+
+        // Copies the standalone gallery link (not the hash route), since that is
+        // what a visitor would share with someone outside the collection.
+        function copyGalleryCustomerLink(btn, gid) {
+            const url = new URL('/preview/' + gid, window.location.href).href;
+            navigator.clipboard.writeText(url).then(() => {
+                btn.classList.add('copied');
+                setTimeout(() => btn.classList.remove('copied'), 1800);
+            });
+        }
+
+        async function loadCollectionIndex() {
+            try {
+                const res = await fetch(`/api/collection/${collectionId}`);
+                if (!res.ok) throw new Error('Not found');
+                const data = await res.json();
+                _collectionData = data;
+
+                locale = resolveClientLocale(data.clientLanguage);
+                t = translations[locale];
+                applyStaticTranslations();
+
+                document.getElementById('loadingState').style.display = 'none';
+                document.title = data.name || 'Collection';
+                document.getElementById('collectionTitle').textContent = data.name || '';
+
+                const totalPhotos = (data.galleries || []).reduce((s, g) => s + (g.fileCount || 0), 0);
+                const galleryCount = (data.galleries || []).length;
+                document.getElementById('collectionMeta').textContent =
+                    `${galleryCount} ${galleryCount === 1 ? t.gallery : t.galleries} · ${totalPhotos} ${totalPhotos === 1 ? t.photo : t.photos}`;
+
+                if (data.background) {
+                    const bg = document.getElementById('collBgImage');
+                    bg.onload = () => bg.classList.add('loaded');
+                    bg.src = `/api/collection/${collectionId}/background`;
+                }
+
+                const collDownloads = data.downloadsEnabled !== false;
+                if (collDownloads && (data.galleries || []).some(g => g.downloadsEnabled !== false)) {
+                    _collDownloadUrl = `/api/collection/${collectionId}/download`;
+                    document.getElementById('collDownloadText').textContent =
+                        t.downloadAll + (data.totalSizeBytes ? ' · ' + _formatBytes(data.totalSizeBytes) : '');
+                    document.getElementById('collDownloadWrap').style.display = 'flex';
+                }
+
+                const grid = document.getElementById('galleriesGrid');
+                grid.innerHTML = '';
+                (data.galleries || []).forEach(gallery => {
+                    const card = document.createElement('div');
+                    card.className = 'gallery-card';
+                    const count = gallery.fileCount || 0;
+                    const cover = gallery.background
+                        ? `<img src="/api/gallery/${escapeHtml(gallery.id)}/background?card=1" alt="" loading="lazy">`
+                        : `<div class="gallery-card-cover-placeholder"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg></div>`;
+                    const dlBtn = gallery.downloadsEnabled !== false
+                        ? `<a class="btn-card-dl" href="/api/gallery/${escapeHtml(gallery.id)}/download" onclick="event.stopPropagation()">
+                               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 4v12m0 0l-4-4m4 4l4-4M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                               <span>${t.download}</span></a>`
+                        : '';
+                    // Hash link, not ../preview/: staying in this document is what
+                    // keeps the montage playing when a gallery opens.
+                    card.innerHTML = `
+                        <a class="gallery-card-cover" href="#/gallery/${escapeHtml(gallery.id)}">
+                            ${cover}
+                            <div class="gallery-card-cover-overlay"><span>${t.browse}</span></div>
+                        </a>
+                        <div class="gallery-card-body">
+                            <div class="gallery-card-info">
+                                <div class="gallery-card-name">${escapeHtml(gallery.eventName || 'Untitled')}</div>
+                                <div class="gallery-card-meta">${count} ${count === 1 ? t.photo : t.photos}</div>
+                            </div>
+                            <div class="gallery-card-actions">
+                                <button class="btn-card-icon" title="${t.copyLink}" onclick="event.stopPropagation(); copyGalleryCustomerLink(this, '${escapeHtml(gallery.id)}')">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                                    <span>${t.copyLink}</span>
+                                </button>
+                                ${dlBtn}
+                            </div>
+                        </div>`;
+                    grid.appendChild(card);
+                });
+
+                initAudioPlayer(data.audio, data.name);
+            } catch (err) {
+                document.getElementById('loadingState').style.display = 'none';
+                document.getElementById('notFoundTitle').textContent = t.collectionNotFoundTitle;
+                document.getElementById('notFoundText').textContent = t.collectionNotFoundText;
+                document.getElementById('notFound').classList.add('active');
+            }
+        }
+
+        // ── Audio montage ─────────────────────────────────────────────────
+        // preload="none" so a ~90 MB track costs nothing until asked for, and
+        // playback never starts on its own — the first play must be a gesture,
+        // which is also what every browser requires.
+        let _montageReady = false;
+
+        function initAudioPlayer(audio, collectionName) {
+            if (!audio || !audio.url) return;
+            const el = document.getElementById('montageAudio');
+            const btn = document.getElementById('audioPlayer');
+            el.src = audio.url;
+            btn.classList.add('visible');
+            updateMontageButton();
+
+            el.addEventListener('timeupdate', () => {
+                if (!el.duration) return;
+                btn.style.setProperty('--audio-progress', String((el.currentTime / el.duration) * 100));
+            });
+            el.addEventListener('play', updateMontageButton);
+            el.addEventListener('pause', updateMontageButton);
+            el.addEventListener('ended', () => {
+                btn.style.setProperty('--audio-progress', '0');
+                updateMontageButton();
+            });
+
+            // Lock-screen / notification controls. Scrubbing and skipping live
+            // there, which is why the in-page control stays a single button.
+            if ('mediaSession' in navigator) {
+                navigator.mediaSession.metadata = new MediaMetadata({
+                    title: audio.filename || collectionName || 'Montage',
+                    artist: collectionName || '',
+                    artwork: [{ src: `/api/collection/${collectionId}/background?card=1`, sizes: '800x800', type: 'image/jpeg' }]
+                });
+                navigator.mediaSession.setActionHandler('play', () => el.play().catch(() => {}));
+                navigator.mediaSession.setActionHandler('pause', () => el.pause());
+            }
+            _montageReady = true;
+        }
+
+        function updateMontageButton() {
+            const el = document.getElementById('montageAudio');
+            const playing = !el.paused && !el.ended;
+            document.getElementById('audioIconPlay').style.display  = playing ? 'none' : 'block';
+            document.getElementById('audioIconPause').style.display = playing ? 'block' : 'none';
+            const btn = document.getElementById('audioPlayer');
+            btn.title = playing ? t.pauseMontage : t.playMontage;
+            btn.setAttribute('aria-label', btn.title);
+        }
+
+        function toggleMontage() {
+            if (!_montageReady) return;
+            const el = document.getElementById('montageAudio');
+            if (el.paused) el.play().catch(() => {});
+            else el.pause();
+        }
+
+        // ── ROUTING ───────────────────────────────────────────────────────
+        // Gallery mode (/preview/:id) has no routes — the gallery is the page.
+        // Collection mode (/collection/:id) shows the index, and #/gallery/:id
+        // mounts a gallery in this very document, which is what keeps the audio
+        // montage playing across galleries.
+        function currentGalleryFromHash() {
+            const m = (location.hash || '').match(/^#\/gallery\/([0-9a-fA-F-]{36})$/);
+            return m ? m[1] : null;
+        }
+
+        function renderRoute() {
+            if (!_isCollectionMode) return;
+            const gid = currentGalleryFromHash();
+            if (gid) {
+                document.getElementById('collectionView').style.display = 'none';
+                if (gid !== galleryId) {
+                    galleryId = gid;
+                    loadGallery();
+                }
+            } else {
+                ['heroSection', 'actionsBar', 'galleryContainer'].forEach(id => {
+                    const el = document.getElementById(id);
+                    if (el) el.style.display = 'none';
+                });
+                document.getElementById('notFound').classList.remove('active');
+                closeLightbox();
+                galleryId = null;   // force a reload if the same gallery is reopened
+                document.getElementById('collectionView').style.display = 'block';
+                document.title = (_collectionData && _collectionData.name) || document.title;
+                window.scrollTo(0, 0);
+                updateFooterVisibility();
+            }
+        }
+
+        window.addEventListener('hashchange', renderRoute);
+
+        // Load the collection first so the montage and the index exist before a
+        // deep-linked #/gallery/:id mounts on top of them.
+        if (_isCollectionMode) {
+            loadCollectionIndex().then(renderRoute);
+        } else {
+            loadGallery();
+        }
 
         // Disable right-click on images to prevent casual saving
         document.addEventListener('contextmenu', (e) => {
@@ -2837,7 +3295,11 @@
 
         // Le footer reste masqué sur le hero plein écran et n'apparaît qu'au scroll.
         function updateFooterVisibility() {
-            document.getElementById('socialFooter').classList.toggle('visible', window.scrollY > 100);
+            // #socialFooter sits after this script in the document, so the very
+            // first (synchronous) call runs before it exists — and renderRoute
+            // calls this too. Guard rather than throw at the end of every load.
+            const footer = document.getElementById('socialFooter');
+            if (footer) footer.classList.toggle('visible', window.scrollY > 100);
         }
         window.addEventListener('scroll', updateFooterVisibility, { passive: true });
         updateFooterVisibility();

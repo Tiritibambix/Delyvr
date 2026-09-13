@@ -55,6 +55,8 @@ const ADMIN_ALLOWED_IPS = (process.env.ADMIN_ALLOWED_IPS || '')
 const MAX_PHOTO_BYTES = parseInt(process.env.MAX_UPLOAD_MB || '200') * 1024 * 1024;
 const MAX_VIDEO_BYTES = parseInt(process.env.MAX_VIDEO_MB || '500') * 1024 * 1024;
 const MAX_BACKGROUND_BYTES = parseInt(process.env.MAX_BACKGROUND_MB || '25') * 1024 * 1024;
+// Collection audio montage — an hour of 192 kbps MP3 is ~86 MB, so the cap is generous
+const MAX_AUDIO_BYTES = parseInt(process.env.MAX_AUDIO_MB || '150') * 1024 * 1024;
 
 // Install directory — where Node.js stores uploads, backgrounds, and galleries.json
 // Docker: always /data (set via environment in docker-compose.yml)
@@ -64,6 +66,7 @@ const DATA_DIR = process.env.INSTALL_DIR || __dirname;
 const THUMBNAILS_DIR = path.join(DATA_DIR, 'thumbnails');
 const PREVIEWS_DIR   = path.join(DATA_DIR, 'previews');
 const OG_CACHE_DIR   = path.join(DATA_DIR, 'og-cache');
+const AUDIO_DIR      = path.join(DATA_DIR, 'audio');
 
 // UUID v4 validation regex — used by middleware and reconcileGalleries (must be declared early)
 const UUID_V4_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -75,6 +78,19 @@ const VIDEO_MIME_RE = /^video\/(mp4|quicktime|webm|x-m4v)/i;
 function isVideoFile(filename) {
     const ext = path.extname(filename).toLowerCase().slice(1);
     return VIDEO_EXTENSIONS.has(ext);
+}
+
+// Audio formats accepted for a collection's montage. MP3 and M4A/AAC play everywhere;
+// the rest are allowed but Ogg/Opus is uneven on Safari and WAV/FLAC are very heavy.
+const AUDIO_EXTENSIONS = new Set(['mp3', 'm4a', 'aac', 'ogg', 'oga', 'opus', 'wav', 'flac']);
+const AUDIO_MIME_BY_EXT = {
+    mp3: 'audio/mpeg',  m4a: 'audio/mp4',   aac: 'audio/aac',
+    ogg: 'audio/ogg',   oga: 'audio/ogg',   opus: 'audio/ogg',
+    wav: 'audio/wav',   flac: 'audio/flac'
+};
+function isAudioFile(filename) {
+    const ext = path.extname(filename).toLowerCase().slice(1);
+    return AUDIO_EXTENSIONS.has(ext);
 }
 
 // Formats that MAY be animated (multi-frame). Used to decide whether it's worth
@@ -370,7 +386,7 @@ const TRASH_PURGE_INTERVAL_MS = 60 * 60 * 1000; // hourly
 setInterval(purgeExpiredTrash, TRASH_PURGE_INTERVAL_MS).unref();
 
 // Ensure directories exist
-['uploads', 'backgrounds', 'thumbnails', 'previews', 'og-cache'].forEach(dir => {
+['uploads', 'backgrounds', 'thumbnails', 'previews', 'og-cache', 'audio'].forEach(dir => {
     const dirPath = path.join(DATA_DIR, dir);
     if (!fs.existsSync(dirPath)) {
         fs.mkdirSync(dirPath, { recursive: true });
@@ -454,6 +470,24 @@ function probeVideo(srcPath) {
                 const duration = data.format && data.format.duration ? Math.round(parseFloat(data.format.duration)) : null;
                 if (!stream) return resolve(null);
                 resolve({ w: stream.width, h: stream.height, duration });
+            } catch (_) { resolve(null); }
+        });
+    });
+}
+
+// Duration in seconds for an audio file, or null on any failure. Same graceful-degradation
+// contract as probeVideo: ffprobe is present in the Docker image but never assumed.
+function probeAudioDuration(srcPath) {
+    return new Promise((resolve) => {
+        execFile('ffprobe', [
+            '-v', 'error', '-show_entries', 'format=duration',
+            '-of', 'json', srcPath
+        ], { timeout: 15000 }, (err, stdout) => {
+            if (err) return resolve(null);
+            try {
+                const data = JSON.parse(stdout);
+                const d = data.format && data.format.duration;
+                resolve(d ? Math.round(parseFloat(d)) : null);
             } catch (_) { resolve(null); }
         });
     });
@@ -704,6 +738,47 @@ const uploadBackground = multer({
         }
     }
 });
+
+// A collection's audio montage is written straight to disk under data/audio as
+// collection-{id}.{ext} — unlike backgrounds it is stored verbatim (no transcoding),
+// and it is far too large to hold in memory. The extension is taken from the upload
+// so the served Content-Type can be derived from it.
+const uploadAudio = multer({
+    storage: multer.diskStorage({
+        destination: (req, file, cb) => {
+            if (!fs.existsSync(AUDIO_DIR)) fs.mkdirSync(AUDIO_DIR, { recursive: true });
+            cb(null, AUDIO_DIR);
+        },
+        filename: (req, file, cb) => {
+            const ext = path.extname(file.originalname).toLowerCase().slice(1);
+            cb(null, `collection-${req.params.collectionId}.${ext}`);
+        }
+    }),
+    limits: { fileSize: MAX_AUDIO_BYTES },
+    fileFilter: (req, file, cb) => {
+        if (isAudioFile(file.originalname) || /^audio\//i.test(file.mimetype)) return cb(null, true);
+        cb(new Error('Only audio files are allowed'), false);
+    }
+});
+
+// Finds a collection's stored montage regardless of its extension.
+function findCollectionAudioFile(collectionId) {
+    if (!fs.existsSync(AUDIO_DIR)) return null;
+    const prefix = `collection-${collectionId}.`;
+    return fs.readdirSync(AUDIO_DIR).find(f => f.startsWith(prefix)) || null;
+}
+
+// Removes every stored montage for a collection (all extensions), used before a
+// replace and on collection deletion.
+function deleteCollectionAudioFiles(collectionId) {
+    if (!fs.existsSync(AUDIO_DIR)) return;
+    const prefix = `collection-${collectionId}.`;
+    for (const f of fs.readdirSync(AUDIO_DIR)) {
+        if (f.startsWith(prefix)) {
+            try { fs.unlinkSync(path.join(AUDIO_DIR, f)); } catch (_) {}
+        }
+    }
+}
 
 // ── SETTINGS ────────────────────────────────────────────────────────────────
 
@@ -2128,7 +2203,12 @@ app.get('/api/collections', adminLimiter, requireAuth, (req, res) => {
                 bgVersion,
                 downloadsEnabled: c.downloadsEnabled !== false,
                 commentsEnabled: c.commentsEnabled !== false,
-                clientLanguage: c.clientLanguage || 'auto'
+                clientLanguage: c.clientLanguage || 'auto',
+                // Audio montage, so the collection card can show / replace / remove it.
+                // Reported only when the file is actually still on disk.
+                audio: (c.audio && findCollectionAudioFile(c.id))
+                    ? { filename: c.audio.filename || null, duration: c.audio.duration ?? null, size: c.audio.size ?? null }
+                    : null
             };
         });
     res.json(list);
@@ -2173,13 +2253,31 @@ app.get('/api/collection/:collectionId', publicReadLimiter, validateCollectionId
 
     const collBgFiles = fs.existsSync(backgroundsDir) ? [...new Set(fs.readdirSync(backgroundsDir))] : [];
     const collHasBg = collBgFiles.some(f => f.startsWith(`collection-${collectionId}`));
+
+    // Audio montage: the URL carries an mtime token (same idea as bgVersion) so a
+    // replaced track busts the 24h cache while an unchanged one stays cached across
+    // navigations — which matters a lot for a file this size.
+    const audioFile = findCollectionAudioFile(collectionId);
+    let audio = null;
+    if (audioFile && collection.audio) {
+        let version = null;
+        try { version = Math.floor(fs.statSync(path.join(AUDIO_DIR, audioFile)).mtimeMs); } catch (_) {}
+        audio = {
+            url: `/api/collection/${collectionId}/audio${version ? `?v=${version}` : ''}`,
+            filename: collection.audio.filename || null,
+            duration: collection.audio.duration ?? null,
+            size: collection.audio.size ?? null
+        };
+    }
+
     res.json({
         id: collectionId,
         name: collection.name,
         background: collHasBg ? `/api/collection/${collectionId}/background` : null,
         downloadsEnabled: collection.downloadsEnabled !== false,
-        totalSizeBytes,
+        totalSizeBytes, // photos only — the montage is deliberately excluded
         galleries: galleriesData,
+        audio,
         clientLanguage: resolveCollectionClientLanguage(collectionId)
     });
 });
@@ -2254,6 +2352,71 @@ app.get('/api/collection/:collectionId/background', publicReadLimiter, validateC
         }
     }
     res.status(404).json({ error: 'No background found' });
+});
+
+// ── COLLECTION AUDIO MONTAGE ────────────────────────────────────────────────
+// One optional audio track per collection, stored verbatim (no transcoding) as
+// data/audio/collection-{id}.{ext}. Deliberately NOT added to any gallery's files[]:
+// that array drives the photo grid, the ZIP, counts, dimension probing, the OG image
+// fallback and the stem sort — an audio file has no business in any of them.
+
+// Upload or replace the montage (admin only)
+app.post('/api/collection/:collectionId/audio', adminLimiter, requireAuth, validateCollectionId, uploadAudio.single('audio'), async (req, res) => {
+    const { collectionId } = req.params;
+    const collection = collections.get(collectionId);
+    if (!collection) {
+        if (req.file) { try { fs.unlinkSync(req.file.path); } catch (_) {} }
+        return res.status(404).json({ error: 'Collection not found' });
+    }
+    if (!req.file) return res.status(400).json({ error: 'No audio file provided' });
+
+    // multer overwrote a previous file of the same extension; drop any older one
+    // stored under a different extension so only a single montage remains.
+    const kept = path.basename(req.file.path);
+    for (const f of fs.readdirSync(AUDIO_DIR)) {
+        if (f.startsWith(`collection-${collectionId}.`) && f !== kept) {
+            try { fs.unlinkSync(path.join(AUDIO_DIR, f)); } catch (_) {}
+        }
+    }
+
+    const duration = await probeAudioDuration(req.file.path);
+    collection.audio = {
+        filename: decodeUploadFilename(req.file.originalname).normalize('NFC'),
+        stored: kept,
+        size: req.file.size,
+        duration, // seconds, or null when ffprobe is unavailable
+        uploadedAt: new Date().toISOString()
+    };
+    saveCollections();
+    console.log(`[COLLECTION] Audio updated for "${collection.name}" (${collectionId}) — ${kept}`);
+    res.json({ success: true, audio: collection.audio });
+});
+
+// Remove the montage (admin only)
+app.delete('/api/collection/:collectionId/audio', adminLimiter, requireAuth, validateCollectionId, (req, res) => {
+    const { collectionId } = req.params;
+    const collection = collections.get(collectionId);
+    if (!collection) return res.status(404).json({ error: 'Collection not found' });
+    deleteCollectionAudioFiles(collectionId);
+    delete collection.audio;
+    saveCollections();
+    console.log(`[COLLECTION] Audio removed from "${collection.name}" (${collectionId})`);
+    res.json({ success: true });
+});
+
+// Serve the montage. res.sendFile handles Range/206 by itself — that is what makes
+// seeking work, exactly as for video originals. Served under imageLimiter (600/min),
+// NOT publicReadLimiter (300/min): a media element fires many range requests while
+// streaming and seeking, and a tripped limiter surfaces as a hard, visible error.
+app.get('/api/collection/:collectionId/audio', imageLimiter, validateCollectionId, (req, res) => {
+    const { collectionId } = req.params;
+    const file = findCollectionAudioFile(collectionId);
+    if (!file) return res.status(404).json({ error: 'No audio found' });
+    const ext = path.extname(file).toLowerCase().slice(1);
+    // Set before sendFile: the `send` library skips its own guess when the header exists.
+    res.setHeader('Content-Type', AUDIO_MIME_BY_EXT[ext] || 'application/octet-stream');
+    res.setHeader('Cache-Control', 'public, max-age=86400');
+    res.sendFile(path.join(AUDIO_DIR, file));
 });
 
 // Add a gallery to a collection (admin only)
@@ -2411,6 +2574,9 @@ app.delete('/api/collection/:collectionId', adminLimiter, requireAuth, validateC
         }
     }
 
+    // Delete the audio montage (any extension)
+    deleteCollectionAudioFiles(collectionId);
+
     console.log(`[COLLECTION] Deleted "${collection.name}" (${collectionId})`);
     collections.delete(collectionId);
     saveCollections();
@@ -2432,7 +2598,12 @@ app.get('/collection/:collectionId', publicReadLimiter, validateCollectionId, (r
         `<meta property="og:url" content="${escapeHtml(baseUrl)}/collection/${escapeHtml(collectionId)}">`
     ].join('\n    ');
 
-    const html = fs.readFileSync(path.join(__dirname, 'public', 'collection.html'), 'utf8');
+    // Serves preview.html, which is the single client document for both routes:
+    // it renders the collection index and mounts galleries in place on
+    // #/gallery/:id, so the audio montage survives moving between galleries.
+    // A separate collection page could not do that — navigating away would
+    // destroy the <audio> element.
+    const html = fs.readFileSync(path.join(__dirname, 'public', 'preview.html'), 'utf8');
     res.send(html.replace('<head>', `<head>\n    ${ogTags}`));
 });
 
