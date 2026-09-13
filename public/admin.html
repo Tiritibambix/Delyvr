@@ -1911,6 +1911,7 @@
                                     ${g.commentsCount > 0 ? `<button class="btn-fav-action" onclick="viewComments('${g.id}')">${t.view}</button><button class="btn-fav-action" onclick="resetComments('${g.id}')">${t.reset}</button>` : ''}
                                 </div>
                             </div>
+                            ${renderAudioRow('gallery', g.id, g.audio)}
                         </div>
                     </div>
 
@@ -3196,29 +3197,8 @@
                     : `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>`;
 
                 // Audio montage row — one optional track per collection, played by the
-                // client collection page. Duration is absent when ffprobe is unavailable.
-                const musicSvg = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>`;
-                const audioMeta = c.audio
-                    ? [c.audio.duration != null ? formatAudioDuration(c.audio.duration) : null,
-                       c.audio.size != null ? formatFileSize(c.audio.size) : null].filter(Boolean).join(' · ')
-                    : '';
-                const audioHtml = `<div class="collection-audio">
-                    ${c.audio ? `
-                        ${musicSvg}
-                        <span class="collection-audio-name" title="${escapeAttr(c.audio.filename || '')}">${escapeHtml(c.audio.filename || '')}</span>
-                        <span class="collection-audio-meta">${escapeHtml(audioMeta)}</span>
-                        <button class="section-select-btn" onclick="document.getElementById('col-audio-input-${c.id}').click()">${t.replaceAudio}</button>
-                        <button class="btn-icon btn-icon-danger" onclick="removeCollectionAudio('${c.id}')" title="${t.removeAudio}">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/></svg>
-                        </button>
-                    ` : `
-                        <button class="collection-audio-add" onclick="document.getElementById('col-audio-input-${c.id}').click()">
-                            ${musicSvg}<span>${t.addAudio}</span>
-                        </button>
-                    `}
-                    <input type="file" id="col-audio-input-${c.id}" accept="audio/*,.mp3,.m4a,.aac,.ogg,.opus,.wav,.flac" style="display:none"
-                           onchange="uploadCollectionAudio('${c.id}', this.files[0]); this.value='';">
-                </div>`;
+                // client. Duration is absent when ffprobe is unavailable.
+                const audioHtml = renderAudioRow('collection', c.id, c.audio);
 
                 return `<div class="collection-item">
                     <div class="collection-header">
@@ -3340,8 +3320,10 @@
             }
         }
 
+        // `kind` is 'collection' or 'gallery' — both own an optional montage and
+        // share the same routes, uploader and storage, only the owner differs.
         // XHR rather than fetch: a montage can be ~100 MB, so upload progress matters.
-        function uploadCollectionAudio(collectionId, file) {
+        function uploadOwnerAudio(kind, ownerId, file) {
             if (!file) return;
             if (file.size > MAX_AUDIO_MB * 1024 * 1024) {
                 showError(t.audioTooLargeMax(MAX_AUDIO_MB));
@@ -3350,15 +3332,16 @@
             const fd = new FormData();
             fd.append('audio', file);
             const xhr = new XMLHttpRequest();
-            xhr.open('POST', `/api/collection/${collectionId}/audio`);
+            xhr.open('POST', `/api/${kind}/${ownerId}/audio`);
             xhr.upload.onprogress = (e) => {
                 if (!e.lengthComputable) return;
                 showAudioToast(`${t.audioUploading} ${Math.round((e.loaded / e.total) * 100)}%`, 'progress');
             };
+            const refresh = () => { kind === 'gallery' ? loadGalleries() : loadCollections(); };
             xhr.onload = () => {
                 if (xhr.status >= 200 && xhr.status < 300) {
                     showAudioToast(t.audioUploaded, 'success');
-                    loadCollections();
+                    refresh();
                 } else {
                     let msg = t.couldNotUploadAudio;
                     try { msg = JSON.parse(xhr.responseText).error || msg; } catch (_) {}
@@ -3370,15 +3353,42 @@
             xhr.send(fd);
         }
 
-        async function removeCollectionAudio(collectionId) {
+        async function removeOwnerAudio(kind, ownerId) {
             if (!(await confirmDialog(t.confirmRemoveAudio, t.removeAudio))) return;
             try {
-                const res = await fetch(`/api/collection/${collectionId}/audio`, { method: 'DELETE' });
+                const res = await fetch(`/api/${kind}/${ownerId}/audio`, { method: 'DELETE' });
                 if (!res.ok) throw new Error('Failed');
-                loadCollections();
+                kind === 'gallery' ? loadGalleries() : loadCollections();
             } catch (_) {
                 showError(t.couldNotRemoveAudio);
             }
+        }
+
+        // Shared markup for the audio row on a gallery or collection card.
+        function renderAudioRow(kind, ownerId, audio) {
+            const musicSvg = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>`;
+            const inputId = `${kind}-audio-input-${ownerId}`;
+            const meta = audio
+                ? [audio.duration != null ? formatAudioDuration(audio.duration) : null,
+                   audio.size != null ? formatFileSize(audio.size) : null].filter(Boolean).join(' · ')
+                : '';
+            return `<div class="collection-audio">
+                ${audio ? `
+                    ${musicSvg}
+                    <span class="collection-audio-name" title="${escapeAttr(audio.filename || '')}">${escapeHtml(audio.filename || '')}</span>
+                    <span class="collection-audio-meta">${escapeHtml(meta)}</span>
+                    <button class="section-select-btn" onclick="document.getElementById('${inputId}').click()">${t.replaceAudio}</button>
+                    <button class="btn-icon btn-icon-danger" onclick="removeOwnerAudio('${kind}', '${ownerId}')" title="${t.removeAudio}">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/></svg>
+                    </button>
+                ` : `
+                    <button class="collection-audio-add" onclick="document.getElementById('${inputId}').click()">
+                        ${musicSvg}<span>${t.addAudio}</span>
+                    </button>
+                `}
+                <input type="file" id="${inputId}" accept="audio/*,.mp3,.m4a,.aac,.ogg,.opus,.wav,.flac" style="display:none"
+                       onchange="uploadOwnerAudio('${kind}', '${ownerId}', this.files[0]); this.value='';">
+            </div>`;
         }
 
         // Pill reordering drag state

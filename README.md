@@ -48,7 +48,17 @@ When you share a gallery link with a client, here is what they get:
 
 **Comments:** Clients can leave a comment on any photo or video from the lightbox, with an optional name (no account needed — just like favorites, it's all anonymous unless they choose to type a name). Comments are public: everyone viewing the gallery sees the same conversation under each photo, like a guestbook. You can turn comments off for any gallery from your dashboard.
 
-**Music:** You can attach one audio montage to a collection — a soundtrack of the wedding day, for instance. A single small play button appears on the collection; tapping it starts the montage, and **it keeps playing while your clients move from one gallery to another**, because the whole collection browses inside a single page. Nothing plays on its own, they start it themselves, and they can stop it at any moment — including from their phone's lock screen, where the collection name and cover appear like any other track.
+**Music:** You can attach an audio montage — a soundtrack of the wedding day, for instance — **to a collection, to a single gallery, or both**. A single small play button appears; tapping it starts the montage. Nothing plays on its own, your clients start it themselves, and they can stop it at any moment — including from their phone's lock screen, where the name and cover appear like any other track.
+
+Which one plays follows one simple rule:
+
+| Where your client is | What they hear |
+|---|---|
+| A gallery opened on its own | that gallery's montage |
+| A collection **that has** a montage | the collection's, playing **without interruption** as they move from gallery to gallery |
+| A collection **without** one | each gallery's own, changing as they move |
+
+That way a whole-event soundtrack is never cut short by opening a gallery, and a gallery that belongs to no collection can still have its own music.
 
 **Language:** Client pages display in English, French, Spanish, Portuguese, or Italian. By default the language follows the visitor's browser, but you can force a specific language — globally, per collection, or per gallery (a gallery's own setting always wins over its collection's, which in turn wins over your global default). This also controls the language of the link-preview text shown when a gallery or collection is shared on WhatsApp, iMessage, or social media.
 
@@ -116,7 +126,7 @@ Creating a collection: type a name, click Create, then add galleries. There are 
 
 Each collection can have its own cover image. The collection link shows all galleries with their covers, a total photo count, and a download-all button that packages everything into a ZIP with one subfolder per gallery.
 
-**Audio montage:** Each collection card has an audio row where you can add a montage (MP3 or M4A/AAC are the safest — they play everywhere; Ogg/Opus is uneven on Safari and WAV/FLAC are needlessly heavy). The filename, duration and size are shown once uploaded, and you can replace or remove it at any time. Your clients get a discreet play button on the collection that keeps playing as they browse from gallery to gallery. Note that a collection link is public to anyone holding it, so the montage is too.
+**Audio montage:** Each collection card **and each gallery card** has an audio row where you can add a montage (MP3 or M4A/AAC are the safest — they play everywhere; Ogg/Opus is uneven on Safari and WAV/FLAC are needlessly heavy). The filename, duration and size are shown once uploaded, and you can replace or remove it at any time. Your clients get a discreet play button on the collection that keeps playing as they browse from gallery to gallery. Note that a collection link is public to anyone holding it, so the montage is too.
 
 Collections have their own Downloads and Comments toggles, next to each collection's name. Turning either off blocks it for every gallery in the collection, even if that gallery's own toggle is on — useful for disabling comments or downloads across a whole event at once instead of gallery by gallery.
 
@@ -382,7 +392,7 @@ delyvr/
     ├── thumbnails/     # 400px JPEG thumbnails, auto-generated
     ├── previews/       # 1920px JPEG lightbox previews, auto-generated
     ├── og-cache/       # 1200x630 OG images, generated on first share
-    ├── audio/          # Collection audio montages, stored verbatim
+    ├── audio/          # Audio montages (per collection or per gallery), stored verbatim
     ├── logo.*          # Custom logo if uploaded
     ├── galleries.json
     ├── collections.json
@@ -412,6 +422,9 @@ delyvr/
 | `GET` | `/api/gallery/:id/download` | | ZIP download |
 | `GET` | `/api/gallery/:id/download/:filename` | | Single photo download |
 | `GET` | `/api/gallery/:id/background` | | Serve background image |
+| `POST` | `/api/gallery/:id/audio` | ✓ | Upload or replace this gallery's audio montage |
+| `DELETE` | `/api/gallery/:id/audio` | ✓ | Remove it |
+| `GET` | `/api/gallery/:id/audio` | | Stream it (supports seeking) |
 | `GET` | `/api/gallery/:id/og-image` | | Serve or generate OG image |
 | `DELETE` | `/api/gallery/:id/og-image` | ✓ | Clear OG image cache |
 | `DELETE` | `/api/gallery/:id/photo/:filename` | ✓ | Delete a single photo |

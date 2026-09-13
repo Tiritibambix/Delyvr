@@ -890,6 +890,9 @@ body { display: flex; flex-direction: column; height: 100%; }
 }
 .collection-audio-add:hover { color: var(--text); }
 .collection-audio-add svg { width: 14px; height: 14px; color: var(--accent); }
+/* On a gallery card the same row is a wrapped flex item inside the detail panel,
+   not a full-width band across the card — take its own line, drop the side padding. */
+.gallery-bottom .collection-audio { flex: 0 0 100%; padding: 8px 0 0; }
 
 .collection-galleries {
     padding: 12px;

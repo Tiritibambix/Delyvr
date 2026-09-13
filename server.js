@@ -242,6 +242,7 @@ function hardDeleteGallery(galleryId) {
     fs.rmSync(safeResolvePath(THUMBNAILS_DIR, galleryId), { recursive: true, force: true });
     fs.rmSync(safeResolvePath(PREVIEWS_DIR, galleryId), { recursive: true, force: true });
     try { fs.unlinkSync(safeResolvePath(OG_CACHE_DIR, `${galleryId}.jpg`)); } catch (_) {}
+    deleteAudioFiles(`gallery-${galleryId}`); // this gallery's own montage, if any
     galleries.delete(galleryId);
     for (const collection of collections.values()) {
         const before = collection.galleryIds.length;
@@ -751,7 +752,7 @@ const uploadAudio = multer({
         },
         filename: (req, file, cb) => {
             const ext = path.extname(file.originalname).toLowerCase().slice(1);
-            cb(null, `collection-${req.params.collectionId}.${ext}`);
+            cb(null, `${audioKey(req)}.${ext}`);
         }
     }),
     limits: { fileSize: MAX_AUDIO_BYTES },
@@ -761,20 +762,29 @@ const uploadAudio = multer({
     }
 });
 
-// Finds a collection's stored montage regardless of its extension.
-function findCollectionAudioFile(collectionId) {
-    if (!fs.existsSync(AUDIO_DIR)) return null;
-    const prefix = `collection-${collectionId}.`;
-    return fs.readdirSync(AUDIO_DIR).find(f => f.startsWith(prefix)) || null;
+// A montage belongs either to a collection or to a single gallery, and both are
+// stored side by side in AUDIO_DIR under a distinguishing prefix:
+//   collection-{collectionId}.{ext}   gallery-{galleryId}.{ext}
+// audioKey() derives that basename from whichever route param is present, so the
+// one multer instance and the helpers below serve both owners.
+function audioKey(req) {
+    return req.params.collectionId
+        ? `collection-${req.params.collectionId}`
+        : `gallery-${req.params.galleryId}`;
 }
 
-// Removes every stored montage for a collection (all extensions), used before a
-// replace and on collection deletion.
-function deleteCollectionAudioFiles(collectionId) {
+// Finds a stored montage regardless of its extension. `key` is an audioKey value.
+function findAudioFile(key) {
+    if (!fs.existsSync(AUDIO_DIR)) return null;
+    return fs.readdirSync(AUDIO_DIR).find(f => f.startsWith(`${key}.`)) || null;
+}
+
+// Removes every stored montage for an owner (all extensions), used before a
+// replace and when the owner is deleted.
+function deleteAudioFiles(key) {
     if (!fs.existsSync(AUDIO_DIR)) return;
-    const prefix = `collection-${collectionId}.`;
     for (const f of fs.readdirSync(AUDIO_DIR)) {
-        if (f.startsWith(prefix)) {
+        if (f.startsWith(`${key}.`)) {
             try { fs.unlinkSync(path.join(AUDIO_DIR, f)); } catch (_) {}
         }
     }
@@ -1303,6 +1313,65 @@ app.get('/api/gallery/:galleryId/background', publicReadLimiter, validateGallery
     res.status(404).send('Background not found');
 });
 
+// ── GALLERY AUDIO MONTAGE ───────────────────────────────────────────────────
+// A gallery can carry its own montage, which is what makes audio possible for a
+// gallery that belongs to no collection. Same storage, uploader and helpers as
+// the collection montage, only the key prefix differs. Precedence is decided
+// client-side (see preview.html): inside a collection that has its own montage,
+// the collection's track wins so playback stays continuous across galleries.
+
+app.post('/api/gallery/:galleryId/audio', adminLimiter, requireAuth, validateGalleryId, uploadAudio.single('audio'), async (req, res) => {
+    const { galleryId } = req.params;
+    const gallery = galleries.get(galleryId);
+    if (!gallery) {
+        if (req.file) { try { fs.unlinkSync(req.file.path); } catch (_) {} }
+        return res.status(404).json({ error: 'Gallery not found' });
+    }
+    if (!req.file) return res.status(400).json({ error: 'No audio file provided' });
+
+    // Drop any older montage stored under a different extension.
+    const kept = path.basename(req.file.path);
+    for (const f of fs.readdirSync(AUDIO_DIR)) {
+        if (f.startsWith(`gallery-${galleryId}.`) && f !== kept) {
+            try { fs.unlinkSync(path.join(AUDIO_DIR, f)); } catch (_) {}
+        }
+    }
+
+    const duration = await probeAudioDuration(req.file.path);
+    gallery.audio = {
+        filename: decodeUploadFilename(req.file.originalname).normalize('NFC'),
+        stored: kept,
+        size: req.file.size,
+        duration,
+        uploadedAt: new Date().toISOString()
+    };
+    saveGalleries();
+    console.log(`[GALLERY] Audio updated for "${gallery.eventName}" (${galleryId}) — ${kept}`);
+    res.json({ success: true, audio: gallery.audio });
+});
+
+app.delete('/api/gallery/:galleryId/audio', adminLimiter, requireAuth, validateGalleryId, (req, res) => {
+    const { galleryId } = req.params;
+    const gallery = galleries.get(galleryId);
+    if (!gallery) return res.status(404).json({ error: 'Gallery not found' });
+    deleteAudioFiles(`gallery-${galleryId}`);
+    delete gallery.audio;
+    saveGalleries();
+    console.log(`[GALLERY] Audio removed from "${gallery.eventName}" (${galleryId})`);
+    res.json({ success: true });
+});
+
+// imageLimiter, not publicReadLimiter — see the collection audio route.
+app.get('/api/gallery/:galleryId/audio', imageLimiter, validateGalleryId, (req, res) => {
+    const { galleryId } = req.params;
+    const file = findAudioFile(`gallery-${galleryId}`);
+    if (!file) return res.status(404).json({ error: 'No audio found' });
+    const ext = path.extname(file).toLowerCase().slice(1);
+    res.setHeader('Content-Type', AUDIO_MIME_BY_EXT[ext] || 'application/octet-stream');
+    res.setHeader('Cache-Control', 'public, max-age=86400');
+    res.sendFile(path.join(AUDIO_DIR, file));
+});
+
 // Toggle downloads on/off for a gallery
 app.patch('/api/gallery/:galleryId/downloads', requireAuth, validateGalleryId, (req, res) => {
     const { galleryId } = req.params;
@@ -1761,12 +1830,28 @@ app.get('/api/gallery/:galleryId/info', publicReadLimiter, validateGalleryId, (r
         });
     }
 
+    // This gallery's own montage, with an mtime token so a replaced track busts
+    // the 24h cache. Only reported when the file is really on disk.
+    const gAudioFile = findAudioFile(`gallery-${galleryId}`);
+    let audio = null;
+    if (gAudioFile && gallery && gallery.audio) {
+        let version = null;
+        try { version = Math.floor(fs.statSync(path.join(AUDIO_DIR, gAudioFile)).mtimeMs); } catch (_) {}
+        audio = {
+            url: `/api/gallery/${galleryId}/audio${version ? `?v=${version}` : ''}`,
+            filename: gallery.audio.filename || null,
+            duration: gallery.audio.duration ?? null,
+            size: gallery.audio.size ?? null
+        };
+    }
+
     res.json({
         galleryId,
         eventName,
         background: backgroundFile ? `/api/gallery/${galleryId}/background` : null,
         fileCount,
         totalSizeBytes,
+        audio,
         downloadsEnabled: gallery ? (gallery.downloadsEnabled !== false && !isGalleryBlockedByCollection(galleryId)) : true,
         downloadCount: gallery ? (gallery.downloadCount || 0) : 0,
         viewCount: gallery ? (gallery.viewCount || 0) : 0,
@@ -2206,7 +2291,7 @@ app.get('/api/collections', adminLimiter, requireAuth, (req, res) => {
                 clientLanguage: c.clientLanguage || 'auto',
                 // Audio montage, so the collection card can show / replace / remove it.
                 // Reported only when the file is actually still on disk.
-                audio: (c.audio && findCollectionAudioFile(c.id))
+                audio: (c.audio && findAudioFile(`collection-${c.id}`))
                     ? { filename: c.audio.filename || null, duration: c.audio.duration ?? null, size: c.audio.size ?? null }
                     : null
             };
@@ -2257,7 +2342,7 @@ app.get('/api/collection/:collectionId', publicReadLimiter, validateCollectionId
     // Audio montage: the URL carries an mtime token (same idea as bgVersion) so a
     // replaced track busts the 24h cache while an unchanged one stays cached across
     // navigations — which matters a lot for a file this size.
-    const audioFile = findCollectionAudioFile(collectionId);
+    const audioFile = findAudioFile(`collection-${collectionId}`);
     let audio = null;
     if (audioFile && collection.audio) {
         let version = null;
@@ -2397,7 +2482,7 @@ app.delete('/api/collection/:collectionId/audio', adminLimiter, requireAuth, val
     const { collectionId } = req.params;
     const collection = collections.get(collectionId);
     if (!collection) return res.status(404).json({ error: 'Collection not found' });
-    deleteCollectionAudioFiles(collectionId);
+    deleteAudioFiles(`collection-${collectionId}`);
     delete collection.audio;
     saveCollections();
     console.log(`[COLLECTION] Audio removed from "${collection.name}" (${collectionId})`);
@@ -2410,7 +2495,7 @@ app.delete('/api/collection/:collectionId/audio', adminLimiter, requireAuth, val
 // streaming and seeking, and a tripped limiter surfaces as a hard, visible error.
 app.get('/api/collection/:collectionId/audio', imageLimiter, validateCollectionId, (req, res) => {
     const { collectionId } = req.params;
-    const file = findCollectionAudioFile(collectionId);
+    const file = findAudioFile(`collection-${collectionId}`);
     if (!file) return res.status(404).json({ error: 'No audio found' });
     const ext = path.extname(file).toLowerCase().slice(1);
     // Set before sendFile: the `send` library skips its own guess when the header exists.
@@ -2575,7 +2660,7 @@ app.delete('/api/collection/:collectionId', adminLimiter, requireAuth, validateC
     }
 
     // Delete the audio montage (any extension)
-    deleteCollectionAudioFiles(collectionId);
+    deleteAudioFiles(`collection-${collectionId}`);
 
     console.log(`[COLLECTION] Deleted "${collection.name}" (${collectionId})`);
     collections.delete(collectionId);
@@ -2673,6 +2758,11 @@ app.get('/api/galleries', adminLimiter, requireAuth, (req, res) => {
                     downloadCount: gallery.downloadCount || 0,
                     collectionId,
                     order: gallery.order,
+                    // Own montage, so the gallery card can show / replace / remove it.
+                    // Reported only when the file is actually still on disk.
+                    audio: (gallery.audio && findAudioFile(`gallery-${galleryId}`))
+                        ? { filename: gallery.audio.filename || null, duration: gallery.audio.duration ?? null, size: gallery.audio.size ?? null }
+                        : null,
                     downloadsEnabled: gallery.downloadsEnabled !== false,
                     commentsEnabled: gallery.commentsEnabled !== false,
                     clientLanguage: gallery.clientLanguage || 'auto'

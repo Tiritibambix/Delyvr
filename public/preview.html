@@ -2402,6 +2402,14 @@
                     }
                 } catch (e) { /* non-blocking */ }
 
+                // Montage precedence: a collection that has its own track owns the
+                // soundtrack and must not be interrupted when a gallery opens. Only
+                // when it has none does the gallery's own montage play — which is
+                // also the case for a gallery opened on its own.
+                if (!collectionOwnsMontage()) {
+                    setMontage(info.audio, info.eventName, `/api/gallery/${galleryId}/background?card=1`);
+                }
+
                 // Render gallery
                 renderGallery(downloadsEnabled);
 
@@ -3177,7 +3185,7 @@
                     grid.appendChild(card);
                 });
 
-                initAudioPlayer(data.audio, data.name);
+                setMontage(data.audio, data.name, `/api/collection/${collectionId}/background?card=1`);
             } catch (err) {
                 document.getElementById('loadingState').style.display = 'none';
                 document.getElementById('notFoundTitle').textContent = t.collectionNotFoundTitle;
@@ -3191,15 +3199,15 @@
         // playback never starts on its own — the first play must be a gesture,
         // which is also what every browser requires.
         let _montageReady = false;
+        let _montageWired = false;
+        let _montageSrc = null;
 
-        function initAudioPlayer(audio, collectionName) {
-            if (!audio || !audio.url) return;
+        // Listeners are attached exactly once. setMontage() may be called on every
+        // gallery mount, and re-attaching would stack one handler set per gallery.
+        function wireMontageOnce() {
+            if (_montageWired) return;
             const el = document.getElementById('montageAudio');
             const btn = document.getElementById('audioPlayer');
-            el.src = audio.url;
-            btn.classList.add('visible');
-            updateMontageButton();
-
             el.addEventListener('timeupdate', () => {
                 if (!el.duration) return;
                 btn.style.setProperty('--audio-progress', String((el.currentTime / el.duration) * 100));
@@ -3210,19 +3218,51 @@
                 btn.style.setProperty('--audio-progress', '0');
                 updateMontageButton();
             });
+            _montageWired = true;
+        }
+
+        // Loads (or clears) the montage. Passing the track that is already loaded is
+        // a no-op — that guard is what keeps a collection montage playing untouched
+        // while the visitor moves from gallery to gallery.
+        function setMontage(audio, title, artworkUrl) {
+            const el = document.getElementById('montageAudio');
+            const btn = document.getElementById('audioPlayer');
+            if (!audio || !audio.url) {
+                el.pause();
+                el.removeAttribute('src');
+                btn.classList.remove('visible');
+                btn.style.setProperty('--audio-progress', '0');
+                _montageReady = false;
+                _montageSrc = null;
+                return;
+            }
+            if (_montageSrc === audio.url) return; // already playing this one — leave it alone
+
+            wireMontageOnce();
+            _montageSrc = audio.url;
+            el.src = audio.url;
+            btn.style.setProperty('--audio-progress', '0');
+            btn.classList.add('visible');
+            _montageReady = true;
+            updateMontageButton();
 
             // Lock-screen / notification controls. Scrubbing and skipping live
             // there, which is why the in-page control stays a single button.
             if ('mediaSession' in navigator) {
                 navigator.mediaSession.metadata = new MediaMetadata({
-                    title: audio.filename || collectionName || 'Montage',
-                    artist: collectionName || '',
-                    artwork: [{ src: `/api/collection/${collectionId}/background?card=1`, sizes: '800x800', type: 'image/jpeg' }]
+                    title: audio.filename || title || 'Montage',
+                    artist: title || '',
+                    artwork: artworkUrl ? [{ src: artworkUrl, sizes: '800x800', type: 'image/jpeg' }] : []
                 });
                 navigator.mediaSession.setActionHandler('play', () => el.play().catch(() => {}));
                 navigator.mediaSession.setActionHandler('pause', () => el.pause());
             }
-            _montageReady = true;
+        }
+
+        // True when the collection owns the soundtrack: it then wins over any
+        // gallery's own montage, so playback stays continuous across galleries.
+        function collectionOwnsMontage() {
+            return !!(_isCollectionMode && _collectionData && _collectionData.audio);
         }
 
         function updateMontageButton() {
@@ -3269,6 +3309,14 @@
                 document.getElementById('notFound').classList.remove('active');
                 closeLightbox();
                 galleryId = null;   // force a reload if the same gallery is reopened
+                // Back on the index: restore the collection's montage (a no-op when
+                // it is already the loaded track, so it keeps playing) or clear the
+                // gallery-specific one that was playing.
+                setMontage(
+                    collectionOwnsMontage() ? _collectionData.audio : null,
+                    _collectionData ? _collectionData.name : '',
+                    `/api/collection/${collectionId}/background?card=1`
+                );
                 document.getElementById('collectionView').style.display = 'block';
                 document.title = (_collectionData && _collectionData.name) || document.title;
                 window.scrollTo(0, 0);

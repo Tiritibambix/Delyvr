@@ -60,7 +60,7 @@ delyvr/
     ├── thumbnails/     # 400px JPEG thumbnails, generated on upload or first request
     ├── previews/       # 1920px JPEG previews for lightbox, generated on upload or first request
     ├── og-cache/       # 1200×630 OG images, generated on first share
-    ├── audio/          # Collection audio montages — collection-{id}.{ext}, stored verbatim
+    ├── audio/          # Audio montages — collection-{id}.{ext} / gallery-{id}.{ext}, verbatim
     ├── galleries.json  # Gallery metadata
     ├── collections.json # Collection metadata
     └── settings.json   # Site-wide settings (theme + social links) — created automatically
@@ -251,11 +251,39 @@ Animated images play in the lightbox while keeping a static thumbnail in the gri
 - **preview.html**: a `GIF` pill badge (`.gif-badge`) is shown on grid cards where `photo.animated` (and not a video). The lightbox needs no change: `imgEl.src = photo.previewUrl` already resolves to the animated original, and mobile pinch-zoom (CSS transform on the `<img>`) stays compatible.
 - **Deliberately unchanged**: OG images (sharp flattens to a static first-frame JPEG — correct, crawlers require static); gallery/collection backgrounds (GIF normalized to static JPEG); `favorites.html` (shows the static thumbnail).
 
-### Collection audio montage
+### Audio montage (collection **or** gallery)
 
-A collection can carry **one optional audio track** (a wedding-day montage the couple
-listens to while browsing). Stored verbatim — no transcoding — as
-`data/audio/collection-{id}.{ext}`; `'audio'` is in the startup directory list.
+**Both a collection and a single gallery can carry one optional audio track** — the
+gallery-level one is what makes audio possible for a gallery belonging to no collection.
+Stored verbatim — no transcoding — in `data/audio/` (in the startup directory list) under
+a prefix that says who owns it:
+
+```
+collection-{collectionId}.{ext}      gallery-{galleryId}.{ext}
+```
+
+`audioKey(req)` derives that basename from whichever route param is present, so **one**
+multer instance and the `findAudioFile(key)` / `deleteAudioFiles(key)` helpers serve both
+owners. The gallery routes (`POST`/`DELETE`/`GET /api/gallery/:id/audio`) mirror the
+collection ones exactly; `hardDeleteGallery()` removes the gallery's own track.
+
+**Precedence is decided client-side, not on the server** (`preview.html`):
+
+| Context | What plays |
+|---|---|
+| Gallery opened standalone (`/preview/:id`) | its own montage |
+| Inside a collection **that has** a montage | the collection's — **continuous**, gallery tracks ignored |
+| Inside a collection **without** one | each gallery's own, switching as you move |
+
+The rule exists because a collection montage is meant to play unbroken across the whole
+event; letting a gallery override it mid-browse would defeat the entire design.
+`collectionOwnsMontage()` encodes the test.
+
+The continuity itself rests on one guard in `setMontage()`: **re-passing the track that is
+already loaded returns early**, so re-entering the index or mounting another gallery never
+reassigns `audio.src` (which would restart playback). Listeners are attached once by
+`wireMontageOnce()` — `setMontage()` runs on every gallery mount, and re-attaching would
+stack one handler set per gallery visited.
 
 - **Never added to any gallery's `files[]`.** That array drives the photo grid, the ZIP,
   counts, dimension probing, the OG image fallback and the stem sort — an audio file has
@@ -377,6 +405,9 @@ Gallery names use `contenteditable="false"` by default. Double-clicking (or clic
 | `GET` | `/api/gallery/:id/download` | | ZIP download (store mode, RFC 5987) |
 | `GET` | `/api/gallery/:id/download/:filename` | | Single photo download |
 | `GET` | `/api/gallery/:id/background` | | Serve background; `?thumb=1` 200px, `?card=1` 800px |
+| `POST` | `/api/gallery/:id/audio` | ✓ | Upload/replace this gallery's own montage |
+| `DELETE` | `/api/gallery/:id/audio` | ✓ | Remove it |
+| `GET` | `/api/gallery/:id/audio` | | Stream it (Range/206 via `sendFile`, `imageLimiter`) |
 | `GET` | `/api/gallery/:id/og-image` | | Generate/serve OG image |
 | `DELETE` | `/api/gallery/:id/og-image` | ✓ | Clear OG cache |
 | `DELETE` | `/api/gallery/:id/photo/:filename` | ✓ | Delete single photo |
