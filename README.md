@@ -140,6 +140,8 @@ Upload your logo from the top of the sidebar. It appears on every page including
 
 The Profile modal (opened from the sidebar footer) lets you set your website URL and social links. Instagram, Facebook, Pinterest, TikTok, LinkedIn, 500px, Flickr, and Behance are supported. Only links you fill in appear on client pages.
 
+The Profile modal also has a **Date format** picker for the dashboard: keep "Auto" to follow your browser, or pick `31/12/2026 · 14:30`, `12/31/2026 · 2:30 PM`, or `2026-12-31 · 14:30`. It sets the clock too (24-hour, except the US format). This only changes what *you* see in the dashboard — your clients' pages always show dates in their own language.
+
 The Profile modal also has two language pickers: **Dashboard language** changes the admin interface itself (saving reloads the page), and **Default client language** sets the site-wide fallback used by client pages and link previews when a gallery or collection doesn't have its own override. To override the language for a single gallery or collection, use the small language dropdown on its card in the dashboard — "Auto" inherits from the collection or the global default.
 
 Native browser confirmation popups are never used — every destructive action (delete, reset, empty trash) shows an in-app confirmation dialog styled like the rest of the dashboard.

@@ -146,9 +146,18 @@ delyvr/
     behance: string
   },
   adminLanguage: 'en'|'fr'|'es'|'pt'|'it', // default 'en' — admin dashboard UI language
-  clientLanguage: 'auto'|'en'|'fr'|'es'|'pt'|'it' // default 'auto' — global fallback for client pages/OG tags
+  clientLanguage: 'auto'|'en'|'fr'|'es'|'pt'|'it', // default 'auto' — global fallback for client pages/OG tags
+  dateFormat: 'auto'|'dmy'|'mdy'|'ymd' // default 'auto' — ADMIN dashboard date/time display only
 }
 ```
+
+**`dateFormat` is an admin-only display preference** (validated server-side against
+`DATE_FORMATS`). Client pages deliberately keep formatting by the *visitor's* resolved
+locale — the photographer's own preference has no business changing what a client sees.
+`admin.html` reads it into `_dateFormat` in `applyTheme()` and renders every date through
+`formatAdminDate(iso, withTime)`; the explicit formats also fix the clock (24 h, except
+`mdy` which pairs with the 12 h convention), while `'auto'` defers to `toLocaleString()`.
+Add new admin date output through that helper, never `toLocaleDateString()` directly.
 
 `settings.json` is created automatically on first write. If absent, the server defaults to `{ theme: 'dark' }`.
 
@@ -193,7 +202,7 @@ All filesystem paths incorporating user-controlled values go through `safeResolv
 
 `GET /api/settings` is public — all client pages call it on load to apply the theme and render the social footer.
 
-`POST /api/settings` is admin-only — accepts `{ theme, website, socials, adminLanguage, clientLanguage }` and saves the merged result.
+`POST /api/settings` is admin-only — accepts `{ theme, website, socials, adminLanguage, clientLanguage, dateFormat }` and saves the merged result.
 
 `PATCH /api/settings/theme` is used by the admin theme toggle.
 
@@ -337,6 +346,12 @@ the card.**
   mobile, where it inherits the bars' auto-hide. It is called from `openLightbox`,
   `closeLightbox`, `renderRoute`, `loadGallery`, the existing `scroll` listener and
   `resize`, and **no-ops unless the host actually changed** (it runs on every scroll).
+  The move is a **cross-fade**, not a teleport: the button fades out (`.audio-moving`,
+  `AUDIO_FADE_MS`), is re-parented, then fades back in — re-parenting alone made it pop
+  out of the hero and snap into the sticky bar. The pending timer is cleared on each call
+  and the target host is **re-read after the fade** (the visitor may have kept scrolling),
+  and `audioHostFor()` uses a 2 px margin on the sticky-bar test as hysteresis, so a scroll
+  resting exactly on the boundary cannot flip hosts back and forth and flicker.
   The lightbox host test uses `matchMedia('(max-width: 768px)')`, **not** `_isMobileLB()`:
   the latter also matches `(max-height: 500px)`, but `.lb-mobile-overlay` only renders
   under `max-width: 768px`, so a landscape phone would park the button in a hidden bar.
@@ -485,7 +500,7 @@ Gallery names use `contenteditable="false"` by default. Double-clicking (or clic
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
 | `GET` | `/api/settings` | | Get site settings |
-| `POST` | `/api/settings` | ✓ | Update theme, website, socials |
+| `POST` | `/api/settings` | ✓ | Update theme, website, socials, languages, date format |
 | `PATCH` | `/api/settings/theme` | ✓ | Update theme only |
 
 ---

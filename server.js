@@ -158,12 +158,17 @@ function ogDescription(key, language) {
     return OG_DESCRIPTIONS[key][lang];
 }
 
+// Date/time format for the ADMIN dashboard only. Client pages keep formatting by the
+// visitor's resolved locale — this is the photographer's own display preference.
+const DATE_FORMATS = ['auto', 'dmy', 'mdy', 'ymd'];
+
 const SETTINGS_DEFAULTS = {
     theme: 'dark',
     website: '',
     socials: {},
     adminLanguage: 'en',
-    clientLanguage: 'auto'
+    clientLanguage: 'auto',
+    dateFormat: 'auto'
 };
 
 // Load/save settings
@@ -800,7 +805,7 @@ app.get('/api/settings', (req, res) => {
 // POST /api/settings — admin only
 app.post('/api/settings', requireAuth, (req, res) => {
     const current = loadSettings();
-    const { theme, website, socials, adminLanguage, clientLanguage } = req.body;
+    const { theme, website, socials, adminLanguage, clientLanguage, dateFormat } = req.body;
     if (theme === 'light' || theme === 'dark') current.theme = theme;
     if (typeof website === 'string') current.website = website.trim().substring(0, 500);
     if (socials && typeof socials === 'object') {
@@ -811,6 +816,7 @@ app.post('/api/settings', requireAuth, (req, res) => {
     }
     if (SUPPORTED_LANGUAGES.includes(adminLanguage)) current.adminLanguage = adminLanguage;
     if (clientLanguage === 'auto' || SUPPORTED_LANGUAGES.includes(clientLanguage)) current.clientLanguage = clientLanguage;
+    if (DATE_FORMATS.includes(dateFormat)) current.dateFormat = dateFormat;
     saveSettings(current);
     res.json(current);
 });

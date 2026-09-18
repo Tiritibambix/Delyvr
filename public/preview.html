@@ -1543,6 +1543,11 @@
         }
         .audio-player.visible { display: inline-flex; }
         .audio-player svg { position: relative; z-index: 1; }
+        /* Cross-fade while placeAudioButton() re-parents the button between clusters,
+           so it eases out and back in instead of snapping from the hero to the bar.
+           Kept in sync with AUDIO_FADE_MS. */
+        .audio-player { transition: opacity 0.14s ease, transform 0.14s ease; }
+        .audio-player.audio-moving { opacity: 0; transform: scale(0.85); }
         /* Progress ring — costs no layout, adapts to whatever size the host gives. */
         .audio-player::before {
             content: ''; position: absolute; inset: -4px; border-radius: 50%;
@@ -1567,7 +1572,9 @@
             border: 1px solid rgba(255,255,255,0.35);
             color: #fff; background: rgba(0,0,0,0.25);
             backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
-            transition: background 0.2s, border-color 0.2s;
+            /* opacity/transform kept here too, otherwise this rule would drop the
+               cross-fade declared on the base .audio-player selector. */
+            transition: background 0.2s, border-color 0.2s, opacity 0.14s ease, transform 0.14s ease;
         }
         .hero-actions .audio-player:hover,
         .coll-audio-wrap .audio-player:hover,
@@ -1585,7 +1592,7 @@
             position: absolute; top: 170px; right: 20px;
             width: 20px; height: 20px;
             color: rgba(255,255,255,0.7);
-            transition: color 0.2s;
+            transition: color 0.2s, opacity 0.14s ease, transform 0.14s ease;
         }
         .lightbox .audio-player:hover { color: #fff; }
         .lightbox .audio-player svg { width: 18px; height: 18px; }
@@ -3353,31 +3360,50 @@
         // <button> has no effect on the <audio> (which never moves), so playback is
         // never interrupted. Crucially, the lightbox hosts are INSIDE .lightbox — the
         // fullscreen element — so the control survives fullscreen instead of vanishing.
-        function placeAudioButton() {
-            const btn = document.getElementById('audioPlayer');
-            if (!btn) return;
+        function audioHostFor() {
             const lb = document.getElementById('lightbox');
-            let host;
             if (lb && lb.classList.contains('active')) {
                 // Deliberately NOT _isMobileLB(): that also matches (max-height: 500px),
                 // but .lb-mobile-overlay only renders at (max-width: 768px). Using the
                 // wrong one would park the button in a hidden bar on a landscape phone.
                 const barsRendered = window.matchMedia('(max-width: 768px)').matches;
-                host = document.getElementById(barsRendered ? 'lbBottomBar' : 'lbAudioSlotDesktop');
-            } else {
-                const collView = document.getElementById('collectionView');
-                if (collView && collView.style.display !== 'none') {
-                    host = document.getElementById('collAudioSlot');
-                } else {
-                    // Once the sticky bar reaches the top it replaces the hero cluster.
-                    const bar = document.getElementById('actionsBar');
-                    const stuck = bar && bar.style.display !== 'none'
-                        && bar.getBoundingClientRect().top <= 0;
-                    host = document.getElementById(stuck ? 'barAudioSlot' : 'heroAudioSlot');
-                }
+                return document.getElementById(barsRendered ? 'lbBottomBar' : 'lbAudioSlotDesktop');
             }
+            const collView = document.getElementById('collectionView');
+            if (collView && collView.style.display !== 'none') {
+                return document.getElementById('collAudioSlot');
+            }
+            // Once the sticky bar reaches the top it replaces the hero cluster. The 2px
+            // margin is hysteresis: without it, a scroll sitting exactly on the boundary
+            // would flip hosts back and forth and make the cross-fade flicker.
+            const bar = document.getElementById('actionsBar');
+            const stuck = bar && bar.style.display !== 'none'
+                && bar.getBoundingClientRect().top <= 2;
+            return document.getElementById(stuck ? 'barAudioSlot' : 'heroAudioSlot');
+        }
+
+        let _audioMoveTimer = null;
+        const AUDIO_FADE_MS = 140;
+
+        function placeAudioButton() {
+            const btn = document.getElementById('audioPlayer');
+            if (!btn) return;
+            const host = audioHostFor();
             // Guard: this runs on every scroll event — only touch the DOM on a real change.
-            if (host && btn.parentElement !== host) host.appendChild(btn);
+            if (!host || btn.parentElement === host) return;
+
+            // Cross-fade rather than teleporting between clusters: re-parenting alone
+            // made the button pop out of the hero and snap into the sticky bar.
+            if (_audioMoveTimer) clearTimeout(_audioMoveTimer);
+            btn.classList.add('audio-moving');
+            _audioMoveTimer = setTimeout(() => {
+                _audioMoveTimer = null;
+                // Re-read the target: the user may have kept scrolling during the fade.
+                const finalHost = audioHostFor();
+                if (finalHost && btn.parentElement !== finalHost) finalHost.appendChild(btn);
+                void btn.offsetWidth; // flush styles so the fade-in animates after re-parenting
+                btn.classList.remove('audio-moving');
+            }, AUDIO_FADE_MS);
         }
 
         // ── ROUTING ───────────────────────────────────────────────────────

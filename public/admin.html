@@ -179,6 +179,19 @@
                 </select>
             </div>
 
+            <!-- Dashboard date/time format. Admin-only: client pages keep formatting by
+                 the visitor's own resolved locale. -->
+            <div class="profile-section-label" id="profileDateFormatLabel">Date format</div>
+            <div class="profile-field">
+                <span class="profile-field-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg></span>
+                <select id="profileDateFormat" title="Date format">
+                    <option value="auto" id="profileDateFormatAutoOpt">Auto (your browser)</option>
+                    <option value="dmy">31/12/2026 · 14:30</option>
+                    <option value="mdy">12/31/2026 · 2:30 PM</option>
+                    <option value="ymd">2026-12-31 · 14:30</option>
+                </select>
+            </div>
+
             <button class="profile-save-btn" id="profileSaveBtn" onclick="saveProfile()">Save</button>
             <div class="profile-save-feedback" id="profileFeedback"></div>
         </div>
@@ -569,6 +582,8 @@
             byId('profileWebsiteLabel', t.website);
             byId('profileSocialLabel', t.socialNetworks);
             byId('profileLanguageLabel', t.language);
+            byId('profileDateFormatLabel', t.dateFormatLabel);
+            byId('profileDateFormatAutoOpt', t.dateFormatAuto);
             byId('profileClientLanguageAutoOpt', t.autoLanguage);
             byId('profileSaveBtn', t.save);
 
@@ -612,6 +627,7 @@
                     const s = await res.json();
                     document.documentElement.classList.toggle('light', s.theme === 'light');
                     _currentAdminLanguage = s.adminLanguage || 'en';
+                    _dateFormat = s.dateFormat || 'auto';
                     applyAdminTranslations(_currentAdminLanguage);
                 }
             } catch (e) {}
@@ -974,6 +990,32 @@
             updateFileList();
             document.getElementById('createBtn').disabled = selectedFiles.length === 0;
             updateCollectionLink();
+        }
+
+        // Dashboard date/time format, from settings.dateFormat. Admin-only preference —
+        // client pages keep formatting by the visitor's own resolved locale.
+        // 'auto' defers to the browser; the explicit formats also fix the clock
+        // (24h, except mdy which is the 12h convention that goes with it).
+        let _dateFormat = 'auto';
+
+        function formatAdminDate(iso, withTime) {
+            const d = new Date(iso);
+            if (isNaN(d.getTime())) return '';
+            if (_dateFormat === 'auto') {
+                return withTime ? d.toLocaleString() : d.toLocaleDateString();
+            }
+            const p = n => String(n).padStart(2, '0');
+            const dd = p(d.getDate()), mm = p(d.getMonth() + 1), yyyy = d.getFullYear();
+            const datePart = _dateFormat === 'dmy' ? `${dd}/${mm}/${yyyy}`
+                           : _dateFormat === 'mdy' ? `${mm}/${dd}/${yyyy}`
+                           : `${yyyy}-${mm}-${dd}`;
+            if (!withTime) return datePart;
+            if (_dateFormat === 'mdy') {
+                const h24 = d.getHours();
+                const h = h24 % 12 || 12;
+                return `${datePart} ${h}:${p(d.getMinutes())} ${h24 >= 12 ? 'PM' : 'AM'}`;
+            }
+            return `${datePart} ${p(d.getHours())}:${p(d.getMinutes())}`;
         }
 
         function formatFileSize(bytes) {
@@ -1868,7 +1910,7 @@
                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
                             </button>
                         </div>
-                        <div class="gallery-meta">${g.fileCount} ${t.photoPlural} · ${new Date(g.created).toLocaleDateString()}</div>
+                        <div class="gallery-meta">${g.fileCount} ${t.photoPlural} · ${formatAdminDate(g.created, false)}</div>
                         <div class="gallery-bottom gallery-detail-panel">
                             <label class="downloads-toggle ${_dlBlocked ? 'blocked-by-collection' : ''}" title="${_dlBlocked ? t.downloadsBlockedByCollection(_col.name) : t.allowDownloads}">
                                 <span class="toggle-switch">
@@ -3034,7 +3076,7 @@
                     <div class="comment-row">
                         <div class="comment-row-head">
                             <span class="comment-row-name">${escapeHtml(c.name || t.guest)}</span>
-                            <span class="comment-row-date">${new Date(c.createdAt).toLocaleString()}</span>
+                            <span class="comment-row-date">${formatAdminDate(c.createdAt, true)}</span>
                             <button class="comment-row-del" data-filename="${escapeAttr(photo.filename)}" data-comment-id="${escapeAttr(c.id)}" title="${t.delete}">${trashSvg}</button>
                         </div>
                         <div class="comment-row-text">${escapeHtml(c.text)}</div>
@@ -4074,6 +4116,7 @@
                 document.getElementById('profileBehance').value   = soc.behance   || '';
                 document.getElementById('profileAdminLanguage').value  = s.adminLanguage  || 'en';
                 document.getElementById('profileClientLanguage').value = s.clientLanguage || 'auto';
+                document.getElementById('profileDateFormat').value     = s.dateFormat     || 'auto';
             }).catch(() => {});
             document.getElementById('profileFeedback').textContent = '';
             document.getElementById('profileModal').classList.add('active');
@@ -4099,7 +4142,8 @@
                     behance:   document.getElementById('profileBehance').value.trim()
                 },
                 adminLanguage: newAdminLanguage,
-                clientLanguage: document.getElementById('profileClientLanguage').value
+                clientLanguage: document.getElementById('profileClientLanguage').value,
+                dateFormat: document.getElementById('profileDateFormat').value
             };
             try {
                 const res = await fetch('/api/settings', {
@@ -4109,6 +4153,9 @@
                 });
                 const fb = document.getElementById('profileFeedback');
                 if (res.ok) {
+                    // Re-render the lists so a new date format shows immediately.
+                    _dateFormat = payload.dateFormat || 'auto';
+                    loadGalleries();
                     if (adminLanguageChanged) {
                         location.reload();
                         return;
