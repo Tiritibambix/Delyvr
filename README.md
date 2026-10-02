@@ -540,6 +540,17 @@ Split into multiple galleries, or add `proxy_read_timeout 300;` to your Nginx co
 cp .env.example .env && nano .env
 ```
 
+### Server won't start — "SQLite database not found"
+
+The database is created once by a separate command, not automatically on first boot — run it, then start normally:
+
+```bash
+docker compose run --rm delyvr npm run migrate
+docker compose up -d
+```
+
+(Bare-metal: `npm run migrate` then `npm start`.) Safe to run even with no `galleries.json`/`collections.json`/`settings.json` present yet — it bootstraps an empty database in that case.
+
 ### Admin access blocked unexpectedly
 
 If `ADMIN_ALLOWED_IPS` is set, check `docker logs delyvr` for `[AUTH]` entries showing which IP was blocked. Add your IP to the allowlist or clear the variable to disable the restriction.

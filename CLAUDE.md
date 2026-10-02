@@ -190,7 +190,7 @@ CIDR matching is implemented with BigInt bitwise arithmetic using the Node built
 
 ### Path safety
 
-All filesystem paths incorporating user-controlled values go through `safeResolvePath(base, ...segments)`. This resolves the final path and throws if it would escape the base directory.
+All filesystem paths incorporating user-controlled values go through `safeResolvePath(base, ...segments)`. This resolves the final path and throws if it would escape the base directory. This includes `data/backgrounds/` and `data/audio/` — a filename discovered via `fs.readdirSync(...).find(f => f.startsWith(id))` is still resolved through `safeResolvePath(dir, filename)` before being opened, deleted, or stat'd, not just `path.join`'d directly. There is no exception left anywhere in `server.js`.
 
 ### Rate limiting
 
