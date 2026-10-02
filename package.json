@@ -3,11 +3,17 @@
   "version": "1.0.0",
   "description": "Self-hosted photo sharing portal for photographers",
   "main": "server.js",
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "migrate": "node scripts/migrate-json-to-sqlite.js",
+    "test": "node --test"
   },
   "dependencies": {
     "archiver": "^6.0.1",
+    "better-sqlite3": "^13.0.3",
     "dotenv": "^16.0.0",
     "escape-html": "^1.0.3",
     "express": "^5.2.1",

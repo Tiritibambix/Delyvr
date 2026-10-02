@@ -12,6 +12,7 @@ uploads/
 backgrounds/
 thumbnails/
 galleries.json
+delyvr.sqlite*
 
 # Old branch reference code (local only)
 oldbranch/

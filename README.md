@@ -192,7 +192,22 @@ ADMIN_PASSWORD=a_long_random_string_here
 GALLERY_DIR=./data
 ```
 
-### 4. Start the container
+### 4. Create the database (one-time)
+
+Delyvr stores galleries/collections/settings in a SQLite database file, created once by a
+migration/bootstrap command — required before the very first start, and again after any
+upgrade from a version that still used `galleries.json`/`collections.json`/`settings.json`:
+
+```bash
+docker compose run --rm delyvr npm run migrate
+```
+
+This is safe to run on a brand-new install too (no JSON files yet → an all-defaults
+database). It refuses to run again once `data/delyvr.sqlite` exists (pass `--force` after
+`--` to rebuild it from the JSON files, discarding anything written since) — so running it
+twice by accident does nothing destructive.
+
+### 5. Start the container
 
 ```bash
 docker compose up -d
@@ -205,6 +220,8 @@ Delyvr is now running at `http://localhost:3000`. Gallery data is stored in `./d
 ```bash
 docker compose pull && docker compose up -d
 ```
+
+If the update note for that version mentions a database change, back up `./data/` first and re-run `docker compose run --rm delyvr npm run migrate -- --force` before starting.
 
 ---
 
@@ -331,7 +348,7 @@ Set `TRUST_PROXY=1` in your compose file so rate limiting uses the real client I
 ```bash
 curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.7/install.sh | bash
 source ~/.bashrc
-nvm install 20 && nvm use 20
+nvm install 24 && nvm use 24
 ```
 
 ### 2. Clone and install
@@ -356,7 +373,16 @@ Set at minimum:
 ADMIN_PASSWORD=your_secure_password_here
 ```
 
-### 4. Start
+### 4. Create the database (one-time)
+
+```bash
+npm run migrate
+```
+
+Safe on a brand-new install (no JSON files yet → an all-defaults database) and refuses to
+run again once `data/delyvr.sqlite` exists.
+
+### 5. Start
 
 ```bash
 npm start
@@ -377,6 +403,9 @@ pm2 save && pm2 startup
 ```
 delyvr/
 ├── server.js           # Express server, all routes and middleware
+├── db/                 # SQLite connection, schema, and the few multi-table operations
+├── scripts/            # migrate-json-to-sqlite.js — one-time database bootstrap
+├── test/               # node --test suite for the database layer
 ├── package.json
 ├── Dockerfile
 ├── docker-compose.yml
@@ -396,9 +425,10 @@ delyvr/
     ├── og-cache/       # 1200x630 OG images, generated on first share
     ├── audio/          # Audio montages (per collection or per gallery), stored verbatim
     ├── logo.*          # Custom logo if uploaded
-    ├── galleries.json
+    ├── delyvr.sqlite   # The database — created once by `npm run migrate`
+    ├── galleries.json  # Pre-migration data, kept as a fallback, unused once migrated
     ├── collections.json
-    └── settings.json   # Theme and social links, created automatically
+    └── settings.json
 ```
 
 ---

@@ -13,6 +13,9 @@ const crypto = require('crypto');
 const net = require('net');
 const { execFile } = require('child_process');
 
+const { openDatabase } = require('./db');
+const ops = require('./db/operations');
+
 const app = express();
 const PORT = process.env.PORT || 3000;
 
@@ -58,7 +61,7 @@ const MAX_BACKGROUND_BYTES = parseInt(process.env.MAX_BACKGROUND_MB || '25') * 1
 // Collection audio montage — an hour of 192 kbps MP3 is ~86 MB, so the cap is generous
 const MAX_AUDIO_BYTES = parseInt(process.env.MAX_AUDIO_MB || '150') * 1024 * 1024;
 
-// Install directory — where Node.js stores uploads, backgrounds, and galleries.json
+// Install directory — where Node.js stores uploads, backgrounds, and the SQLite database
 // Docker: always /data (set via environment in docker-compose.yml)
 // Bare-metal: defaults to the project directory
 const DATA_DIR = process.env.INSTALL_DIR || __dirname;
@@ -116,16 +119,203 @@ function parseCookies(cookieHeader) {
     }, {});
 }
 
-// Data store for galleries (in production, use a database)
-const galleries = new Map();
+// ── Database ─────────────────────────────────────────────────────────────────
+// SQLite is the sole source of truth for galleries/collections/settings (see
+// db/index.js and CLAUDE.md's "Data persistence" section). The database file
+// must already exist — created once by `npm run migrate` — so this fails fast
+// with a clear message otherwise, exactly like the ADMIN_PASSWORD check above.
+// There is no auto-migrate-on-boot branch: that would make a deleted or
+// corrupted .sqlite file silently resurrect data from whatever the original
+// JSON files still say, which could by then be stale relative to months of
+// SQL-only writes.
+const DB_PATH = path.join(DATA_DIR, 'delyvr.sqlite');
+let db;
+try {
+    db = openDatabase(DB_PATH);
+} catch (e) {
+    console.error(`FATAL: ${e.message}`);
+    process.exit(1);
+}
 
-// File to persist gallery metadata
-const GALLERIES_FILE = path.join(DATA_DIR, 'galleries.json');
+// Maps a `galleries` row (snake_case SQL columns) to the camelCase shape every
+// route already expects. `order`/`sort_order` is deliberately NOT included —
+// it has exactly one consumer (the admin gallery list) and needs the
+// null-vs-undefined distinction handled there directly (see that route) since
+// JSON.stringify drops `undefined` keys but keeps explicit `null` ones, and
+// the admin dashboard's own client-side sort relies on that.
+function galleryRowToObject(row) {
+    return {
+        id: row.id,
+        eventName: row.event_name,
+        created: row.created_at,
+        background: row.background,
+        downloadsEnabled: !!row.downloads_enabled,
+        commentsEnabled: !!row.comments_enabled,
+        downloadCount: row.download_count,
+        viewCount: row.view_count,
+        clientLanguage: row.client_language,
+        deleted: !!row.deleted,
+        deletedAt: row.deleted_at,
+        audio: row.audio_filename ? {
+            filename: row.audio_filename,
+            stored: row.audio_stored,
+            size: row.audio_size,
+            duration: row.audio_duration,
+            uploadedAt: row.audio_uploaded_at
+        } : null
+    };
+}
 
-// Data store for collections
-const collections = new Map();
-const COLLECTIONS_FILE = path.join(DATA_DIR, 'collections.json');
-const SETTINGS_FILE    = path.join(DATA_DIR, 'settings.json');
+// Returns the gallery only if it exists and is not soft-deleted
+function getActiveGallery(galleryId) {
+    const row = db.prepare(`SELECT * FROM galleries WHERE id = ? AND deleted = 0`).get(galleryId);
+    return row ? galleryRowToObject(row) : null;
+}
+
+// Recovers an uploads/ folder that has no matching galleries row — used by
+// both reconcileGalleries() at startup and GET /api/galleries' own inline
+// recovery (a second, separate recovery site — easy to miss since it isn't
+// named like a reconciliation function). `event_name`/`download_count`/
+// `view_count` etc. all come from the schema's own column DEFAULTs, matching
+// both of the old recovery sites' placeholder metadata exactly.
+function insertRecoveredGallery(id, createdAtIso, files) {
+    db.transaction(() => {
+        db.prepare(`INSERT INTO galleries (id, created_at) VALUES (?, ?)`).run(id, createdAtIso);
+        const insertFile = db.prepare(`INSERT OR IGNORE INTO files (gallery_id, filename) VALUES (?, ?)`);
+        for (const f of new Set(files)) insertFile.run(id, f);
+    })();
+}
+
+// Hard-delete all files for a gallery (used by purge and auto-expiry).
+// Filesystem removal happens BEFORE the DB delete, exactly as before: this
+// ordering is what lets reconcileGalleries() repair the state if the process
+// crashes in between (a DB row whose uploads folder is already gone gets
+// cleaned up on the next startup, same as always). The DB half collapses to
+// one statement — ON DELETE CASCADE removes files/favorites/comments/
+// viewer_hashes/collection_galleries automatically, replacing the old
+// "scan every collection and strip this gallery out" loop.
+function hardDeleteGallery(galleryId) {
+    const galleryPath = safeResolvePath(path.join(DATA_DIR, 'uploads'), galleryId);
+    if (fs.existsSync(galleryPath)) fs.rmSync(galleryPath, { recursive: true });
+    const backgroundsDir = path.join(DATA_DIR, 'backgrounds');
+    if (fs.existsSync(backgroundsDir)) {
+        const bgFile = fs.readdirSync(backgroundsDir).find(f => f.startsWith(galleryId));
+        if (bgFile) fs.unlinkSync(path.join(backgroundsDir, bgFile));
+    }
+    fs.rmSync(safeResolvePath(THUMBNAILS_DIR, galleryId), { recursive: true, force: true });
+    fs.rmSync(safeResolvePath(PREVIEWS_DIR, galleryId), { recursive: true, force: true });
+    try { fs.unlinkSync(safeResolvePath(OG_CACHE_DIR, `${galleryId}.jpg`)); } catch (_) {}
+    deleteAudioFiles(`gallery-${galleryId}`); // this gallery's own montage, if any
+    ops.deleteGalleryRow(db, galleryId);
+}
+
+// Auto-purge soft-deleted galleries older than TRASH_RETENTION_MS
+const TRASH_RETENTION_MS = 3 * 24 * 60 * 60 * 1000; // 3 days
+function purgeExpiredTrash() {
+    const cutoff = new Date(Date.now() - TRASH_RETENTION_MS).toISOString();
+    const expired = db.prepare(`SELECT id, event_name, deleted_at FROM galleries WHERE deleted = 1 AND deleted_at < ?`).all(cutoff);
+    for (const g of expired) {
+        // Guard each hard-delete: this also runs on a timer (see setInterval below),
+        // so an fs failure on one gallery must not abort the loop or crash the process.
+        try {
+            console.log(`[TRASH] Auto-purge: gallery "${g.event_name}" (${g.id}) deleted at ${g.deleted_at}`);
+            hardDeleteGallery(g.id);
+        } catch (e) {
+            console.warn(`[TRASH] Auto-purge failed for ${g.id}: ${e.message}`);
+        }
+    }
+}
+
+// Reconcile the database with the uploads directory on disk.
+// Runs once on startup to handle two cases:
+//   1. Row in DB but no uploads folder → remove the stale entry
+//   2. Uploads folder exists but no DB row → recover with placeholder metadata
+function reconcileGalleries() {
+    const uploadsDir = path.join(DATA_DIR, 'uploads');
+
+    // Case 1: stale DB rows with no corresponding uploads folder
+    for (const row of db.prepare(`SELECT id FROM galleries`).all()) {
+        if (!fs.existsSync(path.join(uploadsDir, row.id))) {
+            ops.deleteGalleryRow(db, row.id);
+            console.log(`[STARTUP] Reconcile: removed stale entry ${row.id} (no uploads folder)`);
+        }
+    }
+
+    // Case 2: uploads folders on disk with no DB row
+    if (fs.existsSync(uploadsDir)) {
+        const known = new Set(db.prepare(`SELECT id FROM galleries`).all().map(r => r.id));
+        for (const entry of fs.readdirSync(uploadsDir)) {
+            if (!UUID_V4_REGEX.test(entry)) continue;
+            if (known.has(entry)) continue;
+            const galleryPath = path.join(uploadsDir, entry);
+            if (!fs.statSync(galleryPath).isDirectory()) continue;
+            const files = fs.readdirSync(galleryPath).filter(f => !f.startsWith('.'));
+            insertRecoveredGallery(entry, fs.statSync(galleryPath).birthtime.toISOString(), files);
+            console.log(`[STARTUP] Reconcile: recovered gallery ${entry} from disk (${files.length} file(s))`);
+        }
+    }
+
+    // Case 3: clean orphan files/folders in thumbnails, previews, backgrounds, og-cache
+    // whose galleryId no longer exists in the registry
+    const knownIds = new Set(db.prepare(`SELECT id FROM galleries`).all().map(r => r.id));
+
+    // thumbnails/ and previews/ are per-gallery folders
+    for (const dirName of ['thumbnails', 'previews']) {
+        const base = path.join(DATA_DIR, dirName);
+        if (!fs.existsSync(base)) continue;
+        for (const entry of fs.readdirSync(base)) {
+            if (!UUID_V4_REGEX.test(entry)) continue;
+            if (knownIds.has(entry)) continue;
+            try { fs.rmSync(path.join(base, entry), { recursive: true, force: true }); } catch (_) {}
+        }
+    }
+
+    // backgrounds/ contains {galleryId}.{ext} and collection-{collectionId}.{ext}
+    const bgDir = path.join(DATA_DIR, 'backgrounds');
+    if (fs.existsSync(bgDir)) {
+        const knownCollectionIds = new Set(db.prepare(`SELECT id FROM collections`).all().map(r => r.id));
+        for (const entry of fs.readdirSync(bgDir)) {
+            const base = entry.replace(/\.[^.]+$/, '');
+            if (base.startsWith('collection-')) {
+                const cid = base.slice('collection-'.length);
+                if (knownCollectionIds.has(cid)) continue;
+            } else if (knownIds.has(base)) {
+                continue;
+            }
+            try { fs.unlinkSync(path.join(bgDir, entry)); } catch (_) {}
+        }
+    }
+
+    // og-cache/ contains {galleryId}.jpg
+    const ogDir = path.join(DATA_DIR, 'og-cache');
+    if (fs.existsSync(ogDir)) {
+        for (const entry of fs.readdirSync(ogDir)) {
+            const base = entry.replace(/\.[^.]+$/, '');
+            if (knownIds.has(base)) continue;
+            try { fs.unlinkSync(path.join(ogDir, entry)); } catch (_) {}
+        }
+    }
+}
+
+reconcileGalleries();
+purgeExpiredTrash();
+// Re-run on a timer too: the startup-only call never fires on a long-running server
+// (self-hosted Docker), so trash that crosses the retention threshold while the process
+// stays up would otherwise sit forever until the next restart. `.unref()` so the timer
+// alone doesn't keep the process alive (the HTTP server keeps it alive anyway).
+const TRASH_PURGE_INTERVAL_MS = 60 * 60 * 1000; // hourly
+setInterval(purgeExpiredTrash, TRASH_PURGE_INTERVAL_MS).unref();
+
+// Ensure directories exist
+['uploads', 'backgrounds', 'thumbnails', 'previews', 'og-cache', 'audio'].forEach(dir => {
+    const dirPath = path.join(DATA_DIR, dir);
+    if (!fs.existsSync(dirPath)) {
+        fs.mkdirSync(dirPath, { recursive: true });
+    }
+});
+if (!fs.existsSync(path.join(__dirname, 'public'))) {
+    fs.mkdirSync(path.join(__dirname, 'public'), { recursive: true });
+}
 
 const SUPPORTED_LANGUAGES = ['en', 'fr', 'es', 'pt', 'it'];
 
@@ -162,244 +352,68 @@ function ogDescription(key, language) {
 // visitor's resolved locale — this is the photographer's own display preference.
 const DATE_FORMATS = ['auto', 'dmy', 'mdy', 'ymd'];
 
-const SETTINGS_DEFAULTS = {
-    theme: 'dark',
-    website: '',
-    socials: {},
-    adminLanguage: 'en',
-    clientLanguage: 'auto',
-    dateFormat: 'auto'
-};
-
-// Load/save settings
-function loadSettings() {
-    try {
-        if (fs.existsSync(SETTINGS_FILE)) {
-            const data = JSON.parse(fs.readFileSync(SETTINGS_FILE, 'utf8'));
-            return {
-                ...SETTINGS_DEFAULTS,
-                ...data,
-                socials: { ...SETTINGS_DEFAULTS.socials, ...(data.socials || {}) }
-            };
-        }
-    } catch (e) {
-        console.error('[SETTINGS] Failed to parse settings.json, using defaults:', e.message);
-    }
-    return { ...SETTINGS_DEFAULTS };
+// Reads the full settings object (theme/website/socials/adminLanguage/
+// clientLanguage/dateFormat) — the `settings` row always exists post-migration
+// (a singleton created once, enforced by the schema's `CHECK (id = 1)`).
+function getSettings() {
+    const row = db.prepare(`SELECT theme, website, admin_language, client_language, date_format FROM settings WHERE id = 1`).get();
+    const socials = {};
+    for (const s of db.prepare(`SELECT key, value FROM settings_socials`).all()) socials[s.key] = s.value;
+    return {
+        theme: row.theme,
+        website: row.website,
+        socials,
+        adminLanguage: row.admin_language,
+        clientLanguage: row.client_language,
+        dateFormat: row.date_format
+    };
 }
-function saveSettings(s) {
-    fs.writeFileSync(SETTINGS_FILE, JSON.stringify(s, null, 2));
+
+// Applies a partial settings patch (only the keys present are touched) — the
+// route handlers keep doing their own validation first, exactly as before,
+// and only pass through fields that already passed it.
+function updateSettings(patch) {
+    db.transaction(() => {
+        const sets = [];
+        const params = {};
+        if (patch.theme !== undefined) { sets.push('theme = @theme'); params.theme = patch.theme; }
+        if (patch.website !== undefined) { sets.push('website = @website'); params.website = patch.website; }
+        if (patch.adminLanguage !== undefined) { sets.push('admin_language = @admin_language'); params.admin_language = patch.adminLanguage; }
+        if (patch.clientLanguage !== undefined) { sets.push('client_language = @client_language'); params.client_language = patch.clientLanguage; }
+        if (patch.dateFormat !== undefined) { sets.push('date_format = @date_format'); params.date_format = patch.dateFormat; }
+        if (sets.length > 0) {
+            db.prepare(`UPDATE settings SET ${sets.join(', ')} WHERE id = 1`).run(params);
+        }
+        if (patch.socials && typeof patch.socials === 'object') {
+            const upsert = db.prepare(`INSERT INTO settings_socials (key, value) VALUES (?, ?)
+                ON CONFLICT(key) DO UPDATE SET value = excluded.value`);
+            for (const [k, v] of Object.entries(patch.socials)) {
+                if (typeof v === 'string') upsert.run(k, v.trim().substring(0, 500));
+            }
+        }
+    })();
 }
 
 // Resolves the effective client-facing language for a gallery: its own
-// override, else its (first) containing collection's override, else the
-// global default from settings. Returns 'auto' if nothing overrides it.
+// override, else its (at most one, by construction) containing collection's
+// override, else the global default from settings. Returns 'auto' if nothing
+// overrides it. The single indexed lookup here (collection_galleries.gallery_id
+// is UNIQUE) replaces the old per-request scan of every collection.
 function resolveGalleryClientLanguage(galleryId) {
-    const gallery = galleries.get(galleryId);
-    if (gallery && gallery.clientLanguage) return gallery.clientLanguage;
-    for (const collection of collections.values()) {
-        if (collection.galleryIds.includes(galleryId) && collection.clientLanguage) {
-            return collection.clientLanguage;
-        }
-    }
-    return loadSettings().clientLanguage || 'auto';
+    const gallery = db.prepare(`SELECT client_language FROM galleries WHERE id = ?`).get(galleryId);
+    if (gallery && gallery.client_language) return gallery.client_language;
+    const membership = db.prepare(`
+        SELECT c.client_language AS client_language
+        FROM collection_galleries cg JOIN collections c ON c.id = cg.collection_id
+        WHERE cg.gallery_id = ?`).get(galleryId);
+    if (membership && membership.client_language) return membership.client_language;
+    return getSettings().clientLanguage || 'auto';
 }
 
 function resolveCollectionClientLanguage(collectionId) {
-    const collection = collections.get(collectionId);
-    if (collection && collection.clientLanguage) return collection.clientLanguage;
-    return loadSettings().clientLanguage || 'auto';
-}
-
-// Load galleries from file on startup
-function loadGalleries() {
-    if (fs.existsSync(GALLERIES_FILE)) {
-        try {
-            const data = JSON.parse(fs.readFileSync(GALLERIES_FILE, 'utf8'));
-            data.forEach(g => galleries.set(g.id, g));
-        } catch (err) {
-            console.error('Error loading galleries:', err);
-        }
-    }
-}
-
-// Save galleries to file
-function saveGalleries() {
-    const data = Array.from(galleries.values());
-    fs.writeFileSync(GALLERIES_FILE, JSON.stringify(data, null, 2));
-}
-
-// Returns the gallery only if it exists and is not soft-deleted
-function getActiveGallery(galleryId) {
-    const g = galleries.get(galleryId);
-    return (g && !g.deleted) ? g : null;
-}
-
-// Hard-delete all files for a gallery (used by purge and auto-expiry)
-function hardDeleteGallery(galleryId) {
-    const galleryPath = safeResolvePath(path.join(DATA_DIR, 'uploads'), galleryId);
-    if (fs.existsSync(galleryPath)) fs.rmSync(galleryPath, { recursive: true });
-    const backgroundsDir = path.join(DATA_DIR, 'backgrounds');
-    if (fs.existsSync(backgroundsDir)) {
-        const bgFile = fs.readdirSync(backgroundsDir).find(f => f.startsWith(galleryId));
-        if (bgFile) fs.unlinkSync(path.join(backgroundsDir, bgFile));
-    }
-    fs.rmSync(safeResolvePath(THUMBNAILS_DIR, galleryId), { recursive: true, force: true });
-    fs.rmSync(safeResolvePath(PREVIEWS_DIR, galleryId), { recursive: true, force: true });
-    try { fs.unlinkSync(safeResolvePath(OG_CACHE_DIR, `${galleryId}.jpg`)); } catch (_) {}
-    deleteAudioFiles(`gallery-${galleryId}`); // this gallery's own montage, if any
-    galleries.delete(galleryId);
-    for (const collection of collections.values()) {
-        const before = collection.galleryIds.length;
-        collection.galleryIds = collection.galleryIds.filter(id => id !== galleryId);
-        if (collection.galleryIds.length !== before) saveCollections();
-    }
-}
-
-// Auto-purge soft-deleted galleries older than TRASH_RETENTION_DAYS
-const TRASH_RETENTION_MS = 3 * 24 * 60 * 60 * 1000; // 3 days
-function purgeExpiredTrash() {
-    const now = Date.now();
-    let changed = false;
-    for (const [id, g] of galleries.entries()) {
-        if (g.deleted && g.deletedAt && (now - new Date(g.deletedAt).getTime()) > TRASH_RETENTION_MS) {
-            // Guard each hard-delete: this also runs on a timer (see setInterval below),
-            // so an fs failure on one gallery must not abort the loop or crash the process.
-            try {
-                console.log(`[TRASH] Auto-purge: gallery "${g.eventName}" (${id}) deleted at ${g.deletedAt}`);
-                hardDeleteGallery(id);
-                changed = true;
-            } catch (e) {
-                console.warn(`[TRASH] Auto-purge failed for ${id}: ${e.message}`);
-            }
-        }
-    }
-    if (changed) saveGalleries();
-}
-
-// Load collections from file on startup
-function loadCollections() {
-    if (fs.existsSync(COLLECTIONS_FILE)) {
-        try {
-            const data = JSON.parse(fs.readFileSync(COLLECTIONS_FILE, 'utf8'));
-            data.forEach(c => collections.set(c.id, c));
-        } catch (err) {
-            console.error('Error loading collections:', err);
-        }
-    }
-}
-
-// Save collections to file
-function saveCollections() {
-    const data = Array.from(collections.values());
-    fs.writeFileSync(COLLECTIONS_FILE, JSON.stringify(data, null, 2));
-}
-
-// Reconcile galleries.json with the uploads directory on disk.
-// Runs once on startup to handle two cases:
-//   1. Entry in JSON but no uploads folder → remove the stale entry
-//   2. Uploads folder exists but no JSON entry → recover with placeholder metadata
-function reconcileGalleries() {
-    const uploadsDir = path.join(DATA_DIR, 'uploads');
-    let changed = false;
-
-    // Case 1: stale JSON entries with no corresponding uploads folder
-    for (const galleryId of galleries.keys()) {
-        if (!fs.existsSync(path.join(uploadsDir, galleryId))) {
-            galleries.delete(galleryId);
-            console.log(`[STARTUP] Reconcile: removed stale entry ${galleryId} (no uploads folder)`);
-            changed = true;
-        }
-    }
-
-    // Case 2: uploads folders on disk with no JSON entry
-    if (fs.existsSync(uploadsDir)) {
-        for (const entry of fs.readdirSync(uploadsDir)) {
-            if (!UUID_V4_REGEX.test(entry)) continue;
-            if (galleries.has(entry)) continue;
-            const galleryPath = path.join(uploadsDir, entry);
-            if (!fs.statSync(galleryPath).isDirectory()) continue;
-            const files = fs.readdirSync(galleryPath).filter(f => !f.startsWith('.'));
-            galleries.set(entry, {
-                id: entry,
-                eventName: 'Untitled Event',
-                created: fs.statSync(galleryPath).birthtime.toISOString(),
-                files,
-                background: null,
-                downloadCount: 0,
-                viewCount: 0,
-                viewerHashes: [],
-                dimensions: {}
-            });
-            console.log(`[STARTUP] Reconcile: recovered gallery ${entry} from disk (${files.length} file(s))`);
-            changed = true;
-        }
-    }
-
-    if (changed) saveGalleries();
-
-    // Case 3: clean orphan files/folders in thumbnails, previews, backgrounds, og-cache
-    // whose galleryId no longer exists in the registry
-    const knownIds = new Set(galleries.keys());
-
-    // thumbnails/ and previews/ are per-gallery folders
-    for (const dirName of ['thumbnails', 'previews']) {
-        const base = path.join(DATA_DIR, dirName);
-        if (!fs.existsSync(base)) continue;
-        for (const entry of fs.readdirSync(base)) {
-            if (!UUID_V4_REGEX.test(entry)) continue;
-            if (knownIds.has(entry)) continue;
-            try { fs.rmSync(path.join(base, entry), { recursive: true, force: true }); } catch (_) {}
-        }
-    }
-
-    // backgrounds/ contains {galleryId}.{ext} and collection-{collectionId}.{ext}
-    const bgDir = path.join(DATA_DIR, 'backgrounds');
-    if (fs.existsSync(bgDir)) {
-        const knownCollectionIds = new Set(collections.keys());
-        for (const entry of fs.readdirSync(bgDir)) {
-            const base = entry.replace(/\.[^.]+$/, '');
-            if (base.startsWith('collection-')) {
-                const cid = base.slice('collection-'.length);
-                if (knownCollectionIds.has(cid)) continue;
-            } else if (knownIds.has(base)) {
-                continue;
-            }
-            try { fs.unlinkSync(path.join(bgDir, entry)); } catch (_) {}
-        }
-    }
-
-    // og-cache/ contains {galleryId}.jpg
-    const ogDir = path.join(DATA_DIR, 'og-cache');
-    if (fs.existsSync(ogDir)) {
-        for (const entry of fs.readdirSync(ogDir)) {
-            const base = entry.replace(/\.[^.]+$/, '');
-            if (knownIds.has(base)) continue;
-            try { fs.unlinkSync(path.join(ogDir, entry)); } catch (_) {}
-        }
-    }
-}
-
-loadGalleries();
-loadCollections();
-reconcileGalleries();
-purgeExpiredTrash();
-// Re-run on a timer too: the startup-only call never fires on a long-running server
-// (self-hosted Docker), so trash that crosses the retention threshold while the process
-// stays up would otherwise sit forever until the next restart. `.unref()` so the timer
-// alone doesn't keep the process alive (the HTTP server keeps it alive anyway).
-const TRASH_PURGE_INTERVAL_MS = 60 * 60 * 1000; // hourly
-setInterval(purgeExpiredTrash, TRASH_PURGE_INTERVAL_MS).unref();
-
-// Ensure directories exist
-['uploads', 'backgrounds', 'thumbnails', 'previews', 'og-cache', 'audio'].forEach(dir => {
-    const dirPath = path.join(DATA_DIR, dir);
-    if (!fs.existsSync(dirPath)) {
-        fs.mkdirSync(dirPath, { recursive: true });
-    }
-});
-if (!fs.existsSync(path.join(__dirname, 'public'))) {
-    fs.mkdirSync(path.join(__dirname, 'public'), { recursive: true });
+    const collection = db.prepare(`SELECT client_language FROM collections WHERE id = ?`).get(collectionId);
+    if (collection && collection.client_language) return collection.client_language;
+    return getSettings().clientLanguage || 'auto';
 }
 
 // --- Helper functions ---
@@ -426,20 +440,31 @@ function safeResolvePath(base, ...segments) {
 
 
 
-// Store photo dimensions on the gallery object so the justified layout
-// can render immediately without waiting for images to load.
-// Format: gallery.dimensions = { [filename]: { w, h } }
+// Upserts a photo's width/height/animated-flag onto its `files` row. A no-op
+// if the gallery doesn't exist yet (mirrors the old Map-based guard exactly —
+// this can legitimately be called before a gallery's row exists in rare
+// timing windows, and must stay silent rather than throw a FK error).
 function setPhotoDimensions(galleryId, filename, w, h, animated) {
-    const gallery = galleries.get(galleryId);
-    if (!gallery) return;
-    if (!gallery.dimensions) gallery.dimensions = {};
     if (!w || !h) return;
-    const prev = gallery.dimensions[filename];
-    if (prev && prev.w === w && prev.h === h && !!prev.animated === !!animated) return;
-    // Store `animated` explicitly (true/false) once known, so animatable formats
-    // (gif/webp) aren't re-probed on every request. Absent = never checked (legacy).
-    gallery.dimensions[filename] = { w, h, animated: !!animated };
-    saveGalleries();
+    if (!db.prepare(`SELECT 1 FROM galleries WHERE id = ?`).get(galleryId)) return;
+    db.prepare(`
+        INSERT INTO files (gallery_id, filename, width, height, animated)
+        VALUES (?, ?, ?, ?, ?)
+        ON CONFLICT(gallery_id, filename) DO UPDATE SET width = excluded.width, height = excluded.height, animated = excluded.animated
+    `).run(galleryId, filename, w, h, animated ? 1 : 0);
+}
+
+// Same as setPhotoDimensions but for a video's width/height/duration — kept
+// as a separate function (not a shared one with an `animated`/`duration`
+// union parameter) because the schema forbids setting both on the same row,
+// and a single call site should never have to remember which one applies.
+function setVideoDimensions(galleryId, filename, w, h, duration) {
+    if (!db.prepare(`SELECT 1 FROM galleries WHERE id = ?`).get(galleryId)) return;
+    db.prepare(`
+        INSERT INTO files (gallery_id, filename, width, height, duration)
+        VALUES (?, ?, ?, ?, ?)
+        ON CONFLICT(gallery_id, filename) DO UPDATE SET width = excluded.width, height = excluded.height, duration = excluded.duration
+    `).run(galleryId, filename, w ?? null, h ?? null, duration ?? null);
 }
 
 // Read dimensions from sharp metadata (handles EXIF orientation).
@@ -542,7 +567,7 @@ function remuxVideoFastStart(filePath) {
 
 // Extract a poster frame from a video and run it through the same sharp
 // pipeline as photo thumbnails/previews. Also captures { w, h, duration }
-// into gallery.dimensions[filename].
+// onto the file's row.
 async function generateVideoPoster(galleryId, filename) {
     const src = safeResolvePath(safeResolvePath(path.join(DATA_DIR, 'uploads'), galleryId), filename);
     const thumbDest = safeResolvePath(safeResolvePath(THUMBNAILS_DIR, galleryId), filename + '.jpg');
@@ -554,16 +579,10 @@ async function generateVideoPoster(galleryId, filename) {
     const posterTmp = safeResolvePath(tmpDir, `${galleryId}-${filename}.poster.jpg`);
 
     try {
-        const gallery = galleries.get(galleryId);
-        if (gallery) {
-            if (!gallery.dimensions) gallery.dimensions = {};
-            if (!gallery.dimensions[filename] || gallery.dimensions[filename].duration == null) {
-                const meta = await probeVideo(src);
-                if (meta) {
-                    gallery.dimensions[filename] = { w: meta.w, h: meta.h, duration: meta.duration };
-                    saveGalleries();
-                }
-            }
+        const existing = db.prepare(`SELECT duration FROM files WHERE gallery_id = ? AND filename = ?`).get(galleryId, filename);
+        if (!existing || existing.duration == null) {
+            const meta = await probeVideo(src);
+            if (meta) setVideoDimensions(galleryId, filename, meta.w, meta.h, meta.duration);
         }
 
         if (!await extractVideoFrame(src, posterTmp, 1)) {
@@ -619,8 +638,8 @@ async function generateThumbnail(galleryId, filename) {
     const dest = safeResolvePath(dir, filename + '.jpg');
 
     // Opportunistically capture dimensions (cheap: sharp opens the file anyway)
-    const gallery = galleries.get(galleryId);
-    if (gallery && (!gallery.dimensions || !gallery.dimensions[filename])) {
+    const existingDims = db.prepare(`SELECT 1 FROM files WHERE gallery_id = ? AND filename = ?`).get(galleryId, filename);
+    if (!existingDims) {
         const dims = await readDimensions(src);
         if (dims) setPhotoDimensions(galleryId, filename, dims.w, dims.h, dims.animated);
     }
@@ -646,15 +665,18 @@ async function generatePreview(galleryId, filename) {
     const dest = safeResolvePath(dir, filename + '.jpg');
 
     // Opportunistically capture dimensions
-    const gallery = galleries.get(galleryId);
-    if (gallery && (!gallery.dimensions || !gallery.dimensions[filename])) {
+    let fileRow = db.prepare(`SELECT animated FROM files WHERE gallery_id = ? AND filename = ?`).get(galleryId, filename);
+    if (!fileRow) {
         const dims = await readDimensions(src);
-        if (dims) setPhotoDimensions(galleryId, filename, dims.w, dims.h, dims.animated);
+        if (dims) {
+            setPhotoDimensions(galleryId, filename, dims.w, dims.h, dims.animated);
+            fileRow = { animated: dims.animated ? 1 : 0 };
+        }
     }
 
     // Animated images (GIF / animated WebP) are served as the original in the
     // lightbox so they play — a flattened JPEG preview would freeze them.
-    if (gallery && gallery.dimensions && gallery.dimensions[filename] && gallery.dimensions[filename].animated) return;
+    if (fileRow && fileRow.animated) return;
 
     if (fs.existsSync(dest)) return;
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
@@ -799,38 +821,36 @@ function deleteAudioFiles(key) {
 
 // GET /api/settings — public (used by customer/collection/preview for theme + socials)
 app.get('/api/settings', (req, res) => {
-    res.json(loadSettings());
+    res.json(getSettings());
 });
 
 // POST /api/settings — admin only
 app.post('/api/settings', requireAuth, (req, res) => {
-    const current = loadSettings();
     const { theme, website, socials, adminLanguage, clientLanguage, dateFormat } = req.body;
-    if (theme === 'light' || theme === 'dark') current.theme = theme;
-    if (typeof website === 'string') current.website = website.trim().substring(0, 500);
+    const patch = {};
+    if (theme === 'light' || theme === 'dark') patch.theme = theme;
+    if (typeof website === 'string') patch.website = website.trim().substring(0, 500);
     if (socials && typeof socials === 'object') {
-        current.socials = current.socials || {};
+        patch.socials = {};
         for (const [k, v] of Object.entries(socials)) {
-            if (typeof v === 'string') current.socials[k] = v.trim().substring(0, 500);
+            if (typeof v === 'string') patch.socials[k] = v.trim().substring(0, 500);
         }
     }
-    if (SUPPORTED_LANGUAGES.includes(adminLanguage)) current.adminLanguage = adminLanguage;
-    if (clientLanguage === 'auto' || SUPPORTED_LANGUAGES.includes(clientLanguage)) current.clientLanguage = clientLanguage;
-    if (DATE_FORMATS.includes(dateFormat)) current.dateFormat = dateFormat;
-    saveSettings(current);
-    res.json(current);
+    if (SUPPORTED_LANGUAGES.includes(adminLanguage)) patch.adminLanguage = adminLanguage;
+    if (clientLanguage === 'auto' || SUPPORTED_LANGUAGES.includes(clientLanguage)) patch.clientLanguage = clientLanguage;
+    if (DATE_FORMATS.includes(dateFormat)) patch.dateFormat = dateFormat;
+    updateSettings(patch);
+    res.json(getSettings());
 });
 
 // PATCH /api/settings/theme — alias used by admin theme toggle
 app.patch('/api/settings/theme', requireAuth, (req, res) => {
-    const current = loadSettings();
     const { theme } = req.body;
     if (theme === 'light' || theme === 'dark') {
-        current.theme = theme;
-        saveSettings(current);
+        updateSettings({ theme });
         console.log(`[SETTINGS] Theme changed to ${theme}`);
     }
-    res.json(current);
+    res.json(getSettings());
 });
 
 // Logo uploads accept raster images and SVG; stored in memory then written to DATA_DIR
@@ -1128,34 +1148,25 @@ app.delete('/api/logo', adminLimiter, requireAuth, (_req, res) => {
     res.json({ success: true });
 });
 
-// Middleware to generate galleryId BEFORE multer processes files
+// Middleware to generate galleryId BEFORE multer processes files. Does not
+// touch the database — the create route below inserts the row only once it
+// knows at least one file was actually accepted, so there is no longer a
+// "skeleton row that might need deleting again" dance: multer's own
+// destination callback only ever needs `req.galleryId` as a plain string to
+// decide where to write files, confirmed by reading it — it never queries
+// the gallery's existence.
 function generateGalleryId(req, res, next) {
-    const galleryId = uuidv4();
-    req.galleryId = galleryId;
-    galleries.set(galleryId, {
-        id: galleryId,
-        eventName: '',
-        created: new Date().toISOString(),
-        files: [],
-        background: null,
-        downloadCount: 0,
-        viewCount: 0,
-        viewerHashes: [],
-        dimensions: {}
-    });
+    req.galleryId = uuidv4();
     next();
 }
 
 // Create new gallery and upload photos
 app.post('/api/gallery/create', requireAuth, generateGalleryId, upload.array('photos', 500), (req, res) => {
     const galleryId = req.galleryId;
-    const gallery = galleries.get(galleryId);
 
-    // If multer processed no files, clean up the skeleton gallery and return an error
-    // so the admin never receives a link for an empty gallery that would 404
+    // If multer processed no files, there is nothing to create — no DB row
+    // was ever inserted, so there's nothing to clean up either.
     if (!req.files || req.files.length === 0) {
-        galleries.delete(galleryId);
-        saveGalleries();
         return res.status(400).json({ error: 'No photos were uploaded. Please select at least one image.' });
     }
 
@@ -1164,22 +1175,24 @@ app.post('/api/gallery/create', requireAuth, generateGalleryId, upload.array('ph
     const acceptedFiles = req.files.filter(f => !rejectedNames.has(f.filename));
 
     if (acceptedFiles.length === 0) {
-        galleries.delete(galleryId);
-        saveGalleries();
         return res.status(413).json({ error: 'All uploaded files exceeded the size limit.', rejected });
     }
 
-    if (gallery) {
-        gallery.files = acceptedFiles.map(f => f.filename);
-        gallery.eventName = (String(Array.isArray(req.body.eventName) ? req.body.eventName[0] : (req.body.eventName || 'Untitled Event'))).trim().substring(0, 200);
-        saveGalleries();
-        const images = gallery.files.filter(f => !isVideoFile(f));
-        const videos = gallery.files.filter(f => isVideoFile(f));
-        generateGalleryThumbnails(galleryId, images).catch(() => {});
-        generateGalleryPreviews(galleryId, images).catch(() => {});
-        videos.forEach(f => processUploadedVideo(galleryId, f).catch(() => {}));
-        console.log(`[GALLERY] Created "${gallery.eventName}" (${galleryId}) — ${gallery.files.length} photo(s)`);
-    }
+    const eventName = (String(Array.isArray(req.body.eventName) ? req.body.eventName[0] : (req.body.eventName || 'Untitled Event'))).trim().substring(0, 200);
+    const filenames = acceptedFiles.map(f => f.filename);
+
+    db.transaction(() => {
+        db.prepare(`INSERT INTO galleries (id, event_name, created_at) VALUES (?, ?, ?)`).run(galleryId, eventName, new Date().toISOString());
+        const insertFile = db.prepare(`INSERT OR IGNORE INTO files (gallery_id, filename) VALUES (?, ?)`);
+        for (const f of filenames) insertFile.run(galleryId, f);
+    })();
+
+    const images = filenames.filter(f => !isVideoFile(f));
+    const videos = filenames.filter(f => isVideoFile(f));
+    generateGalleryThumbnails(galleryId, images).catch(() => {});
+    generateGalleryPreviews(galleryId, images).catch(() => {});
+    videos.forEach(f => processUploadedVideo(galleryId, f).catch(() => {}));
+    console.log(`[GALLERY] Created "${eventName}" (${galleryId}) — ${filenames.length} photo(s)`);
 
     const baseUrl = `${req.protocol}://${req.get('host')}`;
     const downloadUrl = `${baseUrl}/preview/${galleryId}`;
@@ -1196,9 +1209,9 @@ app.post('/api/gallery/create', requireAuth, generateGalleryId, upload.array('ph
 // Add more photos to existing gallery
 app.post('/api/gallery/:galleryId/upload', requireAuth, validateGalleryId, upload.array('photos', 500), (req, res) => {
     const { galleryId } = req.params;
-    const gallery = galleries.get(galleryId);
+    const galleryRow = db.prepare(`SELECT event_name FROM galleries WHERE id = ?`).get(galleryId);
 
-    if (!gallery) {
+    if (!galleryRow) {
         return res.status(404).json({ error: 'Gallery not found' });
     }
 
@@ -1207,19 +1220,23 @@ app.post('/api/gallery/:galleryId/upload', requireAuth, validateGalleryId, uploa
         rejected = enforcePerTypeFileSizeLimits(req.files);
         const rejectedNames = new Set(rejected.map(r => r.filename));
         const newFiles = req.files.filter(f => !rejectedNames.has(f.filename)).map(f => f.filename);
-        gallery.files.push(...newFiles);
-        saveGalleries();
+        if (newFiles.length > 0) {
+            const insertFile = db.prepare(`INSERT OR IGNORE INTO files (gallery_id, filename) VALUES (?, ?)`);
+            db.transaction(() => { for (const f of newFiles) insertFile.run(galleryId, f); })();
+        }
         const images = newFiles.filter(f => !isVideoFile(f));
         const videos = newFiles.filter(f => isVideoFile(f));
         generateGalleryThumbnails(galleryId, images).catch(() => {});
         generateGalleryPreviews(galleryId, images).catch(() => {});
         videos.forEach(f => processUploadedVideo(galleryId, f).catch(() => {}));
-        console.log(`[UPLOAD] Added ${newFiles.length} photo(s) to "${gallery.eventName}" (${galleryId})`);
+        console.log(`[UPLOAD] Added ${newFiles.length} photo(s) to "${galleryRow.event_name}" (${galleryId})`);
     }
+
+    const fileCount = db.prepare(`SELECT COUNT(*) AS n FROM files WHERE gallery_id = ?`).get(galleryId).n;
 
     res.json({
         success: true,
-        fileCount: gallery.files.length,
+        fileCount,
         rejected
     });
 });
@@ -1227,9 +1244,9 @@ app.post('/api/gallery/:galleryId/upload', requireAuth, validateGalleryId, uploa
 // Upload/replace background image — converts to JPEG via sharp
 app.post('/api/gallery/:galleryId/background', adminLimiter, requireAuth, validateGalleryId, uploadBackground.single('background'), async (req, res) => {
     const { galleryId } = req.params;
-    const gallery = galleries.get(galleryId);
+    const galleryExists = db.prepare(`SELECT 1 FROM galleries WHERE id = ?`).get(galleryId);
 
-    if (!gallery) {
+    if (!galleryExists) {
         return res.status(404).json({ error: 'Gallery not found' });
     }
 
@@ -1260,10 +1277,11 @@ app.post('/api/gallery/:galleryId/background', adminLimiter, requireAuth, valida
             .jpeg({ quality: 85 })
             .toFile(dest);
 
-        gallery.background = `${galleryId}.jpg`;
-        saveGalleries();
-        console.log(`[GALLERY] Background updated for "${gallery.eventName}" (${galleryId})`);
-        res.json({ success: true, background: gallery.background });
+        const backgroundValue = `${galleryId}.jpg`;
+        db.prepare(`UPDATE galleries SET background = ? WHERE id = ?`).run(backgroundValue, galleryId);
+        const eventName = db.prepare(`SELECT event_name FROM galleries WHERE id = ?`).get(galleryId).event_name;
+        console.log(`[GALLERY] Background updated for "${eventName}" (${galleryId})`);
+        res.json({ success: true, background: backgroundValue });
     } catch (err) {
         console.error(`[GALLERY] Background processing failed for ${galleryId}: ${err.message}`);
         res.status(500).json({ error: 'Failed to process background image' });
@@ -1328,8 +1346,8 @@ app.get('/api/gallery/:galleryId/background', publicReadLimiter, validateGallery
 
 app.post('/api/gallery/:galleryId/audio', adminLimiter, requireAuth, validateGalleryId, uploadAudio.single('audio'), async (req, res) => {
     const { galleryId } = req.params;
-    const gallery = galleries.get(galleryId);
-    if (!gallery) {
+    const galleryExists = db.prepare(`SELECT 1 FROM galleries WHERE id = ?`).get(galleryId);
+    if (!galleryExists) {
         if (req.file) { try { fs.unlinkSync(req.file.path); } catch (_) {} }
         return res.status(404).json({ error: 'Gallery not found' });
     }
@@ -1344,26 +1362,27 @@ app.post('/api/gallery/:galleryId/audio', adminLimiter, requireAuth, validateGal
     }
 
     const duration = await probeAudioDuration(req.file.path);
-    gallery.audio = {
+    const audio = {
         filename: decodeUploadFilename(req.file.originalname).normalize('NFC'),
         stored: kept,
         size: req.file.size,
         duration,
         uploadedAt: new Date().toISOString()
     };
-    saveGalleries();
-    console.log(`[GALLERY] Audio updated for "${gallery.eventName}" (${galleryId}) — ${kept}`);
-    res.json({ success: true, audio: gallery.audio });
+    db.prepare(`UPDATE galleries SET audio_filename = ?, audio_stored = ?, audio_size = ?, audio_duration = ?, audio_uploaded_at = ? WHERE id = ?`)
+        .run(audio.filename, audio.stored, audio.size, audio.duration, audio.uploadedAt, galleryId);
+    const eventName = db.prepare(`SELECT event_name FROM galleries WHERE id = ?`).get(galleryId).event_name;
+    console.log(`[GALLERY] Audio updated for "${eventName}" (${galleryId}) — ${kept}`);
+    res.json({ success: true, audio });
 });
 
 app.delete('/api/gallery/:galleryId/audio', adminLimiter, requireAuth, validateGalleryId, (req, res) => {
     const { galleryId } = req.params;
-    const gallery = galleries.get(galleryId);
-    if (!gallery) return res.status(404).json({ error: 'Gallery not found' });
+    const row = db.prepare(`SELECT event_name FROM galleries WHERE id = ?`).get(galleryId);
+    if (!row) return res.status(404).json({ error: 'Gallery not found' });
     deleteAudioFiles(`gallery-${galleryId}`);
-    delete gallery.audio;
-    saveGalleries();
-    console.log(`[GALLERY] Audio removed from "${gallery.eventName}" (${galleryId})`);
+    db.prepare(`UPDATE galleries SET audio_filename = NULL, audio_stored = NULL, audio_size = NULL, audio_duration = NULL, audio_uploaded_at = NULL WHERE id = ?`).run(galleryId);
+    console.log(`[GALLERY] Audio removed from "${row.event_name}" (${galleryId})`);
     res.json({ success: true });
 });
 
@@ -1381,9 +1400,9 @@ app.get('/api/gallery/:galleryId/audio', imageLimiter, validateGalleryId, (req, 
 // Toggle downloads on/off for a gallery
 app.patch('/api/gallery/:galleryId/downloads', requireAuth, validateGalleryId, (req, res) => {
     const { galleryId } = req.params;
-    const gallery = galleries.get(galleryId);
+    const galleryExists = db.prepare(`SELECT 1 FROM galleries WHERE id = ?`).get(galleryId);
 
-    if (!gallery) {
+    if (!galleryExists) {
         return res.status(404).json({ error: 'Gallery not found' });
     }
 
@@ -1392,18 +1411,17 @@ app.patch('/api/gallery/:galleryId/downloads', requireAuth, validateGalleryId, (
         return res.status(400).json({ error: 'enabled must be a boolean' });
     }
 
-    gallery.downloadsEnabled = enabled;
-    saveGalleries();
+    db.prepare(`UPDATE galleries SET downloads_enabled = ? WHERE id = ?`).run(enabled ? 1 : 0, galleryId);
 
-    res.json({ success: true, downloadsEnabled: gallery.downloadsEnabled });
+    res.json({ success: true, downloadsEnabled: enabled });
 });
 
 // Toggle comments on/off for a gallery
 app.patch('/api/gallery/:galleryId/comments-enabled', requireAuth, validateGalleryId, (req, res) => {
     const { galleryId } = req.params;
-    const gallery = galleries.get(galleryId);
+    const galleryExists = db.prepare(`SELECT 1 FROM galleries WHERE id = ?`).get(galleryId);
 
-    if (!gallery) {
+    if (!galleryExists) {
         return res.status(404).json({ error: 'Gallery not found' });
     }
 
@@ -1412,18 +1430,17 @@ app.patch('/api/gallery/:galleryId/comments-enabled', requireAuth, validateGalle
         return res.status(400).json({ error: 'enabled must be a boolean' });
     }
 
-    gallery.commentsEnabled = enabled;
-    saveGalleries();
+    db.prepare(`UPDATE galleries SET comments_enabled = ? WHERE id = ?`).run(enabled ? 1 : 0, galleryId);
 
-    res.json({ success: true, commentsEnabled: gallery.commentsEnabled });
+    res.json({ success: true, commentsEnabled: enabled });
 });
 
 // Set the client-facing language override for a gallery ('auto' clears the override)
 app.patch('/api/gallery/:galleryId/client-language', requireAuth, validateGalleryId, (req, res) => {
     const { galleryId } = req.params;
-    const gallery = galleries.get(galleryId);
+    const galleryExists = db.prepare(`SELECT 1 FROM galleries WHERE id = ?`).get(galleryId);
 
-    if (!gallery) {
+    if (!galleryExists) {
         return res.status(404).json({ error: 'Gallery not found' });
     }
 
@@ -1432,26 +1449,26 @@ app.patch('/api/gallery/:galleryId/client-language', requireAuth, validateGaller
         return res.status(400).json({ error: 'Invalid language' });
     }
 
-    gallery.clientLanguage = language === 'auto' ? null : language;
-    saveGalleries();
+    const clientLanguage = language === 'auto' ? null : language;
+    db.prepare(`UPDATE galleries SET client_language = ? WHERE id = ?`).run(clientLanguage, galleryId);
 
-    res.json({ success: true, clientLanguage: gallery.clientLanguage || 'auto' });
+    res.json({ success: true, clientLanguage: clientLanguage || 'auto' });
 });
 
 // Rename a gallery
 app.post('/api/gallery/:galleryId/rename', requireAuth, validateGalleryId, (req, res) => {
     const { galleryId } = req.params;
-    const gallery = galleries.get(galleryId);
+    const row = db.prepare(`SELECT event_name FROM galleries WHERE id = ?`).get(galleryId);
 
-    if (!gallery) {
+    if (!row) {
         return res.status(404).json({ error: 'Gallery not found' });
     }
 
-    const oldName = gallery.eventName;
-    gallery.eventName = (String(Array.isArray(req.body.eventName) ? req.body.eventName[0] : (req.body.eventName || 'Untitled Event'))).trim().substring(0, 200);
-    saveGalleries();
-    console.log(`[GALLERY] Renamed "${oldName}" → "${gallery.eventName}" (${galleryId})`);
-    res.json({ success: true, eventName: gallery.eventName });
+    const oldName = row.event_name;
+    const eventName = (String(Array.isArray(req.body.eventName) ? req.body.eventName[0] : (req.body.eventName || 'Untitled Event'))).trim().substring(0, 200);
+    db.prepare(`UPDATE galleries SET event_name = ? WHERE id = ?`).run(eventName, galleryId);
+    console.log(`[GALLERY] Renamed "${oldName}" → "${eventName}" (${galleryId})`);
+    res.json({ success: true, eventName });
 });
 
 // List photos in a gallery (used by preview.html)
@@ -1476,35 +1493,43 @@ app.get('/api/gallery/:galleryId/photos', publicReadLimiter, validateGalleryId, 
                 || a.localeCompare(b, undefined, opts);
         });
 
-    const gallery = galleries.get(galleryId);
-    if (gallery && !gallery.dimensions) gallery.dimensions = {};
+    const galleryRow = db.prepare(`SELECT event_name, comments_enabled FROM galleries WHERE id = ?`).get(galleryId);
 
-    // Fill in missing dimensions for legacy galleries (one-time cost per photo).
-    // Subsequent requests hit the in-memory cache.
-    const missing = gallery
-        ? files.filter(f => !gallery.dimensions[f])
-        : [];
+    // Fill in missing dimensions for legacy/newly-recovered galleries (one-time
+    // cost per photo). Subsequent requests hit the files table directly.
+    const existingDims = new Map(
+        db.prepare(`SELECT filename, width, height, duration, animated FROM files WHERE gallery_id = ?`).all(galleryId)
+            .map(r => [r.filename, r])
+    );
+    const missing = files.filter(f => !existingDims.has(f) || existingDims.get(f).width === null);
 
-    if (missing.length > 0) {
+    if (missing.length > 0 && galleryRow) {
         await Promise.all(missing.map(async filename => {
             const src = safeResolvePath(galleryPath, filename);
             if (isVideoFile(filename)) {
                 const meta = await probeVideo(src);
-                if (meta) gallery.dimensions[filename] = { w: meta.w, h: meta.h, duration: meta.duration };
+                if (meta) {
+                    setVideoDimensions(galleryId, filename, meta.w, meta.h, meta.duration);
+                    existingDims.set(filename, { filename, width: meta.w, height: meta.h, duration: meta.duration, animated: null });
+                }
                 generateVideoPoster(galleryId, filename).catch(() => {}); // legacy videos with no poster yet
                 return;
             }
             const dims = await readDimensions(src);
             if (dims) {
-                gallery.dimensions[filename] = { w: dims.w, h: dims.h, animated: !!dims.animated };
+                setPhotoDimensions(galleryId, filename, dims.w, dims.h, dims.animated);
+                existingDims.set(filename, { filename, width: dims.w, height: dims.h, duration: null, animated: dims.animated ? 1 : 0 });
             }
         }));
-        saveGalleries();
     }
 
-    const comments = gallery && gallery.comments ? gallery.comments : {};
+    const commentCounts = new Map(
+        db.prepare(`SELECT filename, COUNT(*) AS n FROM comments WHERE gallery_id = ? GROUP BY filename`).all(galleryId)
+            .map(r => [r.filename, r.n])
+    );
+
     const photos = files.map(filename => {
-        const dims = gallery && gallery.dimensions ? gallery.dimensions[filename] : null;
+        const dims = existingDims.get(filename) || null;
         const video = isVideoFile(filename);
         return {
             filename,
@@ -1513,19 +1538,19 @@ app.get('/api/gallery/:galleryId/photos', publicReadLimiter, validateGalleryId, 
             previewUrl:  `/api/gallery/${galleryId}/photo/${encodeURIComponent(filename)}?preview=1`,
             thumbnailUrl:`/api/gallery/${galleryId}/photo/${encodeURIComponent(filename)}?thumb=1`,
             downloadUrl: `/api/gallery/${galleryId}/download/${encodeURIComponent(filename)}`,
-            width:  dims ? dims.w : null,
-            height: dims ? dims.h : null,
+            width:  dims ? dims.width : null,
+            height: dims ? dims.height : null,
             duration: video ? (dims && dims.duration != null ? dims.duration : null) : undefined,
             animated: !video && !!(dims && dims.animated),
-            commentCount: (comments[filename] || []).length
+            commentCount: commentCounts.get(filename) || 0
         };
     });
 
     // Return shape matches what preview.html expects: { id, eventName, photos: [...] }
     res.json({
         id: galleryId,
-        eventName: gallery ? gallery.eventName : 'Untitled Event',
-        commentsEnabled: gallery ? (gallery.commentsEnabled !== false && !isGalleryBlockedByCollectionForComments(galleryId)) : true,
+        eventName: galleryRow ? galleryRow.event_name : 'Untitled Event',
+        commentsEnabled: galleryRow ? (!!galleryRow.comments_enabled && !isGalleryBlockedByCollectionForComments(galleryId)) : true,
         photos
     });
 });
@@ -1559,13 +1584,12 @@ app.get('/api/gallery/:galleryId/photo/:filename', imageLimiter, validateGallery
         // static preview JPEG isn't served instead. Probe once for animatable formats
         // whose animation flag hasn't been recorded yet (legacy files self-heal here).
         const originalPath = safeResolvePath(safeResolvePath(path.join(DATA_DIR, 'uploads'), galleryId), filename);
-        const gallery = galleries.get(galleryId);
-        let dims = gallery && gallery.dimensions ? gallery.dimensions[filename] : null;
-        if (!isVideo && isAnimatableFile(filename) && (!dims || dims.animated === undefined) && fs.existsSync(originalPath)) {
+        let dims = db.prepare(`SELECT width, height, duration, animated FROM files WHERE gallery_id = ? AND filename = ?`).get(galleryId, filename) || null;
+        if (!isVideo && isAnimatableFile(filename) && (!dims || dims.animated === null) && fs.existsSync(originalPath)) {
             const d = await readDimensions(originalPath);
             if (d) {
                 setPhotoDimensions(galleryId, filename, d.w, d.h, d.animated);
-                dims = gallery && gallery.dimensions ? gallery.dimensions[filename] : null;
+                dims = db.prepare(`SELECT width, height, duration, animated FROM files WHERE gallery_id = ? AND filename = ?`).get(galleryId, filename) || null;
             }
         }
         if (dims && dims.animated && fs.existsSync(originalPath)) {
@@ -1597,32 +1621,31 @@ app.get('/api/gallery/:galleryId/photo/:filename', imageLimiter, validateGallery
     res.sendFile(filePath);
 });
 
-// Returns true if any collection containing this gallery has downloadsEnabled === false
+// Returns true if this gallery's single collection (at most one, enforced by
+// a UNIQUE constraint) has downloadsEnabled === false
 function isGalleryBlockedByCollection(galleryId) {
-    for (const collection of collections.values()) {
-        if (collection.galleryIds.includes(galleryId) && collection.downloadsEnabled === false) {
-            return true;
-        }
-    }
-    return false;
+    const row = db.prepare(`
+        SELECT c.downloads_enabled AS downloads_enabled
+        FROM collection_galleries cg JOIN collections c ON c.id = cg.collection_id
+        WHERE cg.gallery_id = ?`).get(galleryId);
+    return !!row && row.downloads_enabled === 0;
 }
 
-// Returns true if any collection containing this gallery has commentsEnabled === false
+// Same, for commentsEnabled
 function isGalleryBlockedByCollectionForComments(galleryId) {
-    for (const collection of collections.values()) {
-        if (collection.galleryIds.includes(galleryId) && collection.commentsEnabled === false) {
-            return true;
-        }
-    }
-    return false;
+    const row = db.prepare(`
+        SELECT c.comments_enabled AS comments_enabled
+        FROM collection_galleries cg JOIN collections c ON c.id = cg.collection_id
+        WHERE cg.gallery_id = ?`).get(galleryId);
+    return !!row && row.comments_enabled === 0;
 }
 
 // Download a single photo as an attachment
 app.get('/api/gallery/:galleryId/download/:filename', downloadLimiter, validateGalleryId, validateFilename, (req, res) => {
     const { galleryId, filename } = req.params;
 
-    const gallery = galleries.get(galleryId);
-    if (gallery && gallery.downloadsEnabled === false) {
+    const gallery = db.prepare(`SELECT downloads_enabled FROM galleries WHERE id = ?`).get(galleryId);
+    if (gallery && gallery.downloads_enabled === 0) {
         return res.status(403).json({ error: 'Downloads are disabled for this gallery' });
     }
     if (isGalleryBlockedByCollection(galleryId)) {
@@ -1641,8 +1664,8 @@ app.get('/api/gallery/:galleryId/download/:filename', downloadLimiter, validateG
 // Delete a single photo from a gallery (admin only)
 app.delete('/api/gallery/:galleryId/photo/:filename', adminLimiter, requireAuth, validateGalleryId, validateFilename, (req, res) => {
     const { galleryId, filename } = req.params;
-    const gallery = galleries.get(galleryId);
-    if (!gallery) return res.status(404).json({ error: 'Gallery not found' });
+    const galleryExists = db.prepare(`SELECT 1 FROM galleries WHERE id = ?`).get(galleryId);
+    if (!galleryExists) return res.status(404).json({ error: 'Gallery not found' });
 
     const uploadPath = safeResolvePath(safeResolvePath(path.join(DATA_DIR, 'uploads'), galleryId), filename);
     if (!fs.existsSync(uploadPath)) return res.status(404).json({ error: 'Photo not found' });
@@ -1656,14 +1679,17 @@ app.delete('/api/gallery/:galleryId/photo/:filename', adminLimiter, requireAuth,
     // Remove preview (ignore if missing)
     try { fs.unlinkSync(safeResolvePath(safeResolvePath(PREVIEWS_DIR, galleryId), filename + '.jpg')); } catch (_) {}
 
-    // Remove from gallery.files
-    gallery.files = (gallery.files || []).filter(f => f !== filename);
+    // Remove from the files table — cascades to this filename's favorites and
+    // comments too, which is a deliberate, announced behavior change from the
+    // old JSON model (see CLAUDE.md's "Data persistence" section): those used
+    // to be silently orphaned forever instead.
+    db.prepare(`DELETE FROM files WHERE gallery_id = ? AND filename = ?`).run(galleryId, filename);
 
     // Invalidate OG cache (it may have used this photo)
     try { fs.unlinkSync(safeResolvePath(OG_CACHE_DIR, `${galleryId}.jpg`)); } catch (_) {}
 
-    saveGalleries();
-    res.json({ success: true, fileCount: gallery.files.length });
+    const fileCount = db.prepare(`SELECT COUNT(*) AS n FROM files WHERE gallery_id = ?`).get(galleryId).n;
+    res.json({ success: true, fileCount });
 });
 
 // Serve/generate OG image (1200×630 JPEG, cached)
@@ -1736,20 +1762,18 @@ app.get('/api/collection/:collectionId/og-image', imageLimiter, validateCollecti
         if (colBg) sourceFile = path.join(backgroundsDir, colBg);
     }
     if (!sourceFile) {
-        const collection = collections.get(collectionId);
-        if (collection) {
-            for (const gid of collection.galleryIds) {
-                if (sourceFile) break;
-                if (fs.existsSync(backgroundsDir)) {
-                    const gbg = fs.readdirSync(backgroundsDir).find(f => f.startsWith(gid));
-                    if (gbg) { sourceFile = path.join(backgroundsDir, gbg); break; }
-                }
-                const gPath = safeResolvePath(path.join(DATA_DIR, 'uploads'), gid);
-                if (fs.existsSync(gPath)) {
-                    const files = fs.readdirSync(gPath).filter(f => !f.startsWith('.'));
-                    const firstImage = files.find(f => !isVideoFile(f));
-                    if (firstImage) sourceFile = path.join(gPath, firstImage);
-                }
+        const galleryIds = db.prepare(`SELECT gallery_id FROM collection_galleries WHERE collection_id = ? ORDER BY position`).all(collectionId).map(r => r.gallery_id);
+        for (const gid of galleryIds) {
+            if (sourceFile) break;
+            if (fs.existsSync(backgroundsDir)) {
+                const gbg = fs.readdirSync(backgroundsDir).find(f => f.startsWith(gid));
+                if (gbg) { sourceFile = path.join(backgroundsDir, gbg); break; }
+            }
+            const gPath = safeResolvePath(path.join(DATA_DIR, 'uploads'), gid);
+            if (fs.existsSync(gPath)) {
+                const files = fs.readdirSync(gPath).filter(f => !f.startsWith('.'));
+                const firstImage = files.find(f => !isVideoFile(f));
+                if (firstImage) sourceFile = path.join(gPath, firstImage);
             }
         }
     }
@@ -1775,13 +1799,13 @@ app.delete('/api/collection/:collectionId/og-image', adminLimiter, requireAuth, 
 app.get('/preview/:galleryId', publicReadLimiter, validateGalleryId, (req, res) => {
     const { galleryId } = req.params;
     const galleryPath = safeResolvePath(path.join(DATA_DIR, 'uploads'), galleryId);
+    const gallery = getActiveGallery(galleryId);
 
-    if (!fs.existsSync(galleryPath) || !getActiveGallery(galleryId)) {
+    if (!fs.existsSync(galleryPath) || !gallery) {
         return res.status(404).send('Gallery not found');
     }
 
-    const gallery = galleries.get(galleryId);
-    const eventName = gallery ? gallery.eventName : 'Your Photos';
+    const eventName = gallery.eventName;
     const baseUrl = `${req.protocol}://${req.get('host')}`;
 
     const ogTags = [
@@ -1813,19 +1837,22 @@ app.get('/api/gallery/:galleryId/info', publicReadLimiter, validateGalleryId, (r
         fileCount = fs.readdirSync(galleryPath).filter(f => !f.startsWith('.')).length;
     }
 
-    const gallery = galleries.get(galleryId);
-    const eventName = gallery ? gallery.eventName : 'Your Photos';
+    const gallery = db.prepare(`SELECT * FROM galleries WHERE id = ?`).get(galleryId);
+    const eventName = gallery ? gallery.event_name : 'Your Photos';
+    let viewCount = gallery ? gallery.view_count : 0;
 
     // Track unique views via hash of IP + User-Agent
     if (gallery) {
         const ip = resolveClientIp(req);
         const ua = req.headers['user-agent'] || '';
         const hash = crypto.createHash('sha256').update(ip + ua).digest('hex');
-        if (!Array.isArray(gallery.viewerHashes)) gallery.viewerHashes = [];
-        if (!gallery.viewerHashes.includes(hash)) {
-            gallery.viewerHashes.push(hash);
-            gallery.viewCount = (gallery.viewCount || 0) + 1;
-            saveGalleries();
+        const alreadySeen = db.prepare(`SELECT 1 FROM viewer_hashes WHERE gallery_id = ? AND hash = ?`).get(galleryId, hash);
+        if (!alreadySeen) {
+            db.transaction(() => {
+                db.prepare(`INSERT INTO viewer_hashes (gallery_id, hash) VALUES (?, ?)`).run(galleryId, hash);
+                db.prepare(`UPDATE galleries SET view_count = view_count + 1 WHERE id = ?`).run(galleryId);
+            })();
+            viewCount += 1;
         }
     }
 
@@ -1840,14 +1867,14 @@ app.get('/api/gallery/:galleryId/info', publicReadLimiter, validateGalleryId, (r
     // the 24h cache. Only reported when the file is really on disk.
     const gAudioFile = findAudioFile(`gallery-${galleryId}`);
     let audio = null;
-    if (gAudioFile && gallery && gallery.audio) {
+    if (gAudioFile && gallery && gallery.audio_filename) {
         let version = null;
         try { version = Math.floor(fs.statSync(path.join(AUDIO_DIR, gAudioFile)).mtimeMs); } catch (_) {}
         audio = {
             url: `/api/gallery/${galleryId}/audio${version ? `?v=${version}` : ''}`,
-            filename: gallery.audio.filename || null,
-            duration: gallery.audio.duration ?? null,
-            size: gallery.audio.size ?? null
+            filename: gallery.audio_filename || null,
+            duration: gallery.audio_duration ?? null,
+            size: gallery.audio_size ?? null
         };
     }
 
@@ -1858,10 +1885,10 @@ app.get('/api/gallery/:galleryId/info', publicReadLimiter, validateGalleryId, (r
         fileCount,
         totalSizeBytes,
         audio,
-        downloadsEnabled: gallery ? (gallery.downloadsEnabled !== false && !isGalleryBlockedByCollection(galleryId)) : true,
-        downloadCount: gallery ? (gallery.downloadCount || 0) : 0,
-        viewCount: gallery ? (gallery.viewCount || 0) : 0,
-        commentsEnabled: gallery ? (gallery.commentsEnabled !== false && !isGalleryBlockedByCollectionForComments(galleryId)) : true,
+        downloadsEnabled: gallery ? (!!gallery.downloads_enabled && !isGalleryBlockedByCollection(galleryId)) : true,
+        downloadCount: gallery ? gallery.download_count : 0,
+        viewCount,
+        commentsEnabled: gallery ? (!!gallery.comments_enabled && !isGalleryBlockedByCollectionForComments(galleryId)) : true,
         clientLanguage: resolveGalleryClientLanguage(galleryId)
     });
 });
@@ -1875,8 +1902,8 @@ app.get('/api/gallery/:galleryId/download', downloadLimiter, validateGalleryId, 
         return res.status(404).json({ error: 'Gallery not found' });
     }
 
-    const gallery = galleries.get(galleryId);
-    if (gallery && gallery.downloadsEnabled === false) {
+    const gallery = db.prepare(`SELECT event_name, downloads_enabled, download_count FROM galleries WHERE id = ?`).get(galleryId);
+    if (gallery && gallery.downloads_enabled === 0) {
         return res.status(403).json({ error: 'Downloads are disabled for this gallery' });
     }
     if (isGalleryBlockedByCollection(galleryId)) {
@@ -1884,10 +1911,11 @@ app.get('/api/gallery/:galleryId/download', downloadLimiter, validateGalleryId, 
     }
 
     // Track download count
+    let newCount = gallery ? gallery.download_count : 0;
     if (gallery) {
-        gallery.downloadCount = (gallery.downloadCount || 0) + 1;
-        saveGalleries();
-        console.log(`[DOWNLOAD] Gallery "${gallery.eventName}" (${galleryId}) — #${gallery.downloadCount} from ${resolveClientIp(req)}`);
+        db.prepare(`UPDATE galleries SET download_count = download_count + 1 WHERE id = ?`).run(galleryId);
+        newCount += 1;
+        console.log(`[DOWNLOAD] Gallery "${gallery.event_name}" (${galleryId}) — #${newCount} from ${resolveClientIp(req)}`);
     }
 
     const files = fs.readdirSync(galleryPath).filter(f => !f.startsWith('.'));
@@ -1896,7 +1924,7 @@ app.get('/api/gallery/:galleryId/download', downloadLimiter, validateGalleryId, 
         return res.status(404).json({ error: 'No files in gallery' });
     }
 
-    const eventName = gallery && gallery.eventName ? gallery.eventName : 'photos';
+    const eventName = gallery && gallery.event_name ? gallery.event_name : 'photos';
     const asciiName = eventName.replace(/[^\x20-\x7E]/g, '_').replace(/["\\]/g, '_').substring(0, 50) || 'photos';
     const encodedName = encodeURIComponent(eventName.substring(0, 200) + '.zip');
 
@@ -1925,44 +1953,52 @@ app.post('/api/gallery/:galleryId/favorites', publicWriteLimiter, validateGaller
         return res.status(400).json({ error: 'Invalid visitorId' });
     }
 
-    const gallery = galleries.get(galleryId);
-    if (!gallery) {
+    const galleryExists = db.prepare(`SELECT 1 FROM galleries WHERE id = ?`).get(galleryId);
+    if (!galleryExists) {
         return res.status(404).json({ error: 'Gallery not found' });
     }
 
-    if (!gallery.favorites || Array.isArray(gallery.favorites)) gallery.favorites = {};
-
-    if (!gallery.favorites[filename]) gallery.favorites[filename] = [];
-
-    const idx = gallery.favorites[filename].indexOf(visitorId);
-    if (idx === -1) {
-        gallery.favorites[filename].push(visitorId);
-    } else {
-        gallery.favorites[filename].splice(idx, 1);
-        if (gallery.favorites[filename].length === 0) {
-            delete gallery.favorites[filename];
+    let result;
+    try {
+        result = db.transaction(() => {
+            const existing = db.prepare(`SELECT 1 FROM favorites WHERE gallery_id = ? AND filename = ? AND visitor_id = ?`).get(galleryId, filename, visitorId);
+            if (existing) {
+                db.prepare(`DELETE FROM favorites WHERE gallery_id = ? AND filename = ? AND visitor_id = ?`).run(galleryId, filename, visitorId);
+            } else {
+                db.prepare(`INSERT INTO favorites (gallery_id, filename, visitor_id) VALUES (?, ?, ?)`).run(galleryId, filename, visitorId);
+            }
+            const votes = db.prepare(`SELECT COUNT(*) AS n FROM favorites WHERE gallery_id = ? AND filename = ?`).get(galleryId, filename).n;
+            return { favorited: !existing, votes };
+        })();
+    } catch (e) {
+        // A favorite on a filename with no matching `files` row (e.g. the photo
+        // was deleted) now fails loudly instead of silently creating a
+        // permanent orphan entry — see CLAUDE.md's "Data persistence" section.
+        if (/FOREIGN KEY constraint failed/.test(e.message)) {
+            return res.status(404).json({ error: 'Photo not found' });
         }
+        throw e;
     }
 
-    saveGalleries();
     res.json({
         success: true,
-        favorited: idx === -1,
-        votes: (gallery.favorites[filename] || []).length
+        favorited: result.favorited,
+        votes: result.votes
     });
 });
 
 // Get favorites for this visitor (public — used by preview page on load)
 app.get('/api/gallery/:galleryId/favorites-public', publicReadLimiter, validateGalleryId, (req, res) => {
     const { galleryId } = req.params;
-    const { visitorId } = req.query;
-    const gallery = galleries.get(galleryId);
-    if (!gallery) {
+    // Normalized to a string or null (never `undefined`, which better-sqlite3
+    // refuses to bind) — a null visitor_id matches nothing in SQL, same net
+    // result as the old `favs[f].includes(undefined)` always being false.
+    const visitorId = typeof req.query.visitorId === 'string' ? req.query.visitorId : null;
+    const galleryExists = db.prepare(`SELECT 1 FROM galleries WHERE id = ?`).get(galleryId);
+    if (!galleryExists) {
         return res.status(404).json({ error: 'Gallery not found' });
     }
-    const favs = gallery.favorites || {};
-    // Return only the photos this visitor has voted for
-    const myFavorites = Object.keys(favs).filter(f => favs[f].includes(visitorId));
+    const myFavorites = db.prepare(`SELECT filename FROM favorites WHERE gallery_id = ? AND visitor_id = ?`).all(galleryId, visitorId).map(r => r.filename);
     res.json({ favorites: myFavorites });
 });
 
@@ -1991,24 +2027,27 @@ app.get('/api/gallery/:galleryId/favorites-ranked', publicReadLimiter, validateG
     const gallery = getActiveGallery(galleryId);
     if (!gallery) return res.status(404).json({ error: 'Gallery not found' });
 
-    const favs = gallery.favorites || {};
-    const photos = Object.entries(favs)
-        .map(([filename, voters]) => ({ filename, votes: voters.length }))
-        .filter(r => r.votes > 0)
-        .sort((a, b) => b.votes - a.votes)
-        .map(({ filename, votes }) => {
-            const dims = gallery.dimensions?.[filename];
-            const video = isVideoFile(filename);
-            return {
-                filename, votes,
-                type: video ? 'video' : 'image',
-                thumbnailUrl: `/api/gallery/${galleryId}/photo/${encodeURIComponent(filename)}?thumb=1`,
-                previewUrl:   `/api/gallery/${galleryId}/photo/${encodeURIComponent(filename)}?preview=1`,
-                width: dims?.w || null,
-                height: dims?.h || null,
-                duration: video ? (dims?.duration ?? null) : undefined
-            };
-        });
+    const rows = db.prepare(`
+        SELECT f.filename AS filename, COUNT(*) AS votes, fi.width AS width, fi.height AS height, fi.duration AS duration, fi.animated AS animated
+        FROM favorites f JOIN files fi ON fi.gallery_id = f.gallery_id AND fi.filename = f.filename
+        WHERE f.gallery_id = ?
+        GROUP BY f.filename
+        HAVING COUNT(*) > 0
+        ORDER BY votes DESC
+    `).all(galleryId);
+
+    const photos = rows.map(r => {
+        const video = isVideoFile(r.filename);
+        return {
+            filename: r.filename, votes: r.votes,
+            type: video ? 'video' : 'image',
+            thumbnailUrl: `/api/gallery/${galleryId}/photo/${encodeURIComponent(r.filename)}?thumb=1`,
+            previewUrl:   `/api/gallery/${galleryId}/photo/${encodeURIComponent(r.filename)}?preview=1`,
+            width: r.width || null,
+            height: r.height || null,
+            duration: video ? (r.duration ?? null) : undefined
+        };
+    });
 
     const backgroundsDir = path.join(DATA_DIR, 'backgrounds');
     const hasBg = fs.existsSync(backgroundsDir) && !!fs.readdirSync(backgroundsDir).find(f => f.startsWith(galleryId));
@@ -2025,59 +2064,54 @@ app.get('/api/gallery/:galleryId/favorites-ranked', publicReadLimiter, validateG
 // Get favorites for a gallery (admin only) — sorted by vote count desc
 app.get('/api/gallery/:galleryId/favorites', requireAuth, validateGalleryId, (req, res) => {
     const { galleryId } = req.params;
-    const gallery = galleries.get(galleryId);
-    if (!gallery) {
+    const galleryExists = db.prepare(`SELECT 1 FROM galleries WHERE id = ?`).get(galleryId);
+    if (!galleryExists) {
         return res.status(404).json({ error: 'Gallery not found' });
     }
-    const favs = gallery.favorites || {};
-    const sorted = Object.entries(favs)
-        .map(([filename, voters]) => ({ filename, votes: voters.length }))
-        .sort((a, b) => b.votes - a.votes);
+    const sorted = db.prepare(`
+        SELECT filename, COUNT(*) AS votes FROM favorites WHERE gallery_id = ? GROUP BY filename ORDER BY votes DESC
+    `).all(galleryId);
     res.json({ favorites: sorted });
 });
 
 // Reset view count for a gallery (admin only)
 app.delete('/api/gallery/:galleryId/views', adminLimiter, requireAuth, validateGalleryId, (req, res) => {
     const { galleryId } = req.params;
-    const gallery = galleries.get(galleryId);
-    if (!gallery) return res.status(404).json({ error: 'Gallery not found' });
-    gallery.viewCount = 0;
-    gallery.viewerHashes = [];
-    saveGalleries();
-    console.log(`[GALLERY] Views reset for "${gallery.eventName}" (${galleryId})`);
+    const row = db.prepare(`SELECT event_name FROM galleries WHERE id = ?`).get(galleryId);
+    if (!row) return res.status(404).json({ error: 'Gallery not found' });
+    db.transaction(() => {
+        db.prepare(`UPDATE galleries SET view_count = 0 WHERE id = ?`).run(galleryId);
+        db.prepare(`DELETE FROM viewer_hashes WHERE gallery_id = ?`).run(galleryId);
+    })();
+    console.log(`[GALLERY] Views reset for "${row.event_name}" (${galleryId})`);
     res.json({ success: true });
 });
 
 app.delete('/api/gallery/:galleryId/favorites', requireAuth, validateGalleryId, (req, res) => {
     const { galleryId } = req.params;
-    const gallery = galleries.get(galleryId);
-    if (!gallery) {
+    const row = db.prepare(`SELECT event_name FROM galleries WHERE id = ?`).get(galleryId);
+    if (!row) {
         return res.status(404).json({ error: 'Gallery not found' });
     }
-    gallery.favorites = {};
-    saveGalleries();
-    console.log(`[GALLERY] Favorites reset for "${gallery.eventName}" (${galleryId})`);
+    db.prepare(`DELETE FROM favorites WHERE gallery_id = ?`).run(galleryId);
+    console.log(`[GALLERY] Favorites reset for "${row.event_name}" (${galleryId})`);
     res.json({ success: true });
 });
 
 // Export favorites as CSV
 app.get('/api/gallery/:galleryId/favorites/export', publicReadLimiter, validateGalleryId, (req, res) => {
     const { galleryId } = req.params;
-    const gallery = galleries.get(galleryId);
-    if (!gallery) return res.status(404).json({ error: 'Gallery not found' });
+    const row = db.prepare(`SELECT event_name FROM galleries WHERE id = ?`).get(galleryId);
+    if (!row) return res.status(404).json({ error: 'Gallery not found' });
 
-    const favs = gallery.favorites || {};
-    const rows = Object.entries(favs)
-        .map(([filename, voters]) => ({ filename, votes: voters.length }))
-        .filter(r => r.votes > 0)
-        .sort((a, b) => b.votes - a.votes);
+    const rows = db.prepare(`SELECT filename, COUNT(*) AS votes FROM favorites WHERE gallery_id = ? GROUP BY filename ORDER BY votes DESC`).all(galleryId);
 
-    const eventName = gallery.eventName || 'favorites';
+    const eventName = row.event_name || 'favorites';
     const asciiName = eventName.replace(/[^\x20-\x7E]/g, '_').replace(/["\\]/g, '_').substring(0, 50) + '_favorites';
     const encodedName = encodeURIComponent(eventName.substring(0, 200) + '_favorites.csv');
 
     // UTF-8 BOM so Excel opens the file with correct encoding
-    const bom = '﻿';
+    const bom = '\uFEFF';
     const csv = bom + ['filename,votes', ...rows.map(r => `"${r.filename.replace(/"/g, '""')}",${r.votes}`)].join('\r\n');
 
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
@@ -2088,21 +2122,19 @@ app.get('/api/gallery/:galleryId/favorites/export', publicReadLimiter, validateG
 // Download favorite photos as ZIP
 app.get('/api/gallery/:galleryId/favorites/download', downloadLimiter, requireAuth, validateGalleryId, (req, res) => {
     const { galleryId } = req.params;
-    const gallery = galleries.get(galleryId);
-    if (!gallery) return res.status(404).json({ error: 'Gallery not found' });
+    const galleryRow = db.prepare(`SELECT event_name FROM galleries WHERE id = ?`).get(galleryId);
+    if (!galleryRow) return res.status(404).json({ error: 'Gallery not found' });
 
     const minVotes = Math.max(1, parseInt(req.query.minVotes, 10) || 1);
-    const favs = gallery.favorites || {};
-    const filenames = Object.entries(favs)
-        .filter(([, voters]) => voters.length >= minVotes)
-        .sort((a, b) => b[1].length - a[1].length)
-        .map(([filename]) => filename);
+    const filenames = db.prepare(`
+        SELECT filename FROM favorites WHERE gallery_id = ? GROUP BY filename HAVING COUNT(*) >= ? ORDER BY COUNT(*) DESC
+    `).all(galleryId, minVotes).map(r => r.filename);
 
     if (filenames.length === 0) return res.status(404).json({ error: 'No favorites' });
 
     const galleryPath = safeResolvePath(path.join(DATA_DIR, 'uploads'), galleryId);
-    const name = (gallery.eventName || 'favorites').replace(/[^\x20-\x7E]/g, '_').replace(/["\\]/g, '_').substring(0, 50) || 'favorites';
-    const encodedName = encodeURIComponent((gallery.eventName || 'favorites').substring(0, 200) + '_favorites.zip');
+    const name = (galleryRow.event_name || 'favorites').replace(/[^\x20-\x7E]/g, '_').replace(/["\\]/g, '_').substring(0, 50) || 'favorites';
+    const encodedName = encodeURIComponent((galleryRow.event_name || 'favorites').substring(0, 200) + '_favorites.zip');
 
     res.setHeader('Content-Type', 'application/zip');
     res.setHeader('Content-Disposition', `attachment; filename="${name}_favorites.zip"; filename*=UTF-8''${encodedName}`);
@@ -2132,11 +2164,11 @@ app.post('/api/gallery/:galleryId/comments', publicWriteLimiter, validateGallery
         return res.status(400).json({ error: 'Comment text is required' });
     }
 
-    const gallery = galleries.get(galleryId);
+    const gallery = db.prepare(`SELECT comments_enabled FROM galleries WHERE id = ?`).get(galleryId);
     if (!gallery) {
         return res.status(404).json({ error: 'Gallery not found' });
     }
-    if (gallery.commentsEnabled === false) {
+    if (gallery.comments_enabled === 0) {
         return res.status(403).json({ error: 'Comments are disabled for this gallery' });
     }
     if (isGalleryBlockedByCollectionForComments(galleryId)) {
@@ -2150,9 +2182,6 @@ app.post('/api/gallery/:galleryId/comments', publicWriteLimiter, validateGallery
     const trimmedName = typeof name === 'string' ? name.trim().replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, '').substring(0, 60) : '';
     const cleanName = trimmedName.length > 0 ? trimmedName : null;
 
-    if (!gallery.comments || Array.isArray(gallery.comments)) gallery.comments = {};
-    if (!gallery.comments[filename]) gallery.comments[filename] = [];
-
     const comment = {
         id: uuidv4(),
         visitorId,
@@ -2160,10 +2189,22 @@ app.post('/api/gallery/:galleryId/comments', publicWriteLimiter, validateGallery
         text: cleanText,
         createdAt: new Date().toISOString()
     };
-    gallery.comments[filename].push(comment);
-    saveGalleries();
 
-    res.json({ success: true, comment, commentCount: gallery.comments[filename].length });
+    let commentCount;
+    try {
+        commentCount = db.transaction(() => {
+            db.prepare(`INSERT INTO comments (id, gallery_id, filename, visitor_id, name, text, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)`)
+                .run(comment.id, galleryId, filename, comment.visitorId, comment.name, comment.text, comment.createdAt);
+            return db.prepare(`SELECT COUNT(*) AS n FROM comments WHERE gallery_id = ? AND filename = ?`).get(galleryId, filename).n;
+        })();
+    } catch (e) {
+        if (/FOREIGN KEY constraint failed/.test(e.message)) {
+            return res.status(404).json({ error: 'Photo not found' });
+        }
+        throw e;
+    }
+
+    res.json({ success: true, comment, commentCount });
 });
 
 // Get comments for a single photo (public — used by the lightbox comment drawer)
@@ -2175,31 +2216,33 @@ app.get('/api/gallery/:galleryId/comments-public', publicReadLimiter, validateGa
         return res.status(400).json({ error: 'Invalid filename' });
     }
 
-    const gallery = galleries.get(galleryId);
-    if (!gallery) {
+    const galleryExists = db.prepare(`SELECT 1 FROM galleries WHERE id = ?`).get(galleryId);
+    if (!galleryExists) {
         return res.status(404).json({ error: 'Gallery not found' });
     }
 
-    const comments = (gallery.comments && gallery.comments[filename]) || [];
+    const comments = db.prepare(`
+        SELECT id, visitor_id AS visitorId, name, text, created_at AS createdAt
+        FROM comments WHERE gallery_id = ? AND filename = ? ORDER BY created_at ASC
+    `).all(galleryId, filename);
     res.json({ comments });
 });
 
 // Get all comments for a gallery (admin only) — flattened across photos, newest first
 app.get('/api/gallery/:galleryId/comments', requireAuth, validateGalleryId, (req, res) => {
     const { galleryId } = req.params;
-    const gallery = galleries.get(galleryId);
-    if (!gallery) {
+    const galleryExists = db.prepare(`SELECT 1 FROM galleries WHERE id = ?`).get(galleryId);
+    if (!galleryExists) {
         return res.status(404).json({ error: 'Gallery not found' });
     }
 
-    const all = gallery.comments || {};
-    const flattened = Object.entries(all)
-        .flatMap(([filename, items]) => items.map(c => ({
-            ...c,
-            filename,
-            thumbnailUrl: `/api/gallery/${galleryId}/photo/${encodeURIComponent(filename)}?thumb=1`
-        })))
-        .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+    const flattened = db.prepare(`
+        SELECT id, filename, visitor_id AS visitorId, name, text, created_at AS createdAt
+        FROM comments WHERE gallery_id = ? ORDER BY created_at DESC
+    `).all(galleryId).map(c => ({
+        ...c,
+        thumbnailUrl: `/api/gallery/${galleryId}/photo/${encodeURIComponent(c.filename)}?thumb=1`
+    }));
 
     res.json({ comments: flattened });
 });
@@ -2207,33 +2250,28 @@ app.get('/api/gallery/:galleryId/comments', requireAuth, validateGalleryId, (req
 // Delete a single comment (admin only) — spam removal
 app.delete('/api/gallery/:galleryId/comments/:filename/:commentId', requireAuth, validateGalleryId, validateFilename, (req, res) => {
     const { galleryId, filename, commentId } = req.params;
-    const gallery = galleries.get(galleryId);
-    if (!gallery) {
+    const galleryExists = db.prepare(`SELECT 1 FROM galleries WHERE id = ?`).get(galleryId);
+    if (!galleryExists) {
         return res.status(404).json({ error: 'Gallery not found' });
     }
 
-    const list = gallery.comments && gallery.comments[filename];
-    const idx = list ? list.findIndex(c => c.id === commentId) : -1;
-    if (idx === -1) {
+    const info = db.prepare(`DELETE FROM comments WHERE id = ? AND gallery_id = ? AND filename = ?`).run(commentId, galleryId, filename);
+    if (info.changes === 0) {
         return res.status(404).json({ error: 'Comment not found' });
     }
 
-    list.splice(idx, 1);
-    if (list.length === 0) delete gallery.comments[filename];
-    saveGalleries();
     res.json({ success: true });
 });
 
 // Clear all comments for a gallery (admin only)
 app.delete('/api/gallery/:galleryId/comments', requireAuth, validateGalleryId, (req, res) => {
     const { galleryId } = req.params;
-    const gallery = galleries.get(galleryId);
-    if (!gallery) {
+    const row = db.prepare(`SELECT event_name FROM galleries WHERE id = ?`).get(galleryId);
+    if (!row) {
         return res.status(404).json({ error: 'Gallery not found' });
     }
-    gallery.comments = {};
-    saveGalleries();
-    console.log(`[GALLERY] Comments reset for "${gallery.eventName}" (${galleryId})`);
+    db.prepare(`DELETE FROM comments WHERE gallery_id = ?`).run(galleryId);
+    console.log(`[GALLERY] Comments reset for "${row.event_name}" (${galleryId})`);
     res.json({ success: true });
 });
 
@@ -2254,14 +2292,7 @@ app.post('/api/collection/create', requireAuth, (req, res) => {
     }
     const name = (String(rawName || 'Untitled Collection')).trim().substring(0, 200);
     const id = uuidv4();
-    collections.set(id, {
-        id,
-        name,
-        created: new Date().toISOString(),
-        galleryIds: [],
-        downloadsEnabled: true
-    });
-    saveCollections();
+    db.prepare(`INSERT INTO collections (id, name, created_at) VALUES (?, ?, ?)`).run(id, name, new Date().toISOString());
     console.log(`[COLLECTION] Created "${name}" (${id})`);
     const baseUrl = `${req.protocol}://${req.get('host')}`;
     res.json({ success: true, id, collectionUrl: `${baseUrl}/collection/${id}` });
@@ -2272,43 +2303,43 @@ app.get('/api/collections', adminLimiter, requireAuth, (req, res) => {
     const baseUrl = `${req.protocol}://${req.get('host')}`;
     const bgDirC = path.join(DATA_DIR, 'backgrounds');
     const bgFilesC = fs.existsSync(bgDirC) ? new Set(fs.readdirSync(bgDirC)) : new Set();
-    const list = Array.from(collections.values())
-        .sort((a, b) => new Date(b.created) - new Date(a.created))
-        .map(c => {
-            // See /api/galleries: bgVersion is the cover mtime so the admin card
-            // thumbnail can be cached and only refetched when the cover changes.
-            const bgFile = [...bgFilesC].find(f => f.startsWith(`collection-${c.id}`)) || null;
-            let bgVersion = null;
-            if (bgFile) {
-                try {
-                    bgVersion = Math.floor(fs.statSync(path.join(bgDirC, bgFile)).mtimeMs);
-                } catch (_) { /* file vanished between readdir and stat */ }
-            }
-            return {
-                id: c.id,
-                name: c.name,
-                created: c.created,
-                galleryIds: c.galleryIds,
-                collectionUrl: `${baseUrl}/collection/${c.id}`,
-                hasBackground: bgFile !== null,
-                bgVersion,
-                downloadsEnabled: c.downloadsEnabled !== false,
-                commentsEnabled: c.commentsEnabled !== false,
-                clientLanguage: c.clientLanguage || 'auto',
-                // Audio montage, so the collection card can show / replace / remove it.
-                // Reported only when the file is actually still on disk.
-                audio: (c.audio && findAudioFile(`collection-${c.id}`))
-                    ? { filename: c.audio.filename || null, duration: c.audio.duration ?? null, size: c.audio.size ?? null }
-                    : null
-            };
-        });
+
+    const list = db.prepare(`SELECT * FROM collections ORDER BY created_at DESC`).all().map(c => {
+        const galleryIds = db.prepare(`SELECT gallery_id FROM collection_galleries WHERE collection_id = ? ORDER BY position`).all(c.id).map(r => r.gallery_id);
+        // See /api/galleries: bgVersion is the cover mtime so the admin card
+        // thumbnail can be cached and only refetched when the cover changes.
+        const bgFile = [...bgFilesC].find(f => f.startsWith(`collection-${c.id}`)) || null;
+        let bgVersion = null;
+        if (bgFile) {
+            try {
+                bgVersion = Math.floor(fs.statSync(path.join(bgDirC, bgFile)).mtimeMs);
+            } catch (_) { /* file vanished between readdir and stat */ }
+        }
+        return {
+            id: c.id,
+            name: c.name,
+            created: c.created_at,
+            galleryIds,
+            collectionUrl: `${baseUrl}/collection/${c.id}`,
+            hasBackground: bgFile !== null,
+            bgVersion,
+            downloadsEnabled: !!c.downloads_enabled,
+            commentsEnabled: !!c.comments_enabled,
+            clientLanguage: c.client_language || 'auto',
+            // Audio montage, so the collection card can show / replace / remove it.
+            // Reported only when the file is actually still on disk.
+            audio: (c.audio_filename && findAudioFile(`collection-${c.id}`))
+                ? { filename: c.audio_filename || null, duration: c.audio_duration ?? null, size: c.audio_size ?? null }
+                : null
+        };
+    });
     res.json(list);
 });
 
 // Get collection info (public — used by collection page)
 app.get('/api/collection/:collectionId', publicReadLimiter, validateCollectionId, (req, res) => {
     const { collectionId } = req.params;
-    const collection = collections.get(collectionId);
+    const collection = db.prepare(`SELECT * FROM collections WHERE id = ?`).get(collectionId);
     if (!collection) return res.status(404).json({ error: 'Collection not found' });
 
     const backgroundsDir = path.join(DATA_DIR, 'backgrounds');
@@ -2316,8 +2347,11 @@ app.get('/api/collection/:collectionId', publicReadLimiter, validateCollectionId
         ? new Set(fs.readdirSync(backgroundsDir))
         : new Set();
 
+    const memberGalleryIds = db.prepare(`SELECT gallery_id FROM collection_galleries WHERE collection_id = ? ORDER BY position`).all(collectionId).map(r => r.gallery_id);
+    const collDownloads = !!collection.downloads_enabled;
+
     let totalSizeBytes = 0;
-    const galleriesData = collection.galleryIds
+    const galleriesData = memberGalleryIds
         .map(gid => {
             const gallery = getActiveGallery(gid);
             if (!gallery) return null;
@@ -2331,7 +2365,6 @@ app.get('/api/collection/:collectionId', publicReadLimiter, validateCollectionId
                 });
             }
             const hasBackground = [...bgFiles].some(f => f.startsWith(gid));
-            const collDownloads = collection.downloadsEnabled !== false;
             return {
                 id: gid,
                 eventName: gallery.eventName || 'Untitled Event',
@@ -2342,22 +2375,21 @@ app.get('/api/collection/:collectionId', publicReadLimiter, validateCollectionId
         })
         .filter(Boolean);
 
-    const collBgFiles = fs.existsSync(backgroundsDir) ? [...new Set(fs.readdirSync(backgroundsDir))] : [];
-    const collHasBg = collBgFiles.some(f => f.startsWith(`collection-${collectionId}`));
+    const collHasBg = [...bgFiles].some(f => f.startsWith(`collection-${collectionId}`));
 
     // Audio montage: the URL carries an mtime token (same idea as bgVersion) so a
     // replaced track busts the 24h cache while an unchanged one stays cached across
     // navigations — which matters a lot for a file this size.
     const audioFile = findAudioFile(`collection-${collectionId}`);
     let audio = null;
-    if (audioFile && collection.audio) {
+    if (audioFile && collection.audio_filename) {
         let version = null;
         try { version = Math.floor(fs.statSync(path.join(AUDIO_DIR, audioFile)).mtimeMs); } catch (_) {}
         audio = {
             url: `/api/collection/${collectionId}/audio${version ? `?v=${version}` : ''}`,
-            filename: collection.audio.filename || null,
-            duration: collection.audio.duration ?? null,
-            size: collection.audio.size ?? null
+            filename: collection.audio_filename || null,
+            duration: collection.audio_duration ?? null,
+            size: collection.audio_size ?? null
         };
     }
 
@@ -2365,7 +2397,7 @@ app.get('/api/collection/:collectionId', publicReadLimiter, validateCollectionId
         id: collectionId,
         name: collection.name,
         background: collHasBg ? `/api/collection/${collectionId}/background` : null,
-        downloadsEnabled: collection.downloadsEnabled !== false,
+        downloadsEnabled: collDownloads,
         totalSizeBytes, // photos only — the montage is deliberately excluded
         galleries: galleriesData,
         audio,
@@ -2376,20 +2408,20 @@ app.get('/api/collection/:collectionId', publicReadLimiter, validateCollectionId
 // Rename a collection (admin only)
 app.post('/api/collection/:collectionId/rename', requireAuth, validateCollectionId, (req, res) => {
     const { collectionId } = req.params;
-    const collection = collections.get(collectionId);
-    if (!collection) return res.status(404).json({ error: 'Collection not found' });
-    const oldColName = collection.name;
-    collection.name = (String(Array.isArray(req.body.name) ? req.body.name[0] : (req.body.name || 'Untitled Collection'))).trim().substring(0, 200);
-    saveCollections();
-    console.log(`[COLLECTION] Renamed "${oldColName}" → "${collection.name}" (${collectionId})`);
-    res.json({ success: true, name: collection.name });
+    const row = db.prepare(`SELECT name FROM collections WHERE id = ?`).get(collectionId);
+    if (!row) return res.status(404).json({ error: 'Collection not found' });
+    const oldColName = row.name;
+    const name = (String(Array.isArray(req.body.name) ? req.body.name[0] : (req.body.name || 'Untitled Collection'))).trim().substring(0, 200);
+    db.prepare(`UPDATE collections SET name = ? WHERE id = ?`).run(name, collectionId);
+    console.log(`[COLLECTION] Renamed "${oldColName}" → "${name}" (${collectionId})`);
+    res.json({ success: true, name });
 });
 
 // Upload/replace collection background image
 app.post('/api/collection/:collectionId/background', adminLimiter, requireAuth, validateCollectionId, uploadBackground.single('background'), async (req, res) => {
     const { collectionId } = req.params;
-    const collection = collections.get(collectionId);
-    if (!collection) return res.status(404).json({ error: 'Collection not found' });
+    const collectionExists = db.prepare(`SELECT 1 FROM collections WHERE id = ?`).get(collectionId);
+    if (!collectionExists) return res.status(404).json({ error: 'Collection not found' });
     if (!req.file) return res.status(400).json({ error: 'No background file provided' });
     try {
         const backgroundsDir = path.join(DATA_DIR, 'backgrounds');
@@ -2403,10 +2435,11 @@ app.post('/api/collection/:collectionId/background', adminLimiter, requireAuth, 
             .withMetadata()
             .jpeg({ quality: 85 })
             .toFile(dest);
-        collection.background = `collection-${collectionId}.jpg`;
-        saveCollections();
-        console.log(`[COLLECTION] Background updated for "${collection.name}" (${collectionId})`);
-        res.json({ success: true, background: collection.background });
+        const backgroundValue = `collection-${collectionId}.jpg`;
+        db.prepare(`UPDATE collections SET background = ? WHERE id = ?`).run(backgroundValue, collectionId);
+        const nameRow = db.prepare(`SELECT name FROM collections WHERE id = ?`).get(collectionId);
+        console.log(`[COLLECTION] Background updated for "${nameRow.name}" (${collectionId})`);
+        res.json({ success: true, background: backgroundValue });
     } catch (err) {
         console.error(`[COLLECTION] Background processing failed for ${collectionId}: ${err.message}`);
         res.status(500).json({ error: 'Failed to process background image' });
@@ -2447,15 +2480,15 @@ app.get('/api/collection/:collectionId/background', publicReadLimiter, validateC
 
 // ── COLLECTION AUDIO MONTAGE ────────────────────────────────────────────────
 // One optional audio track per collection, stored verbatim (no transcoding) as
-// data/audio/collection-{id}.{ext}. Deliberately NOT added to any gallery's files[]:
-// that array drives the photo grid, the ZIP, counts, dimension probing, the OG image
-// fallback and the stem sort — an audio file has no business in any of them.
+// data/audio/collection-{id}.{ext}. Deliberately NOT added to any gallery's files
+// table: that table drives the photo grid, the ZIP, counts, dimension probing,
+// the OG image fallback and the stem sort — an audio file has no business in any of them.
 
 // Upload or replace the montage (admin only)
 app.post('/api/collection/:collectionId/audio', adminLimiter, requireAuth, validateCollectionId, uploadAudio.single('audio'), async (req, res) => {
     const { collectionId } = req.params;
-    const collection = collections.get(collectionId);
-    if (!collection) {
+    const collectionExists = db.prepare(`SELECT 1 FROM collections WHERE id = ?`).get(collectionId);
+    if (!collectionExists) {
         if (req.file) { try { fs.unlinkSync(req.file.path); } catch (_) {} }
         return res.status(404).json({ error: 'Collection not found' });
     }
@@ -2471,27 +2504,28 @@ app.post('/api/collection/:collectionId/audio', adminLimiter, requireAuth, valid
     }
 
     const duration = await probeAudioDuration(req.file.path);
-    collection.audio = {
+    const audio = {
         filename: decodeUploadFilename(req.file.originalname).normalize('NFC'),
         stored: kept,
         size: req.file.size,
         duration, // seconds, or null when ffprobe is unavailable
         uploadedAt: new Date().toISOString()
     };
-    saveCollections();
-    console.log(`[COLLECTION] Audio updated for "${collection.name}" (${collectionId}) — ${kept}`);
-    res.json({ success: true, audio: collection.audio });
+    db.prepare(`UPDATE collections SET audio_filename = ?, audio_stored = ?, audio_size = ?, audio_duration = ?, audio_uploaded_at = ? WHERE id = ?`)
+        .run(audio.filename, audio.stored, audio.size, audio.duration, audio.uploadedAt, collectionId);
+    const nameRow = db.prepare(`SELECT name FROM collections WHERE id = ?`).get(collectionId);
+    console.log(`[COLLECTION] Audio updated for "${nameRow.name}" (${collectionId}) — ${kept}`);
+    res.json({ success: true, audio });
 });
 
 // Remove the montage (admin only)
 app.delete('/api/collection/:collectionId/audio', adminLimiter, requireAuth, validateCollectionId, (req, res) => {
     const { collectionId } = req.params;
-    const collection = collections.get(collectionId);
-    if (!collection) return res.status(404).json({ error: 'Collection not found' });
+    const nameRow = db.prepare(`SELECT name FROM collections WHERE id = ?`).get(collectionId);
+    if (!nameRow) return res.status(404).json({ error: 'Collection not found' });
     deleteAudioFiles(`collection-${collectionId}`);
-    delete collection.audio;
-    saveCollections();
-    console.log(`[COLLECTION] Audio removed from "${collection.name}" (${collectionId})`);
+    db.prepare(`UPDATE collections SET audio_filename = NULL, audio_stored = NULL, audio_size = NULL, audio_duration = NULL, audio_uploaded_at = NULL WHERE id = ?`).run(collectionId);
+    console.log(`[COLLECTION] Audio removed from "${nameRow.name}" (${collectionId})`);
     res.json({ success: true });
 });
 
@@ -2519,61 +2553,54 @@ app.post('/api/collection/:collectionId/galleries', requireAuth, validateCollect
         return res.status(400).json({ error: 'Invalid gallery ID' });
     }
 
-    const collection = collections.get(collectionId);
-    if (!collection) return res.status(404).json({ error: 'Collection not found' });
+    const result = ops.addGalleryToCollection(db, collectionId, galleryId);
+    if (result.error === 'collection_not_found') return res.status(404).json({ error: 'Collection not found' });
+    if (result.error === 'gallery_not_found') return res.status(404).json({ error: 'Gallery not found' });
+    if (result.error === 'already_in_another_collection') return res.status(409).json({ error: 'Gallery already belongs to another collection' });
 
-    if (!galleries.get(galleryId)) {
-        return res.status(404).json({ error: 'Gallery not found' });
-    }
-
-    // Enforce one gallery = one collection
-    for (const [cid, c] of collections.entries()) {
-        if (cid !== collectionId && c.galleryIds.includes(galleryId)) {
-            return res.status(409).json({ error: 'Gallery already belongs to another collection' });
-        }
-    }
-
-    if (!collection.galleryIds.includes(galleryId)) {
-        collection.galleryIds.push(galleryId);
-        saveCollections();
-    }
-
-    res.json({ success: true, galleryIds: collection.galleryIds });
+    res.json({ success: true, galleryIds: result.galleryIds });
 });
 
 // Reorder galleries within a collection (admin only)
 app.patch('/api/collection/:collectionId/galleries/reorder', requireAuth, validateCollectionId, (req, res) => {
     const { collectionId } = req.params;
     const { galleryIds } = req.body;
-    const collection = collections.get(collectionId);
-    if (!collection) return res.status(404).json({ error: 'Collection not found' });
+    const collectionExists = db.prepare(`SELECT 1 FROM collections WHERE id = ?`).get(collectionId);
+    if (!collectionExists) return res.status(404).json({ error: 'Collection not found' });
     if (!Array.isArray(galleryIds)) return res.status(400).json({ error: 'galleryIds must be an array' });
+
     // Only accept IDs already in the collection — prevents injection
-    const valid = new Set(collection.galleryIds);
-    if (!galleryIds.every(id => valid.has(id)) || galleryIds.length !== collection.galleryIds.length) {
+    const currentIds = db.prepare(`SELECT gallery_id FROM collection_galleries WHERE collection_id = ?`).all(collectionId).map(r => r.gallery_id);
+    const valid = new Set(currentIds);
+    if (!galleryIds.every(id => valid.has(id)) || galleryIds.length !== currentIds.length) {
         return res.status(400).json({ error: 'Invalid galleryIds' });
     }
-    collection.galleryIds = galleryIds;
-    saveCollections();
-    res.json({ success: true, galleryIds: collection.galleryIds });
+
+    db.transaction(() => {
+        const stmt = db.prepare(`UPDATE collection_galleries SET position = ? WHERE collection_id = ? AND gallery_id = ?`);
+        galleryIds.forEach((id, idx) => stmt.run(idx, collectionId, id));
+    })();
+
+    res.json({ success: true, galleryIds });
 });
 
 // Remove a gallery from a collection (admin only)
 app.delete('/api/collection/:collectionId/galleries/:galleryId', requireAuth, validateCollectionId, validateGalleryId, (req, res) => {
     const { collectionId, galleryId } = req.params;
-    const collection = collections.get(collectionId);
-    if (!collection) return res.status(404).json({ error: 'Collection not found' });
-    collection.galleryIds = collection.galleryIds.filter(id => id !== galleryId);
-    saveCollections();
-    res.json({ success: true, galleryIds: collection.galleryIds });
+    const collectionExists = db.prepare(`SELECT 1 FROM collections WHERE id = ?`).get(collectionId);
+    if (!collectionExists) return res.status(404).json({ error: 'Collection not found' });
+
+    db.prepare(`DELETE FROM collection_galleries WHERE collection_id = ? AND gallery_id = ?`).run(collectionId, galleryId);
+    const galleryIds = db.prepare(`SELECT gallery_id FROM collection_galleries WHERE collection_id = ? ORDER BY position`).all(collectionId).map(r => r.gallery_id);
+    res.json({ success: true, galleryIds });
 });
 
 // Download all photos in a collection as a ZIP (one sub-folder per gallery)
 app.get('/api/collection/:collectionId/download', downloadLimiter, validateCollectionId, (req, res) => {
     const { collectionId } = req.params;
-    const collection = collections.get(collectionId);
+    const collection = db.prepare(`SELECT name, downloads_enabled FROM collections WHERE id = ?`).get(collectionId);
     if (!collection) return res.status(404).json({ error: 'Collection not found' });
-    if (collection.downloadsEnabled === false) {
+    if (collection.downloads_enabled === 0) {
         return res.status(403).json({ error: 'Downloads are disabled for this collection' });
     }
 
@@ -2581,24 +2608,23 @@ app.get('/api/collection/:collectionId/download', downloadLimiter, validateColle
     const asciiColName = colName.replace(/[^\x20-\x7E]/g, '_').replace(/["\\]/g, '_').substring(0, 50) || 'collection';
     const encodedColName = encodeURIComponent(colName.substring(0, 200) + '.zip');
 
+    const memberGalleryIds = db.prepare(`SELECT gallery_id FROM collection_galleries WHERE collection_id = ? ORDER BY position`).all(collectionId).map(r => r.gallery_id);
+
     // Pre-scan files for Content-Length and folder names (store mode)
     const entries = [];
-    const includedGalleries = [];
-    for (const galleryId of collection.galleryIds) {
-        const gallery = galleries.get(galleryId);
+    const includedGalleryIds = [];
+    for (const galleryId of memberGalleryIds) {
+        const gallery = db.prepare(`SELECT event_name FROM galleries WHERE id = ?`).get(galleryId);
         const galleryPath = safeResolvePath(path.join(DATA_DIR, 'uploads'), galleryId);
         if (!fs.existsSync(galleryPath)) continue;
-        const folderName = (gallery ? gallery.eventName : galleryId).substring(0, 80) || galleryId;
+        const folderName = (gallery ? gallery.event_name : galleryId).substring(0, 80) || galleryId;
         const files = fs.readdirSync(galleryPath).filter(f => !f.startsWith('.'));
         files.forEach(file => entries.push({ diskPath: path.join(galleryPath, file), zipName: `${folderName}/${file}` }));
-        if (gallery) includedGalleries.push(gallery);
+        if (gallery) includedGalleryIds.push(galleryId);
     }
 
-    if (includedGalleries.length) {
-        includedGalleries.forEach(gallery => {
-            gallery.downloadCount = (gallery.downloadCount || 0) + 1;
-        });
-        saveGalleries();
+    if (includedGalleryIds.length) {
+        ops.bumpGalleryDownloadCounts(db, includedGalleryIds);
     }
 
     res.setHeader('Content-Type', 'application/zip');
@@ -2615,45 +2641,43 @@ app.get('/api/collection/:collectionId/download', downloadLimiter, validateColle
 // Toggle downloads on/off for a collection
 app.patch('/api/collection/:collectionId/downloads', adminLimiter, requireAuth, validateCollectionId, (req, res) => {
     const { collectionId } = req.params;
-    const collection = collections.get(collectionId);
-    if (!collection) return res.status(404).json({ error: 'Collection not found' });
+    const collectionExists = db.prepare(`SELECT 1 FROM collections WHERE id = ?`).get(collectionId);
+    if (!collectionExists) return res.status(404).json({ error: 'Collection not found' });
     const enabled = req.body.enabled !== false;
-    collection.downloadsEnabled = enabled;
-    saveCollections();
-    res.json({ success: true, downloadsEnabled: collection.downloadsEnabled });
+    db.prepare(`UPDATE collections SET downloads_enabled = ? WHERE id = ?`).run(enabled ? 1 : 0, collectionId);
+    res.json({ success: true, downloadsEnabled: enabled });
 });
 
 // Toggle comments on/off for a collection
 app.patch('/api/collection/:collectionId/comments-enabled', adminLimiter, requireAuth, validateCollectionId, (req, res) => {
     const { collectionId } = req.params;
-    const collection = collections.get(collectionId);
-    if (!collection) return res.status(404).json({ error: 'Collection not found' });
+    const collectionExists = db.prepare(`SELECT 1 FROM collections WHERE id = ?`).get(collectionId);
+    if (!collectionExists) return res.status(404).json({ error: 'Collection not found' });
     const enabled = req.body.enabled !== false;
-    collection.commentsEnabled = enabled;
-    saveCollections();
-    res.json({ success: true, commentsEnabled: collection.commentsEnabled });
+    db.prepare(`UPDATE collections SET comments_enabled = ? WHERE id = ?`).run(enabled ? 1 : 0, collectionId);
+    res.json({ success: true, commentsEnabled: enabled });
 });
 
 // Set the client-facing language override for a collection ('auto' clears the override)
 app.patch('/api/collection/:collectionId/client-language', adminLimiter, requireAuth, validateCollectionId, (req, res) => {
     const { collectionId } = req.params;
-    const collection = collections.get(collectionId);
-    if (!collection) return res.status(404).json({ error: 'Collection not found' });
+    const collectionExists = db.prepare(`SELECT 1 FROM collections WHERE id = ?`).get(collectionId);
+    if (!collectionExists) return res.status(404).json({ error: 'Collection not found' });
 
     const { language } = req.body;
     if (language !== 'auto' && !SUPPORTED_LANGUAGES.includes(language)) {
         return res.status(400).json({ error: 'Invalid language' });
     }
 
-    collection.clientLanguage = language === 'auto' ? null : language;
-    saveCollections();
-    res.json({ success: true, clientLanguage: collection.clientLanguage || 'auto' });
+    const clientLanguage = language === 'auto' ? null : language;
+    db.prepare(`UPDATE collections SET client_language = ? WHERE id = ?`).run(clientLanguage, collectionId);
+    res.json({ success: true, clientLanguage: clientLanguage || 'auto' });
 });
 
 // Delete a collection (admin only — does NOT delete the galleries)
 app.delete('/api/collection/:collectionId', adminLimiter, requireAuth, validateCollectionId, (req, res) => {
     const { collectionId } = req.params;
-    const collection = collections.get(collectionId);
+    const collection = db.prepare(`SELECT name FROM collections WHERE id = ?`).get(collectionId);
     if (!collection) return res.status(404).json({ error: 'Collection not found' });
 
     // Delete collection background (any extension)
@@ -2669,15 +2693,14 @@ app.delete('/api/collection/:collectionId', adminLimiter, requireAuth, validateC
     deleteAudioFiles(`collection-${collectionId}`);
 
     console.log(`[COLLECTION] Deleted "${collection.name}" (${collectionId})`);
-    collections.delete(collectionId);
-    saveCollections();
+    db.prepare(`DELETE FROM collections WHERE id = ?`).run(collectionId); // cascades collection_galleries only — member galleries are untouched
     res.json({ success: true });
 });
 
 // Collection page — serves HTML with OG meta tags injected
 app.get('/collection/:collectionId', publicReadLimiter, validateCollectionId, (req, res) => {
     const { collectionId } = req.params;
-    const collection = collections.get(collectionId);
+    const collection = db.prepare(`SELECT name FROM collections WHERE id = ?`).get(collectionId);
     if (!collection) return res.status(404).send('Collection not found');
 
     const baseUrl = `${req.protocol}://${req.get('host')}`;
@@ -2711,75 +2734,83 @@ app.get('/api/galleries', adminLimiter, requireAuth, (req, res) => {
     if (fs.existsSync(uploadsDir)) {
         const dirs = fs.readdirSync(uploadsDir);
 
+        // Owning collection per gallery, computed once — replaces the old
+        // per-gallery scan of every collection (UNIQUE(gallery_id) means at
+        // most one row per gallery here).
+        const ownerByGallery = new Map(
+            db.prepare(`SELECT gallery_id, collection_id FROM collection_galleries`).all()
+                .map(r => [r.gallery_id, r.collection_id])
+        );
+
         dirs.forEach(galleryId => {
             const galleryPath = path.join(uploadsDir, galleryId);
             const stats = fs.statSync(galleryPath);
 
-            if (stats.isDirectory()) {
-                const files = fs.readdirSync(galleryPath).filter(f => !f.startsWith('.'));
+            if (!stats.isDirectory()) return;
 
-                let gallery = galleries.get(galleryId);
-                if (gallery && gallery.deleted) return; // exclude trashed galleries
-                if (!gallery) {
-                    gallery = {
-                        id: galleryId,
-                        eventName: 'Untitled Event',
-                        created: stats.birthtime.toISOString(),
-                        files,
-                        background: null
-                    };
-                    galleries.set(galleryId, gallery);
-                    saveGalleries();
-                }
+            const files = fs.readdirSync(galleryPath).filter(f => !f.startsWith('.'));
 
-                // `bgVersion` (background file mtime) lets the admin cards cache their
-                // cover thumbnail: the URL only changes when the cover is actually
-                // replaced. Never use Date.now() there — a per-render cache-buster
-                // refetches every thumbnail on every keystroke and trips publicReadLimiter.
-                const bgFile = [...bgFiles].find(f => f.startsWith(galleryId)) || null;
-                const hasBackground = bgFile !== null;
-                let bgVersion = null;
-                if (bgFile) {
-                    try {
-                        bgVersion = Math.floor(fs.statSync(path.join(backgroundsDir, bgFile)).mtimeMs);
-                    } catch (_) { /* file vanished between readdir and stat — treat as unversioned */ }
-                }
-
-                // Find which collection this gallery belongs to (if any)
-                let collectionId = null;
-                for (const [cid, c] of collections.entries()) {
-                    if (c.galleryIds.includes(galleryId)) { collectionId = cid; break; }
-                }
-
-                galleryList.push({
-                    id: galleryId,
-                    eventName: gallery.eventName || 'Untitled Event',
-                    created: gallery.created || stats.birthtime.toISOString(),
-                    fileCount: files.length,
-                    hasBackground,
-                    bgVersion,
-                    favoritesCount: Object.keys(gallery.favorites || {}).length,
-                    commentsCount: Object.values(gallery.comments || {}).reduce((sum, arr) => sum + arr.length, 0),
-                    viewCount: gallery.viewCount || 0,
-                    downloadCount: gallery.downloadCount || 0,
-                    collectionId,
-                    order: gallery.order,
-                    // Own montage, so the gallery card can show / replace / remove it.
-                    // Reported only when the file is actually still on disk.
-                    audio: (gallery.audio && findAudioFile(`gallery-${galleryId}`))
-                        ? { filename: gallery.audio.filename || null, duration: gallery.audio.duration ?? null, size: gallery.audio.size ?? null }
-                        : null,
-                    downloadsEnabled: gallery.downloadsEnabled !== false,
-                    commentsEnabled: gallery.commentsEnabled !== false,
-                    clientLanguage: gallery.clientLanguage || 'auto'
-                });
+            let gallery = db.prepare(`SELECT * FROM galleries WHERE id = ?`).get(galleryId);
+            if (gallery && gallery.deleted) return; // exclude trashed galleries
+            if (!gallery) {
+                // Second, separate orphan-recovery site — distinct from
+                // reconcileGalleries(), which only runs once at startup. A
+                // folder created on disk after boot (e.g. by a parallel
+                // upload still in flight) is recovered here instead.
+                insertRecoveredGallery(galleryId, stats.birthtime.toISOString(), files);
+                gallery = db.prepare(`SELECT * FROM galleries WHERE id = ?`).get(galleryId);
+                console.log(`[STARTUP] Reconcile: recovered gallery ${galleryId} from disk (${files.length} file(s))`);
             }
+
+            // `bgVersion` (background file mtime) lets the admin cards cache their
+            // cover thumbnail: the URL only changes when the cover is actually
+            // replaced. Never use Date.now() there — a per-render cache-buster
+            // refetches every thumbnail on every keystroke and trips publicReadLimiter.
+            const bgFile = [...bgFiles].find(f => f.startsWith(galleryId)) || null;
+            const hasBackground = bgFile !== null;
+            let bgVersion = null;
+            if (bgFile) {
+                try {
+                    bgVersion = Math.floor(fs.statSync(path.join(backgroundsDir, bgFile)).mtimeMs);
+                } catch (_) { /* file vanished between readdir and stat — treat as unversioned */ }
+            }
+
+            const favoritesCount = db.prepare(`SELECT COUNT(DISTINCT filename) AS n FROM favorites WHERE gallery_id = ?`).get(galleryId).n;
+            const commentsCount = db.prepare(`SELECT COUNT(*) AS n FROM comments WHERE gallery_id = ?`).get(galleryId).n;
+
+            galleryList.push({
+                id: galleryId,
+                eventName: gallery.event_name || 'Untitled Event',
+                created: gallery.created_at || stats.birthtime.toISOString(),
+                fileCount: files.length,
+                hasBackground,
+                bgVersion,
+                favoritesCount,
+                commentsCount,
+                viewCount: gallery.view_count || 0,
+                downloadCount: gallery.download_count || 0,
+                collectionId: ownerByGallery.get(galleryId) || null,
+                // `undefined` (not `null`) when never manually reordered —
+                // JSON.stringify drops an undefined key entirely, matching the
+                // old Map-based `gallery.order` being simply absent. admin.html's
+                // own client-side sort relies on that same undefined-vs-null
+                // distinction (see galleryRowToObject's comment above).
+                order: gallery.sort_order === null ? undefined : gallery.sort_order,
+                // Own montage, so the gallery card can show / replace / remove it.
+                // Reported only when the file is actually still on disk.
+                audio: (gallery.audio_filename && findAudioFile(`gallery-${galleryId}`))
+                    ? { filename: gallery.audio_filename || null, duration: gallery.audio_duration ?? null, size: gallery.audio_size ?? null }
+                    : null,
+                downloadsEnabled: !!gallery.downloads_enabled,
+                commentsEnabled: !!gallery.comments_enabled,
+                clientLanguage: gallery.client_language || 'auto'
+            });
         });
     }
 
     galleryList.sort((a, b) => {
-        const oa = galleries.get(a.id)?.order;
-        const ob = galleries.get(b.id)?.order;
+        const oa = a.order;
+        const ob = b.order;
         if (oa !== undefined && ob !== undefined) return oa - ob;
         if (oa !== undefined) return -1;
         if (ob !== undefined) return 1;
@@ -2792,31 +2823,21 @@ app.get('/api/galleries', adminLimiter, requireAuth, (req, res) => {
 app.patch('/api/galleries/reorder', adminLimiter, requireAuth, (req, res) => {
     const { galleryIds } = req.body;
     if (!Array.isArray(galleryIds)) return res.status(400).json({ error: 'galleryIds must be an array' });
-    galleryIds.forEach((id, idx) => {
-        const g = galleries.get(id);
-        if (g) g.order = idx;
-    });
-    saveGalleries();
+    db.transaction(() => {
+        const stmt = db.prepare(`UPDATE galleries SET sort_order = ? WHERE id = ?`);
+        galleryIds.forEach((id, idx) => stmt.run(idx, id));
+    })();
     res.json({ success: true });
 });
 
 // Soft-delete gallery — moves to trash (files kept for TRASH_RETENTION_MS)
 app.delete('/api/gallery/:galleryId', adminLimiter, requireAuth, validateGalleryId, (req, res) => {
     const { galleryId } = req.params;
-    const gallery = galleries.get(galleryId);
-    if (!gallery) return res.status(404).json({ error: 'Gallery not found' });
-    gallery.deleted = true;
-    gallery.deletedAt = new Date().toISOString();
-    saveGalleries();
-    console.log(`[GALLERY] Trashed "${gallery.eventName}" (${galleryId})`);
-    // Remove from any collection it belongs to
-    let collectionChanged = false;
-    for (const collection of collections.values()) {
-        const before = collection.galleryIds.length;
-        collection.galleryIds = collection.galleryIds.filter(id => id !== galleryId);
-        if (collection.galleryIds.length !== before) collectionChanged = true;
-    }
-    if (collectionChanged) saveCollections();
+    const row = db.prepare(`SELECT event_name FROM galleries WHERE id = ?`).get(galleryId);
+    if (!row) return res.status(404).json({ error: 'Gallery not found' });
+
+    ops.softDeleteGallery(db, galleryId, new Date().toISOString());
+    console.log(`[GALLERY] Trashed "${row.event_name}" (${galleryId})`);
     res.json({ success: true });
 });
 
@@ -2825,51 +2846,46 @@ app.get('/api/galleries/trash', adminLimiter, requireAuth, (req, res) => {
     const uploadsDir = path.join(DATA_DIR, 'uploads');
     const backgroundsDir = path.join(DATA_DIR, 'backgrounds');
     const bgFiles = fs.existsSync(backgroundsDir) ? new Set(fs.readdirSync(backgroundsDir)) : new Set();
-    const trashed = Array.from(galleries.values())
-        .filter(g => g.deleted)
-        .map(g => {
-            const galleryPath = path.join(uploadsDir, g.id);
-            const fileCount = fs.existsSync(galleryPath)
-                ? fs.readdirSync(galleryPath).filter(f => !f.startsWith('.')).length : 0;
-            const hasBackground = [...bgFiles].some(f => f.startsWith(g.id));
-            const daysLeft = Math.ceil((TRASH_RETENTION_MS - (Date.now() - new Date(g.deletedAt).getTime())) / 86400000);
-            return { id: g.id, eventName: g.eventName, deletedAt: g.deletedAt, daysLeft: Math.max(0, daysLeft), fileCount, hasBackground };
-        })
-        .sort((a, b) => new Date(b.deletedAt) - new Date(a.deletedAt));
+
+    const trashed = db.prepare(`SELECT id, event_name, deleted_at FROM galleries WHERE deleted = 1 ORDER BY deleted_at DESC`).all().map(g => {
+        const galleryPath = path.join(uploadsDir, g.id);
+        const fileCount = fs.existsSync(galleryPath)
+            ? fs.readdirSync(galleryPath).filter(f => !f.startsWith('.')).length : 0;
+        const hasBackground = [...bgFiles].some(f => f.startsWith(g.id));
+        const daysLeft = Math.ceil((TRASH_RETENTION_MS - (Date.now() - new Date(g.deleted_at).getTime())) / 86400000);
+        return { id: g.id, eventName: g.event_name, deletedAt: g.deleted_at, daysLeft: Math.max(0, daysLeft), fileCount, hasBackground };
+    });
     res.json(trashed);
 });
 
 // Restore gallery from trash
 app.post('/api/gallery/:galleryId/restore', adminLimiter, requireAuth, validateGalleryId, (req, res) => {
     const { galleryId } = req.params;
-    const gallery = galleries.get(galleryId);
-    if (!gallery || !gallery.deleted) return res.status(404).json({ error: 'Gallery not in trash' });
-    delete gallery.deleted;
-    delete gallery.deletedAt;
-    saveGalleries();
-    console.log(`[GALLERY] Restored "${gallery.eventName}" (${galleryId})`);
+    const row = db.prepare(`SELECT event_name, deleted FROM galleries WHERE id = ?`).get(galleryId);
+    if (!row || !row.deleted) return res.status(404).json({ error: 'Gallery not in trash' });
+
+    ops.restoreGallery(db, galleryId);
+    console.log(`[GALLERY] Restored "${row.event_name}" (${galleryId})`);
     res.json({ success: true });
 });
 
 // Permanently delete a single gallery from trash
 app.delete('/api/gallery/:galleryId/purge', adminLimiter, requireAuth, validateGalleryId, (req, res) => {
     const { galleryId } = req.params;
-    const gallery = galleries.get(galleryId);
-    if (!gallery) return res.status(404).json({ error: 'Gallery not found' });
-    const purgedName = gallery.eventName;
+    const row = db.prepare(`SELECT event_name FROM galleries WHERE id = ?`).get(galleryId);
+    if (!row) return res.status(404).json({ error: 'Gallery not found' });
+    const purgedName = row.event_name;
     hardDeleteGallery(galleryId);
-    saveGalleries();
     console.log(`[GALLERY] Purged "${purgedName}" (${galleryId})`);
     res.json({ success: true });
 });
 
 // Empty entire trash
 app.delete('/api/galleries/trash', adminLimiter, requireAuth, (req, res) => {
-    const ids = Array.from(galleries.values()).filter(g => g.deleted).map(g => g.id);
-    ids.forEach(id => hardDeleteGallery(id));
-    saveGalleries();
-    console.log(`[GALLERY] Trash emptied — ${ids.length} gallery(ies) purged`);
-    res.json({ success: true, purged: ids.length });
+    const ids = db.prepare(`SELECT id FROM galleries WHERE deleted = 1`).all().map(r => r.id);
+    const purged = ops.purgeWithTolerance(ids, hardDeleteGallery);
+    console.log(`[GALLERY] Trash emptied — ${purged} gallery(ies) purged`);
+    res.json({ success: true, purged });
 });
 
 // Error handling — never expose internal details (file paths, stack traces) to the client
@@ -2885,17 +2901,19 @@ app.use((err, req, res, next) => {
 });
 
 app.listen(PORT, () => {
-    const activeGalleries = Array.from(galleries.values()).filter(g => !g.deleted).length;
-    const trashedGalleries = Array.from(galleries.values()).filter(g => g.deleted).length;
+    const activeGalleries = db.prepare(`SELECT COUNT(*) AS n FROM galleries WHERE deleted = 0`).get().n;
+    const trashedGalleries = db.prepare(`SELECT COUNT(*) AS n FROM galleries WHERE deleted = 1`).get().n;
+    const collectionCount = db.prepare(`SELECT COUNT(*) AS n FROM collections`).get().n;
     console.log(`[STARTUP] Delyvr running on port ${PORT}`);
     console.log(`[STARTUP] Data dir: ${DATA_DIR} | Trust proxy: ${TRUST_PROXY}`);
     if (ADMIN_ALLOWED_IPS.length > 0) console.log(`[STARTUP] IP allowlist: ${ADMIN_ALLOWED_IPS.join(', ')}`);
-    console.log(`[STARTUP] ${activeGalleries} gallery(ies) active, ${trashedGalleries} in trash | ${collections.size} collection(s)`);
+    console.log(`[STARTUP] ${activeGalleries} gallery(ies) active, ${trashedGalleries} in trash | ${collectionCount} collection(s)`);
 
     // Generate missing previews in background after server is ready
     setImmediate(async () => {
         let totalMissing = 0;
-        for (const [galleryId, gallery] of galleries.entries()) {
+        const galleryIds = db.prepare(`SELECT id FROM galleries`).all().map(r => r.id);
+        for (const galleryId of galleryIds) {
             const galleryPath = path.join(DATA_DIR, 'uploads', galleryId);
             if (!fs.existsSync(galleryPath)) continue;
             const files = fs.readdirSync(galleryPath).filter(f => !f.startsWith('.'));

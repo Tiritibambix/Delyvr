@@ -18,8 +18,9 @@ There is no public registration. The entire admin side is protected by a single 
 
 | Layer | Technology |
 |-------|-----------|
-| Runtime | Node.js 20+ |
-| Server framework | Express 4 |
+| Runtime | Node.js 22+ (Docker image: `node:24-alpine`) |
+| Server framework | Express 5 |
+| Database | SQLite via `better-sqlite3` (embedded, single file — no separate DB server/container) |
 | File uploads | multer (disk storage) |
 | Image processing | sharp (thumbnails, previews, OG images, background normalisation) |
 | ZIP creation | archiver |
@@ -38,6 +39,14 @@ There is no public registration. The entire admin side is protected by a single 
 ```
 delyvr/
 ├── server.js           # All server logic — Express app, routes, middleware
+├── db/
+│   ├── index.js        # openDatabase() — connection + PRAGMAs + schema bootstrap
+│   ├── operations.js   # The handful of multi-table operations, kept testable (see "Data persistence")
+│   └── schema.sql       # CREATE TABLE/INDEX statements, applied on every connection open
+├── scripts/
+│   ├── migrate-json-to-sqlite.js  # One-time migration CLI — `npm run migrate`
+│   └── lib/migrate-core.js         # Pure transform/decision logic the migration + its tests share
+├── test/                # node --test — schema constraints, the multi-table operations, the migration
 ├── package.json
 ├── Dockerfile
 ├── docker-compose.yml
@@ -61,9 +70,12 @@ delyvr/
     ├── previews/       # 1920px JPEG previews for lightbox, generated on upload or first request
     ├── og-cache/       # 1200×630 OG images, generated on first share
     ├── audio/          # Audio montages — collection-{id}.{ext} / gallery-{id}.{ext}, verbatim
-    ├── galleries.json  # Gallery metadata
-    ├── collections.json # Collection metadata
-    └── settings.json   # Site-wide settings (theme + social links) — created automatically
+    ├── delyvr.sqlite   # THE database — galleries, collections, settings, everything (see "Data persistence")
+    ├── delyvr.sqlite-wal / -shm  # WAL mode sidecar files — persist only because this whole
+    │                              # directory, not just the .sqlite file, is the Docker volume
+    ├── galleries.json  # Pre-migration data — kept on disk, UNUSED by the running server (see "Data persistence")
+    ├── collections.json # Pre-migration data — same
+    └── settings.json   # Pre-migration data — same
 ```
 
 ---
@@ -86,80 +98,81 @@ delyvr/
 
 ## Server Architecture (`server.js`)
 
-### Data models
+### Data persistence
 
-**Gallery** — stored in `galleries.json`, keyed by UUID v4:
+**SQLite (`data/delyvr.sqlite`), via `better-sqlite3`, is the sole source of truth** for
+galleries, collections and settings. Until late 2026 this was three JSON files
+(`galleries.json`/`collections.json`/`settings.json`) loaded into in-memory `Map`s at
+startup and rewritten whole on every mutation; it moved to a normalized schema ahead of
+the proofing/analytics work (client selection with quotas, per-photo star/color/status,
+engagement funnel), which needs joins and aggregates a `Map` scan can't give cheaply.
 
-```js
-{
-  id: string,
-  eventName: string,
-  created: string,          // ISO 8601
-  files: string[],          // filenames inside uploads/{id}/ — photos and videos
-  background: string|null,
-  downloadsEnabled: boolean, // default true (missing = true)
-  downloadCount: number,    // incremented on every ZIP download (default 0)
-  viewCount: number,        // unique view count (default 0)
-  viewerHashes: string[],   // SHA-256(ip+ua) per unique visitor — not security-sensitive
-  favorites: {              // filename → [visitorId, ...]
-    [filename: string]: string[]
-  },
-  dimensions: {             // filename → cached dimensions (duration for videos, animated for GIF/WebP)
-    [filename: string]: { w: number, h: number, duration?: number, animated?: boolean }
-  },
-  commentsEnabled: boolean, // default true (missing = true) — per-gallery toggle
-  comments: {               // filename → comments, oldest first
-    [filename: string]: { id: string, visitorId: string, name: string|null, text: string, createdAt: string }[]
-  },
-  clientLanguage: string|null // optional override: 'en'|'fr'|'es'|'pt'|'it', null/absent = inherit (see "Language settings")
-}
-```
+Not `node:sqlite` (Node's own built-in module): as of the migration it was still
+stability "1.2 — release candidate", and critically has no `transaction()` helper —
+meaning hand-written `BEGIN`/`COMMIT`/`ROLLBACK` around every multi-table write, more
+surface for a mistake than this project wants. `better-sqlite3`'s synchronous API also
+matches the rest of `server.js`'s style (no new async plumbing needed anywhere this
+touches), and its v13+ line ships prebuilt N-API binaries for `linux-musl` — no compiler
+toolchain needed in the Alpine-based Docker image.
 
-**Collection** — stored in `collections.json`, keyed by UUID v4:
+**Schema** (`db/schema.sql`, applied — all `CREATE ... IF NOT EXISTS` — on every
+connection open, so it's self-healing if a table were ever dropped by hand):
 
-```js
-{
-  id: string,
-  name: string,
-  created: string,
-  galleryIds: string[],     // ordered — order is the client display order
-  background: string|null,
-  downloadsEnabled: boolean, // default true (missing = true)
-  clientLanguage: string|null // optional override: 'en'|'fr'|'es'|'pt'|'it', null/absent = inherit
-}
-```
+| Table | Replaces | Notes |
+|---|---|---|
+| `galleries` | the old gallery JSON object's scalar fields | `id`, `event_name`, `created_at`, `background` (bookkeeping only — see below), `downloads_enabled`/`comments_enabled` (`INTEGER` 0/1, `NOT NULL DEFAULT 1`), `download_count`, `view_count`, `client_language` (`NULL` = "auto" — never the literal string), `deleted`/`deleted_at` (paired by a `CHECK`), `sort_order` (`NULL` = never manually reordered), `audio_filename`/`audio_stored`/`audio_size`/`audio_duration`/`audio_uploaded_at` (all-or-nothing, enforced by a `CHECK`) |
+| `collections` | the old collection JSON object | same shape minus `deleted`/`deleted_at`/`sort_order` — collections have no trash and no manual card order |
+| `collection_galleries` | `collection.galleryIds[]` | `(collection_id, gallery_id, position)` — `UNIQUE(gallery_id)` is what declares "a gallery belongs to at most one collection" instead of the old per-request scan of every collection; `position` preserves display order (this IS meaningful here, unlike `files` below) |
+| `files` | `gallery.files[]` **and** `gallery.dimensions{}` | one row per `(gallery_id, filename)` — membership and cached `width`/`height`/`duration`(video)/`animated`(image) live together now. **No `type`/`kind` column**: still derived from the extension via `isVideoFile()` at read time, same as before — storing it would be a redundant, driftable duplicate. **No proofing/rating/color/status columns yet** — the shape is already right for that work to be a plain `ALTER TABLE` when it starts, deliberately not added speculatively before then |
+| `favorites` | `gallery.favorites{}` | `(gallery_id, filename, visitor_id)` — `FOREIGN KEY (gallery_id, filename) REFERENCES files` means favoriting an already-deleted photo now 404s instead of silently creating a permanent orphan entry (see "Soft-delete and trash" and the photo-delete route — this is a deliberate, announced behavior change) |
+| `comments` | `gallery.comments{}` | same FK-to-`files` shape; `id` has no format `CHECK` — the app never validated a comment id's shape on delete either (plain string equality), so this isn't a regression |
+| `viewer_hashes` | `gallery.viewerHashes[]` | `(gallery_id, hash)` — SHA-256 hex of IP+UA, dedup for unique-view counting |
+| `settings` | `settings.json` | **singleton**, `id` pinned to `1` by a `CHECK`. `client_language` here is a **different domain** than the galleries/collections column of the same name: this one is `NOT NULL` and DOES store the literal string `'auto'` (a singleton has no "unset" state) |
+| `settings_socials` | `settings.socials{}` | key-value, not fixed columns or a JSON column — the server never enforced a fixed social-network key set (that list is a `shared.js` UI convention only), and a key-value table keeps every query in this project plain SQL |
 
-**Settings** — stored in `settings.json`:
+**PRAGMAs** (`db/index.js`'s `openDatabase()`, re-applied on **every** connection open —
+`journal_mode` is persisted in the file header, but `synchronous`/`foreign_keys`/
+`busy_timeout` are **not**, and reset to SQLite's own defaults — `foreign_keys` defaults
+**OFF** — on each new connection): `journal_mode = WAL`, `synchronous = NORMAL`,
+`busy_timeout = 5000`, `foreign_keys = ON`. Forgetting `foreign_keys = ON` on any one
+connection would silently disable every cascade this schema leans on.
 
-```js
-{
-  theme: 'dark' | 'light',  // default 'dark'
-  website: string,          // optional website URL
-  socials: {
-    instagram: string,
-    facebook: string,
-    pinterest: string,
-    tiktok: string,
-    linkedin: string,
-    '500px': string,
-    flickr: string,
-    behance: string
-  },
-  adminLanguage: 'en'|'fr'|'es'|'pt'|'it', // default 'en' — admin dashboard UI language
-  clientLanguage: 'auto'|'en'|'fr'|'es'|'pt'|'it', // default 'auto' — global fallback for client pages/OG tags
-  dateFormat: 'auto'|'dmy'|'mdy'|'ymd' // default 'auto' — ADMIN dashboard date/time display only
-}
-```
+**`background` (on both `galleries` and `collections`) is bookkeeping only, never the
+source of truth** — every route that needs to know whether a cover exists re-scans
+`data/backgrounds/` directly (`fs.readdirSync(...).find(f => f.startsWith(id))`), exactly
+as before the migration. This is a deliberate self-healing behavior (deleting a cover file
+by hand on the mounted volume makes it disappear instantly, no DB write involved) —
+preserved on purpose, don't "fix" it into trusting the column.
+
+**Migration (one-time, not auto-run).** `scripts/migrate-json-to-sqlite.js` reads the 3
+JSON files **read-only**, builds a temp SQLite file, verifies row counts and a sampled
+field-level diff, and only then renames it into place — a file at the final name is either
+a fully, correctly migrated database or doesn't exist at all. `server.js` fails fast (like
+the `ADMIN_PASSWORD` check) if `delyvr.sqlite` is missing; there is **no**
+auto-migrate-on-boot branch, so a deleted/corrupted `.sqlite` file can never silently
+resurrect stale JSON data. The original JSON files are **never** touched — they stay on
+disk as a permanent manual fallback, even though the server never reads them again after a
+successful migration. Run it via `docker compose run --rm delyvr npm run migrate`
+(idempotent per the guard above; `--force` rebuilds from the JSON, discarding any SQL-only
+writes since). The script also bootstraps a brand-new install with no JSON files at all
+(same code path, tolerating their absence), so it's required before the very first boot too.
+
+**`db/operations.js`** holds only the handful of operations that touch more than one table
+— `deleteGalleryRow`, `softDeleteGallery`, `restoreGallery`, `addGalleryToCollection`,
+`bumpGalleryDownloadCounts`, `purgeWithTolerance` — kept out of `server.js` for exactly one
+reason: `server.js` can't be `require()`d by a test (it immediately calls `app.listen()`),
+so anything with a `test/transactions.test.js` case has to live somewhere else. Everything
+else — the ~70 routes' single-table reads/writes — stays inline in `server.js`, same as
+the Map-based code it replaced.
 
 **`dateFormat` is an admin-only display preference** (validated server-side against
-`DATE_FORMATS`). Client pages deliberately keep formatting by the *visitor's* resolved
-locale — the photographer's own preference has no business changing what a client sees.
-`admin.html` reads it into `_dateFormat` in `applyTheme()` and renders every date through
-`formatAdminDate(iso, withTime)`; the explicit formats also fix the clock (24 h, except
-`mdy` which pairs with the 12 h convention), while `'auto'` defers to `toLocaleString()`.
-Add new admin date output through that helper, never `toLocaleDateString()` directly.
-
-`settings.json` is created automatically on first write. If absent, the server defaults to `{ theme: 'dark' }`.
+`DATE_FORMATS`, `CHECK`-enforced at the schema level too). Client pages deliberately keep
+formatting by the *visitor's* resolved locale — the photographer's own preference has no
+business changing what a client sees. `admin.html` reads it into `_dateFormat` in
+`applyTheme()` and renders every date through `formatAdminDate(iso, withTime)`; the
+explicit formats also fix the clock (24 h, except `mdy` which pairs with the 12 h
+convention), while `'auto'` defers to `toLocaleString()`. Add new admin date output through
+that helper, never `toLocaleDateString()` directly.
 
 ### Authentication & IP allowlist
 
@@ -194,11 +207,11 @@ All filesystem paths incorporating user-controlled values go through `safeResolv
 
 **Background/cover images are served under `publicReadLimiter`, not `adminLimiter`** (`/api/gallery/:id/background`, `/api/collection/:id/background`) even though the admin dashboard is their heaviest consumer — one request per gallery/collection card. This is why the admin card thumbnails must stay cacheable (see `bgVersion` below).
 
-`adminLimiter` also covers the list routes (`/api/galleries`, `/api/collections`) that the dashboard re-fetches after every action, so its cap is deliberately high (300/min): bulk admin work — e.g. resetting favorites/views/comments across many galleries in a row, each reset followed by a `loadGalleries()` refetch — must not trip `Too many admin requests, please slow down`. The routes are already behind `requireAuth` (+ optional IP allowlist), so the abuse surface is low.
+`adminLimiter` also covers the list routes (`/api/galleries`, `/api/collections`) that the dashboard re-fetches after every action, so its cap is deliberately high (300/min): bulk admin work — e.g. resetting favorites/views/comments across many galleries in a row, each followed by a refetch — must not trip `Too many admin requests, please slow down`. The routes are already behind `requireAuth` (+ optional IP allowlist), so the abuse surface is low.
 
 ### Settings persistence
 
-`loadSettings()` reads `settings.json` and merges with `SETTINGS_DEFAULTS`. `saveSettings(data)` writes the full object. Both are synchronous.
+`getSettings()` reads the singleton `settings` row plus every `settings_socials` row and reassembles the same `{ theme, website, socials, adminLanguage, clientLanguage, dateFormat }` shape the JSON-era code returned. `updateSettings(patch)` applies only the keys present in `patch` — route handlers keep doing their own validation first, exactly as before, and only pass through fields that already passed it — in one `db.transaction()`.
 
 `GET /api/settings` is public — all client pages call it on load to apply the theme and render the social footer.
 
@@ -211,12 +224,12 @@ All filesystem paths incorporating user-controlled values go through `safeResolv
 Two independent language concerns, with different scopes:
 
 - **Admin dashboard language** (`settings.adminLanguage`) — a single global preference, one of `en`/`fr`/`es`/`pt`/`it`. Set via the "Dashboard language" `<select>` in `admin.html`'s Profile modal (`POST /api/settings`). `admin.html` holds a full `adminTranslations` object (5 locales) and a global `t` reference reassigned by `applyAdminTranslations(lang)`, which also re-runs `loadGalleries()`/`loadCollections()`/`loadTrash()` so dynamically-rendered card templates pick up the new language. **Saving a language change triggers `location.reload()`** rather than attempting to live-retranslate every render call site — simpler and more robust given the size of the file.
-- **Client-facing language** (for the client document `preview.html` and the OG share-preview text) — resolved per gallery/collection through a 3-tier cascade, **most specific wins**: the gallery's own `clientLanguage` override, else the first collection containing it that has a `clientLanguage` override, else the global default `settings.clientLanguage` (`'auto'` = browser-detected, like before this feature existed). Implemented by two resolver functions reused everywhere a language decision is needed (OG tags, `/info`, `/api/collection/:id`):
+- **Client-facing language** (for the client document `preview.html` and the OG share-preview text) — resolved per gallery/collection through a 3-tier cascade, **most specific wins**: the gallery's own `clientLanguage` override, else its containing collection's override (at most one, by construction — `collection_galleries.gallery_id` is `UNIQUE`), else the global default `settings.clientLanguage` (`'auto'` = browser-detected, like before this feature existed). Implemented by two resolver functions reused everywhere a language decision is needed (OG tags, `/info`, `/api/collection/:id`):
   ```js
-  function resolveGalleryClientLanguage(galleryId) { /* gallery.clientLanguage → containing collection's → settings.clientLanguage */ }
-  function resolveCollectionClientLanguage(collectionId) { /* collection.clientLanguage → settings.clientLanguage */ }
+  function resolveGalleryClientLanguage(galleryId) { /* gallery's client_language → its single collection's client_language (one indexed lookup) → settings.clientLanguage */ }
+  function resolveCollectionClientLanguage(collectionId) { /* collection's client_language → settings.clientLanguage */ }
   ```
-  Set via `PATCH /api/gallery/:id/client-language` / `PATCH /api/collection/:id/client-language` (body `{ language }`, `'auto'` stored as `null`). The admin UI exposes this as a compact `<select>` on each gallery/collection card's `.gallery-bottom` row, plus a "Default client language" `<select>` (global) in the Profile modal.
+  Set via `PATCH /api/gallery/:id/client-language` / `PATCH /api/collection/:id/client-language` (body `{ language }`, `'auto'` stored as `NULL`). The admin UI exposes this as a compact `<select>` on each gallery/collection card's `.gallery-bottom` row, plus a "Default client language" `<select>` (global) in the Profile modal.
 
   Client pages no longer detect the browser language themselves. `GET /api/gallery/:id/info` and `GET /api/collection/:id` both include the resolved `clientLanguage` (`'auto'` or a specific code) in their response; each page reads `locale = resolveClientLocale(info.clientLanguage)` (defined in `shared.js`) only after that fetch resolves, then re-applies its static translations via an `applyStaticTranslations()` helper. `resolveClientLocale()` only handles the final `'auto'` → browser-detection step — the gallery/collection/global precedence itself lives server-side as the single source of truth, shared with the OG-tag generation below. `favorites.html` has no client-side i18n today and was left untouched.
 - **OG share-preview localization**: `OG_DESCRIPTIONS` (server.js) is a 3-key × 5-language map (`preview`, `collection`, `favorites`) read via `ogDescription(key, language)`, applied at all OG injection sites using the resolver functions above (gallery routes use `resolveGalleryClientLanguage`, the collection route uses `resolveCollectionClientLanguage`). `'auto'` falls back to English since OG crawlers have no browser to detect from.
@@ -238,7 +251,7 @@ The lightbox uses `previewUrl`. Originals are only served on explicit download v
 
 Galleries can contain video clips (`.mp4`, `.mov`, `.webm`, `.m4v`) alongside photos. There is no persisted "type" field — videos are detected purely by file extension via `isVideoFile()` (server), `isVideoFilename()`/`isMediaFile()` (admin.html), and `isVideoPhoto()` (preview.html).
 
-- `gallery.dimensions[filename]` gains an optional `duration` (seconds) for videos, captured via `ffprobe`.
+- A video's `files` row gains a `duration` (seconds) value, captured via `ffprobe`.
 - **Posters**: `generateVideoPoster()` extracts a frame with `ffmpeg` (1s into the clip, falling back to 0s for very short clips) and runs it through the same sharp pipeline as photo thumbnails/previews (400px/1920px JPEG, `.withMetadata()`), writing to `thumbnails/{galleryId}/{filename}.jpg` and `previews/{galleryId}/{filename}.jpg`. Triggered on upload, on startup (missing-preview scan), and on first `?thumb=1`/`?preview=1` request.
 - `ffmpeg`/`ffprobe` must be on `PATH` (installed via `apk add ffmpeg` in the Docker image). If missing, poster/metadata generation fails gracefully (caught and logged) — uploads still succeed, `/photos` returns `width/height/duration: null`, and the grid shows the ▶ badge without a poster image.
 - `?thumb=1`/`?preview=1` for a video filename serve the generated poster JPEG and return 404 if generation failed — they never fall back to the raw video file (an `<img>`/`<video poster>` src can't render a video container).
@@ -253,7 +266,7 @@ Galleries can contain video clips (`.mp4`, `.mov`, `.webm`, `.m4v`) alongside ph
 
 Animated images play in the lightbox while keeping a static thumbnail in the grid — the same "original served for playback, static derivative for the grid" split used for video. They are still `type: 'image'` (no separate media type); animation is detected structurally, not by extension.
 
-- **Detection**: `readDimensions()` reads `meta.pages` from sharp; `animated = pages > 1`. For animated images it uses `meta.pageHeight` (a single frame's height) rather than `meta.height`, which is the full vertical filmstrip height (`pageHeight × pages`) — without this the justified grid computes absurdly tall cells. The flag is cached in `gallery.dimensions[filename].animated` (stored explicitly as `true`/`false` once probed, so animatable formats aren't re-probed every request; absent = legacy record, never checked). `isAnimatableFile()` (ext ∈ `gif`/`webp`) gates whether probing is even worthwhile.
+- **Detection**: `readDimensions()` reads `meta.pages` from sharp; `animated = pages > 1`. For animated images it uses `meta.pageHeight` (a single frame's height) rather than `meta.height`, which is the full vertical filmstrip height (`pageHeight × pages`) — without this the justified grid computes absurdly tall cells. The flag is cached on the file's row, `files.animated` (`0`/`1` once probed via `setPhotoDimensions()`, so animatable formats aren't re-probed every request; `NULL` = never checked). `isAnimatableFile()` (ext ∈ `gif`/`webp`) gates whether probing is even worthwhile.
 - **Thumbnail (`?thumb=1`)**: unchanged — `generateThumbnail()` writes a static first-frame JPEG (sharp reads only frame 1 without `{ animated: true }`), keeping the grid light.
 - **Preview (`?preview=1`)**: for animated images the route serves the **original file** (`res.sendFile`, correct `image/gif`/`image/webp` Content-Type → the `<img>` animates natively). This branch runs **before** the `existsSync(previewPath)` check so a stale/legacy flattened JPEG is never served, and probes once (self-healing) for animatable files whose flag isn't recorded yet. `generatePreview()` early-returns for animated images so no JPEG preview is ever generated for them.
 - **`/photos` response**: each photo gains `animated: boolean`. `previewUrl`/`thumbnailUrl` are unchanged — the server decides per-file what those URLs return.
@@ -305,10 +318,11 @@ for their rounded corners, which clips the OG-regenerate tooltip when it opens u
 the header — so that tooltip carries `.og-tooltip--down` to open downward and stay inside
 the card.**
 
-- **Never added to any gallery's `files[]`.** That array drives the photo grid, the ZIP,
+- **Never added to the `files` table.** That table drives the photo grid, the ZIP,
   counts, dimension probing, the OG image fallback and the stem sort — an audio file has
-  no business in any of them. It lives only in `collection.audio`
-  (`{ filename, stored, size, duration, uploadedAt }`).
+  no business in any of them. Its metadata lives only in the owning gallery/collection's
+  own `audio_filename`/`audio_stored`/`audio_size`/`audio_duration`/`audio_uploaded_at`
+  columns (all-or-nothing, enforced by a schema `CHECK`).
 - **Upload**: `uploadAudio` is a third multer instance — **disk** storage (a montage is
   50–150 MB, `memoryStorage` would be wrong), `MAX_AUDIO_MB` (default 150),
   filter on `AUDIO_EXTENSIONS` or an `audio/*` MIME. `POST /api/collection/:id/audio`
@@ -326,7 +340,7 @@ the card.**
   **mtime `?v=` token** on the URL (same idea as `bgVersion`) so a replaced track busts the
   24 h cache while an unchanged one stays cached — it matters a lot at this file size.
   `totalSizeBytes` stays **photos only**; the montage is excluded, as is the ZIP.
-- Deleting a collection removes the file via `deleteCollectionAudioFiles()`.
+- Deleting a collection removes the file via `deleteAudioFiles()`; deleting a gallery (hard-delete) does the same for its own montage.
 - **Client player** (`preview.html`): `preload="none"` so nothing is fetched until the
   visitor asks. The UI is a **single small button** — scrubbing, skipping and the title are
   handed to the OS lock-screen controls via the **Media Session API** instead of costing
@@ -382,7 +396,9 @@ All client pages (`preview.html`, `favorites.html`) call `GET /api/settings` on 
 
 ### Soft-delete and trash
 
-`DELETE /api/gallery/:id` soft-deletes only: sets `gallery.deleted = true` and `gallery.deletedAt = ISO date`, leaves files on disk. `hardDeleteGallery(id)` removes all files (uploads, thumbnails, previews, background, OG cache) and removes the gallery from any collections. `purgeExpiredTrash()` auto-purges galleries where `deletedAt` is older than `TRASH_RETENTION_MS` (3 days). It runs at startup **and** on an hourly `setInterval` (`.unref()`ed) — the startup-only call never fired on a long-running server, so expired trash sat forever until the next restart. Each `hardDeleteGallery` inside the loop is wrapped in `try/catch` so an fs failure can't abort the sweep or crash the timer. All public routes check `getActiveGallery(galleryId)` and return 404 for deleted galleries.
+`DELETE /api/gallery/:id` soft-deletes only — `ops.softDeleteGallery(db, galleryId, deletedAtIso)` sets `deleted = 1`/`deleted_at` and strips the gallery's `collection_galleries` row, in one transaction, leaving files on disk. **Deliberately no `AND deleted = 0` guard**: calling it again on an already-trashed gallery re-stamps `deleted_at`, silently resetting the 3-day retention clock — a pre-existing quirk, preserved rather than tightened (see "Conventions" below). `hardDeleteGallery(id)` removes all files (uploads, thumbnails, previews, background, OG cache, audio) then `ops.deleteGalleryRow(db, galleryId)` — one `DELETE`, whose `ON DELETE CASCADE`s remove `files`/`favorites`/`comments`/`viewer_hashes`/`collection_galleries` automatically (replacing the old manual "scan every collection" loop). `purgeExpiredTrash()` auto-purges galleries where `deleted_at` is older than `TRASH_RETENTION_MS` (3 days). It runs at startup **and** on an hourly `setInterval` (`.unref()`ed) — the startup-only call never fired on a long-running server, so expired trash sat forever until the next restart. Each `hardDeleteGallery` inside the loop (and in `DELETE /api/galleries/trash`, via `ops.purgeWithTolerance()`) is wrapped in `try/catch` so an fs failure can't abort the sweep or crash the timer. All public routes check `getActiveGallery(galleryId)` and return 404 for deleted galleries.
+
+**Favoriting or commenting on an already-deleted photo now 404s** instead of silently creating a permanent, invisible orphan entry — the old JSON model's `favorites[filename]`/`comments[filename]` were created with no existence check at all, and `DELETE /api/gallery/:id/photo/:filename` never cleaned them up. The `favorites`/`comments` tables' `FOREIGN KEY ... REFERENCES files` makes this structurally impossible going forward, and the same cascade retroactively cleans up any favorites/comments still orphaned from the old model once that photo's `files` row is ever touched again. Pre-existing orphans already in a real installation's data are dropped (not migrated, not recovered) by `scripts/migrate-json-to-sqlite.js`, counted and reported in its summary output — recovering them isn't possible since the old model never recorded when the referenced photo was deleted.
 
 ### OG images
 
@@ -394,14 +410,14 @@ Gallery OG images are generated at `GET /api/gallery/:id/og-image`, cached in `o
 
 ### Comments
 
-Clients can leave a text comment on individual photos/videos from the lightbox. Comments are **public** — every visitor of the gallery sees every comment under a given photo (guestbook model, not private feedback-to-photographer), confirmed as the intended behavior. `gallery.commentsEnabled` (default `true`, same `!== false` convention as `downloadsEnabled`) lets the photographer turn this off per gallery via the "Comments" toggle next to "Downloads" on each admin gallery card (`PATCH /api/gallery/:id/comments-enabled`).
+Clients can leave a text comment on individual photos/videos from the lightbox. Comments are **public** — every visitor of the gallery sees every comment under a given photo (guestbook model, not private feedback-to-photographer), confirmed as the intended behavior. `galleries.comments_enabled` (`NOT NULL DEFAULT 1`) lets the photographer turn this off per gallery via the "Comments" toggle next to "Downloads" on each admin gallery card (`PATCH /api/gallery/:id/comments-enabled`).
 
-**Collection-level toggle**: mirrors the existing `downloadsEnabled`/`isGalleryBlockedByCollection()` pattern exactly. `collection.commentsEnabled` (default `true`) is toggled via `PATCH /api/collection/:id/comments-enabled` and a "Comments" switch next to "Downloads" on each admin collection card (`toggleCollectionComments()`). `isGalleryBlockedByCollectionForComments(galleryId)` checks whether any collection containing the gallery has `commentsEnabled === false`; it's combined with the gallery's own `commentsEnabled` in `GET /api/gallery/:id/info`, `GET /api/gallery/:id/photos` (both consumed by `preview.html` to show/hide the comment button), and enforced server-side as a 403 in `POST /api/gallery/:id/comments`. A gallery's comments can therefore be turned off either directly or by being in a collection with comments disabled — same precedence as downloads.
+**Collection-level toggle**: mirrors the existing `downloadsEnabled`/`isGalleryBlockedByCollection()` pattern exactly. `collections.comments_enabled` (`NOT NULL DEFAULT 1`) is toggled via `PATCH /api/collection/:id/comments-enabled` and a "Comments" switch next to "Downloads" on each admin collection card (`toggleCollectionComments()`). `isGalleryBlockedByCollectionForComments(galleryId)` joins `collection_galleries`→`collections` (at most one row, `UNIQUE(gallery_id)`) and checks `comments_enabled = 0`; it's combined with the gallery's own `comments_enabled` in `GET /api/gallery/:id/info`, `GET /api/gallery/:id/photos` (both consumed by `preview.html` to show/hide the comment button), and enforced server-side as a 403 in `POST /api/gallery/:id/comments`. A gallery's comments can therefore be turned off either directly or by being in a collection with comments disabled — same precedence as downloads.
 
 **Collection toggle = global, gallery toggle = case-by-case override**: the collection's downloads/comments toggle is the master switch for every gallery inside it; the gallery's own toggle keeps its stored value underneath but only takes effect once the collection allows it again. To avoid the admin UI looking misleading (a gallery's toggle showing "on" while actually blocked by its collection), `renderGalleryItems()` (admin.html) looks up each gallery's containing collection in `_collectionsData` and adds a `.blocked-by-collection` class (dims the switch via opacity) plus a tooltip naming the blocking collection, while leaving the checkbox's `checked` state — and the ability to keep clicking it — tied to the gallery's own stored value. `toggleCollectionDownloads()`/`toggleCollectionComments()` update `_collectionsData` in place and re-render the gallery list (respecting the active search filter) so the dimmed state appears immediately; `loadCollections()` does the same on initial load in case it resolves after `loadGalleries()`.
 
 - **Identification**: reuses the same anonymous `visitorId` (localStorage) already used for favorites — no accounts. Additionally, a self-declared display **name is optional**: the first time a visitor opens the comment drawer, an editable "Your name" field is shown; once they post, the name is saved to `localStorage` (`delyvr_commenter_name`, separate from `visitorId`) and reused for later comments (with a "change name" link to edit it). Empty name → displayed as "Guest". No verification of any kind.
-- **Storage**: `gallery.comments[filename]` is an array of `{ id (uuidv4), visitorId, name, text, createdAt }`, oldest first. `POST /api/gallery/:id/comments` validates and trims `text` (required, max 500 chars) and `name` (optional, max 60 chars), strips control characters, and 403s if `commentsEnabled === false`.
+- **Storage**: one row per comment in the `comments` table (`id (uuidv4)`, `gallery_id`, `filename`, `visitor_id`, `name`, `text`, `created_at`), fetched `ORDER BY created_at ASC` for oldest-first. `POST /api/gallery/:id/comments` validates and trims `text` (required, max 500 chars) and `name` (optional, max 60 chars), strips control characters, and 403s if `comments_enabled = 0`.
 - **Routes**: `POST .../comments` (public, `publicWriteLimiter`) to add; `GET .../comments-public?filename=X` (public, `publicReadLimiter`) to fetch one photo's thread — fetched lazily only when its drawer is opened, never preloaded for the whole gallery; `GET .../comments` (admin) flattened across all photos; `DELETE .../comments/:filename/:commentId` (admin) removes a single spam comment; `DELETE .../comments` (admin) clears all, mirroring `resetFavorites()`. `GET .../photos` also returns `commentCount` per photo so the grid badge doesn't need an extra request.
 - **Admin moderation is a full page**, not a modal: route `#/gallery/:id/comments` (view `view-gallery-comments`). Delyvr is also used for **peer critique**, so the photo must be readable *beside* its thread — the old 700px modal with 48px cropped thumbnails and every thread in one scroll made that impossible. `loadGalleryCommentsPage()` fetches `GET .../comments` (the threads) and `GET .../photos` (gallery order) in parallel and joins them by `filename`; the photo's index supplies the **critique number**, matching `preview.html`'s numbering. Layout is a left rail of commented photos (uncropped thumbnails, `#N`, count) plus a right pane showing the selected photo large with its full thread. Comments whose photo was since deleted are still listed so they remain removable. `deleteComment()` mutates the local state and **re-renders** rather than doing DOM surgery, and `viewComments(galleryId)` on the gallery card simply sets the hash.
 - **UI**: a speech-bubble button (with an unread-style count badge) sits next to the favorite/download buttons in both the desktop cluster and the mobile bottom bar, opening a drawer — a fixed side panel on desktop, a bottom sheet on mobile — with the thread, an optional name field, and a textarea (Enter to send, Shift+Enter for newline). Posting is optimistic, matching `toggleFavorite()`'s update/revert-on-error shape, with a toast reusing the `#favToast` element (`showToast()` was generalized from `showFavToast()`).
@@ -606,13 +622,13 @@ resolved from `data.clientLanguage` via `resolveClientLocale()`, gallery covers 
 ## Conventions and Gotchas
 
 - **No build step.** Do not introduce a bundler, TypeScript, or a frontend framework.
-- **No external database.** Metadata lives in `galleries.json`, `collections.json`, `settings.json`.
-- **`downloadsEnabled` defaults to `true`.** Check is `gallery.downloadsEnabled !== false`.
+- **SQLite, not an external database server.** `data/delyvr.sqlite` via `better-sqlite3` — embedded, single file, no separate container/process. See "Data persistence". Never `require('../server.js')` from a test or script — it immediately calls `app.listen()`/`process.exit()`; multi-table logic worth testing belongs in `db/operations.js` instead.
+- **`downloads_enabled`/`comments_enabled` default to `1` (`NOT NULL DEFAULT 1` in the schema).** Most route checks still read `!== false`/`=== 0` depending on which representation is in hand at that point (a JS boolean from a mapped row, or the raw SQLite integer) — both are correct, pick whichever the surrounding code already has rather than converting.
 - **`safeResolvePath(base, ...segments)`** must be used for every path incorporating a user-controlled value.
 - **`escape-html` package** used directly (not via alias) for OG tag injection — CodeQL recognises it.
 - **`ADMIN_ALLOWED_IPS`** is checked inside `requireAuth` — applies to all admin routes automatically. No need to add middleware per route.
 - **`[AUTH]` log prefix** — all auth failures and IP blocks are logged with this prefix for easy filtering: `docker logs delyvr | grep '\[AUTH\]'`.
-- **Settings defaults** — `loadSettings()` merges file content with `SETTINGS_DEFAULTS`. Missing keys are filled in without overwriting existing values.
+- **Settings defaults** — enforced by the schema itself (`settings` row's column `DEFAULT`s), not by a JS merge step. `getSettings()`/`updateSettings()` just read/patch the singleton row.
 - **Social footer** hidden entirely when no links are configured — `container.style.display = 'none'` if `links.length === 0`.
 - **Justified gallery layout is JS-driven.** Rows in `.gallery-grid` are built in `buildJustifiedRows()` and recomputed on resize. Do not reintroduce CSS `columns` masonry here.
 - **Mobile pinch-zoom uses `transform: translate(...) scale(...)`** on `.lightbox-img`, clamped to the real rendered image bounds (via `naturalWidth`/`naturalHeight` + `object-fit: contain` math). Always call `resetZoom()` from `openLightbox` / `closeLightbox` / `navigateLightbox`. See "Mobile lightbox" section for the zoom-toward-midpoint formula.
@@ -623,8 +639,11 @@ resolved from `data.clientLanguage` via `resolveClientLocale()`, gallery covers 
 - **`?password` query param removed.** `requireAuth` only checks `X-Admin-Password` header.
 - **Visitor IDs are not authenticated.** Random client-generated strings, not security-sensitive.
 - **Gallery links are public by UUID.** No per-gallery password system.
-- **Soft-delete only.** `DELETE /api/gallery/:id` never removes files. `hardDeleteGallery(id)` does. Always call `saveGalleries()` after `hardDeleteGallery`. Auto-purge runs on startup **and** hourly via `purgeExpiredTrash()` (a `setInterval` — not startup-only, or expired trash never clears on a long-running server).
-- **`getActiveGallery(galleryId)`** returns the gallery only if it exists and `!gallery.deleted`. Use it in all public routes to return 404 for trashed galleries.
+- **Soft-delete only.** `DELETE /api/gallery/:id` never removes files. `hardDeleteGallery(id)` does, via `ops.deleteGalleryRow()` — no separate "save" step needed, the `DELETE` statement (and its `ON DELETE CASCADE`s) commit on their own. Auto-purge runs on startup **and** hourly via `purgeExpiredTrash()` (a `setInterval` — not startup-only, or expired trash never clears on a long-running server).
+- **`getActiveGallery(galleryId)`** returns the mapped gallery object only if it exists and `deleted = 0`. Use it in all public routes to return 404 for trashed galleries.
+- **`db.transaction(fn)` for anything touching more than one table/statement**, even when a single statement would already be atomic on its own — see every multi-table write in `db/operations.js` and `server.js` for the pattern (`db.transaction(() => { ... })()` — called immediately).
+- **PRAGMA `foreign_keys` is NOT persisted** — unlike `journal_mode`, it resets to OFF on every new connection and must be re-applied. If cascades ever seem to silently stop working, this is the first thing to check.
+- **Migrating the schema itself** (adding a column/table later, e.g. for proofing/analytics): edit `db/schema.sql` as `CREATE ... IF NOT EXISTS` / rely on an explicit `ALTER TABLE` run once — this project has no formal migration-numbering system beyond the one JSON→SQLite migration script, by design (there's exactly one schema version in play at a time, the running one).
 - **ZIP downloads use `store: true`** (no compression). Content-Length is intentionally omitted — archiver adds variable per-file data descriptors during streaming that make pre-calculation unreliable and cause "unexpected end of archive" errors.
 - **Filename sanitisation allows Unicode.** Only truly dangerous filesystem characters are stripped (`<>:"/\|?*` and control chars). Accents, spaces, ampersands, and **apostrophes** are preserved. `SAFE_FILENAME_RE` reflects this.
 - **Never embed a filename in an inline `onclick` string in admin.html.** Filenames can contain apostrophes (`l'été.jpg`). `escapeAttr` turns `'` into `&#39;`, which the browser HTML-decodes back to `'` *before* the JS in `onclick=` is parsed, breaking the handler. Attach handlers via a closure (`el.onclick = …`) or `data-*` attributes + a delegated listener reading `dataset` instead. The uuid `commentId` is safe, but the filename is not.
