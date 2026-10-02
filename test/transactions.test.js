@@ -81,12 +81,14 @@ describe('softDeleteGallery (transaction B)', () => {
         db.close();
     });
 
-    test('calling it again on an already-trashed gallery re-stamps deleted_at (deliberately preserved quirk, not guarded by "AND deleted = 0")', () => {
+    test('calling it again on an already-trashed gallery is an idempotent no-op — it no longer resets the retention clock', () => {
         const db = freshDb();
         seedGallery(db, 'g1');
-        softDeleteGallery(db, 'g1', '2026-06-01T00:00:00.000Z');
-        softDeleteGallery(db, 'g1', '2026-06-05T00:00:00.000Z');
-        assert.equal(db.prepare(`SELECT deleted_at FROM galleries WHERE id = 'g1'`).get().deleted_at, '2026-06-05T00:00:00.000Z');
+        const first = softDeleteGallery(db, 'g1', '2026-06-01T00:00:00.000Z');
+        const second = softDeleteGallery(db, 'g1', '2026-06-05T00:00:00.000Z');
+        assert.equal(first.found, true);
+        assert.equal(second.found, true); // gallery exists — just already trashed, not an error
+        assert.equal(db.prepare(`SELECT deleted_at FROM galleries WHERE id = 'g1'`).get().deleted_at, '2026-06-01T00:00:00.000Z');
         db.close();
     });
 });

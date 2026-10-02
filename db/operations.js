@@ -44,18 +44,25 @@ function deleteGalleryRow(db, galleryId) {
  * marked deleted while still listed as a live member of a collection, or
  * vice versa.
  *
- * Deliberately has NO "AND deleted = 0" guard on the UPDATE, matching the
- * live app's existing behaviour exactly: calling this again on an already-
- * trashed gallery re-stamps deleted_at to `deletedAtIso`, silently resetting
- * the 3-day retention clock. This is a pre-existing quirk, not something
- * introduced by this migration — see CLAUDE.md's "Noted but out of scope".
+ * Guarded by "AND deleted = 0": calling this again on an already-trashed
+ * gallery is now an idempotent no-op instead of re-stamping `deleted_at` and
+ * silently resetting the 3-day retention clock. That re-stamping was a
+ * pre-existing quirk in the old JSON-backed code (fixed here as a deliberate,
+ * separate cleanup, not a side effect of the SQLite migration itself).
  */
 function softDeleteGallery(db, galleryId, deletedAtIso) {
     return db.transaction(() => {
-        const info = db.prepare(`UPDATE galleries SET deleted = 1, deleted_at = ? WHERE id = ?`).run(deletedAtIso, galleryId);
-        if (info.changes === 0) return { found: false };
-        db.prepare(`DELETE FROM collection_galleries WHERE gallery_id = ?`).run(galleryId);
-        return { found: true };
+        const info = db.prepare(`UPDATE galleries SET deleted = 1, deleted_at = ? WHERE id = ? AND deleted = 0`).run(deletedAtIso, galleryId);
+        if (info.changes > 0) {
+            db.prepare(`DELETE FROM collection_galleries WHERE gallery_id = ?`).run(galleryId);
+            return { found: true };
+        }
+        // 0 rows changed: either the gallery doesn't exist, or it's already
+        // trashed (the idempotent case this guard exists for) — distinguish
+        // the two for callers that care (the route itself already checks
+        // existence before calling this, so it doesn't need to).
+        const exists = db.prepare(`SELECT 1 FROM galleries WHERE id = ?`).get(galleryId);
+        return { found: !!exists };
     })();
 }
 

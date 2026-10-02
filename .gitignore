@@ -11,7 +11,13 @@ data/
 uploads/
 backgrounds/
 thumbnails/
+previews/
+og-cache/
+audio/
+tmp/
 galleries.json
+collections.json
+settings.json
 delyvr.sqlite*
 
 # Old branch reference code (local only)

@@ -200,7 +200,7 @@ function hardDeleteGallery(galleryId) {
     const backgroundsDir = path.join(DATA_DIR, 'backgrounds');
     if (fs.existsSync(backgroundsDir)) {
         const bgFile = fs.readdirSync(backgroundsDir).find(f => f.startsWith(galleryId));
-        if (bgFile) fs.unlinkSync(path.join(backgroundsDir, bgFile));
+        if (bgFile) fs.unlinkSync(safeResolvePath(backgroundsDir, bgFile));
     }
     fs.rmSync(safeResolvePath(THUMBNAILS_DIR, galleryId), { recursive: true, force: true });
     fs.rmSync(safeResolvePath(PREVIEWS_DIR, galleryId), { recursive: true, force: true });
@@ -282,7 +282,7 @@ function reconcileGalleries() {
             } else if (knownIds.has(base)) {
                 continue;
             }
-            try { fs.unlinkSync(path.join(bgDir, entry)); } catch (_) {}
+            try { fs.unlinkSync(safeResolvePath(bgDir, entry)); } catch (_) {}
         }
     }
 
@@ -812,7 +812,7 @@ function deleteAudioFiles(key) {
     if (!fs.existsSync(AUDIO_DIR)) return;
     for (const f of fs.readdirSync(AUDIO_DIR)) {
         if (f.startsWith(`${key}.`)) {
-            try { fs.unlinkSync(path.join(AUDIO_DIR, f)); } catch (_) {}
+            try { fs.unlinkSync(safeResolvePath(AUDIO_DIR, f)); } catch (_) {}
         }
     }
 }
@@ -1260,7 +1260,7 @@ app.post('/api/gallery/:galleryId/background', adminLimiter, requireAuth, valida
         // Delete old background (any extension)
         if (fs.existsSync(backgroundsDir)) {
             const existing = fs.readdirSync(backgroundsDir).find(f => f.startsWith(galleryId));
-            if (existing) fs.unlinkSync(path.join(backgroundsDir, existing));
+            if (existing) fs.unlinkSync(safeResolvePath(backgroundsDir, existing));
         }
 
         // Invalidate og-cache so it is regenerated with the new image
@@ -1270,7 +1270,7 @@ app.post('/api/gallery/:galleryId/background', adminLimiter, requireAuth, valida
         // Convert and save as JPEG. `.withMetadata()` keeps the source ICC profile
         // (Adobe RGB / Display P3) — without it the hero renders as sRGB and looks
         // warmer/oversaturated next to the gallery photos, which do keep theirs.
-        const dest = path.join(backgroundsDir, `${galleryId}.jpg`);
+        const dest = safeResolvePath(backgroundsDir, `${galleryId}.jpg`);
         await sharp(req.file.buffer)
             .resize(2400, null, { withoutEnlargement: true })
             .withMetadata()
@@ -1296,7 +1296,7 @@ app.get('/api/background/:galleryId', publicReadLimiter, validateGalleryId, (req
     if (fs.existsSync(backgroundsDir)) {
         const backgroundFile = fs.readdirSync(backgroundsDir).find(f => f.startsWith(galleryId));
         if (backgroundFile) {
-            return res.sendFile(path.join(backgroundsDir, backgroundFile));
+            return res.sendFile(safeResolvePath(backgroundsDir, backgroundFile));
         }
     }
 
@@ -1311,7 +1311,7 @@ app.get('/api/gallery/:galleryId/background', publicReadLimiter, validateGallery
     if (fs.existsSync(backgroundsDir)) {
         const backgroundFile = fs.readdirSync(backgroundsDir).find(f => f.startsWith(galleryId));
         if (backgroundFile) {
-            const fullPath = path.join(backgroundsDir, backgroundFile);
+            const fullPath = safeResolvePath(backgroundsDir, backgroundFile);
             if (req.query.thumb === '1') {
                 res.setHeader('Content-Type', 'image/jpeg');
                 res.setHeader('Cache-Control', 'public, max-age=86400');
@@ -1357,7 +1357,7 @@ app.post('/api/gallery/:galleryId/audio', adminLimiter, requireAuth, validateGal
     const kept = path.basename(req.file.path);
     for (const f of fs.readdirSync(AUDIO_DIR)) {
         if (f.startsWith(`gallery-${galleryId}.`) && f !== kept) {
-            try { fs.unlinkSync(path.join(AUDIO_DIR, f)); } catch (_) {}
+            try { fs.unlinkSync(safeResolvePath(AUDIO_DIR, f)); } catch (_) {}
         }
     }
 
@@ -1394,7 +1394,7 @@ app.get('/api/gallery/:galleryId/audio', imageLimiter, validateGalleryId, (req, 
     const ext = path.extname(file).toLowerCase().slice(1);
     res.setHeader('Content-Type', AUDIO_MIME_BY_EXT[ext] || 'application/octet-stream');
     res.setHeader('Cache-Control', 'public, max-age=86400');
-    res.sendFile(path.join(AUDIO_DIR, file));
+    res.sendFile(safeResolvePath(AUDIO_DIR, file));
 });
 
 // Toggle downloads on/off for a gallery
@@ -1706,7 +1706,7 @@ app.get('/api/gallery/:galleryId/og-image', imageLimiter, validateGalleryId, asy
     const backgroundsDir = path.join(DATA_DIR, 'backgrounds');
     if (fs.existsSync(backgroundsDir)) {
         const bgFile = fs.readdirSync(backgroundsDir).find(f => f.startsWith(galleryId));
-        if (bgFile) sourceFile = path.join(backgroundsDir, bgFile);
+        if (bgFile) sourceFile = safeResolvePath(backgroundsDir, bgFile);
     }
 
     if (!sourceFile) {
@@ -1759,7 +1759,7 @@ app.get('/api/collection/:collectionId/og-image', imageLimiter, validateCollecti
     const backgroundsDir = path.join(DATA_DIR, 'backgrounds');
     if (fs.existsSync(backgroundsDir)) {
         const colBg = fs.readdirSync(backgroundsDir).find(f => f.startsWith(`collection-${collectionId}`));
-        if (colBg) sourceFile = path.join(backgroundsDir, colBg);
+        if (colBg) sourceFile = safeResolvePath(backgroundsDir, colBg);
     }
     if (!sourceFile) {
         const galleryIds = db.prepare(`SELECT gallery_id FROM collection_galleries WHERE collection_id = ? ORDER BY position`).all(collectionId).map(r => r.gallery_id);
@@ -1767,7 +1767,7 @@ app.get('/api/collection/:collectionId/og-image', imageLimiter, validateCollecti
             if (sourceFile) break;
             if (fs.existsSync(backgroundsDir)) {
                 const gbg = fs.readdirSync(backgroundsDir).find(f => f.startsWith(gid));
-                if (gbg) { sourceFile = path.join(backgroundsDir, gbg); break; }
+                if (gbg) { sourceFile = safeResolvePath(backgroundsDir, gbg); break; }
             }
             const gPath = safeResolvePath(path.join(DATA_DIR, 'uploads'), gid);
             if (fs.existsSync(gPath)) {
@@ -1869,7 +1869,7 @@ app.get('/api/gallery/:galleryId/info', publicReadLimiter, validateGalleryId, (r
     let audio = null;
     if (gAudioFile && gallery && gallery.audio_filename) {
         let version = null;
-        try { version = Math.floor(fs.statSync(path.join(AUDIO_DIR, gAudioFile)).mtimeMs); } catch (_) {}
+        try { version = Math.floor(fs.statSync(safeResolvePath(AUDIO_DIR, gAudioFile)).mtimeMs); } catch (_) {}
         audio = {
             url: `/api/gallery/${galleryId}/audio${version ? `?v=${version}` : ''}`,
             filename: gallery.audio_filename || null,
@@ -2312,7 +2312,7 @@ app.get('/api/collections', adminLimiter, requireAuth, (req, res) => {
         let bgVersion = null;
         if (bgFile) {
             try {
-                bgVersion = Math.floor(fs.statSync(path.join(bgDirC, bgFile)).mtimeMs);
+                bgVersion = Math.floor(fs.statSync(safeResolvePath(bgDirC, bgFile)).mtimeMs);
             } catch (_) { /* file vanished between readdir and stat */ }
         }
         return {
@@ -2384,7 +2384,7 @@ app.get('/api/collection/:collectionId', publicReadLimiter, validateCollectionId
     let audio = null;
     if (audioFile && collection.audio_filename) {
         let version = null;
-        try { version = Math.floor(fs.statSync(path.join(AUDIO_DIR, audioFile)).mtimeMs); } catch (_) {}
+        try { version = Math.floor(fs.statSync(safeResolvePath(AUDIO_DIR, audioFile)).mtimeMs); } catch (_) {}
         audio = {
             url: `/api/collection/${collectionId}/audio${version ? `?v=${version}` : ''}`,
             filename: collection.audio_filename || null,
@@ -2427,8 +2427,8 @@ app.post('/api/collection/:collectionId/background', adminLimiter, requireAuth, 
         const backgroundsDir = path.join(DATA_DIR, 'backgrounds');
         if (!fs.existsSync(backgroundsDir)) fs.mkdirSync(backgroundsDir, { recursive: true });
         const existing = fs.readdirSync(backgroundsDir).find(f => f.startsWith(`collection-${collectionId}`));
-        if (existing) fs.unlinkSync(path.join(backgroundsDir, existing));
-        const dest = path.join(backgroundsDir, `collection-${collectionId}.jpg`);
+        if (existing) fs.unlinkSync(safeResolvePath(backgroundsDir, existing));
+        const dest = safeResolvePath(backgroundsDir, `collection-${collectionId}.jpg`);
         // `.withMetadata()` keeps the source ICC profile — see the gallery background route.
         await sharp(req.file.buffer)
             .resize(2400, null, { withoutEnlargement: true })
@@ -2453,7 +2453,7 @@ app.get('/api/collection/:collectionId/background', publicReadLimiter, validateC
     if (fs.existsSync(backgroundsDir)) {
         const file = fs.readdirSync(backgroundsDir).find(f => f.startsWith(`collection-${collectionId}`));
         if (file) {
-            const fullPath = path.join(backgroundsDir, file);
+            const fullPath = safeResolvePath(backgroundsDir, file);
             if (req.query.thumb === '1') {
                 res.setHeader('Content-Type', 'image/jpeg');
                 res.setHeader('Cache-Control', 'public, max-age=86400');
@@ -2499,7 +2499,7 @@ app.post('/api/collection/:collectionId/audio', adminLimiter, requireAuth, valid
     const kept = path.basename(req.file.path);
     for (const f of fs.readdirSync(AUDIO_DIR)) {
         if (f.startsWith(`collection-${collectionId}.`) && f !== kept) {
-            try { fs.unlinkSync(path.join(AUDIO_DIR, f)); } catch (_) {}
+            try { fs.unlinkSync(safeResolvePath(AUDIO_DIR, f)); } catch (_) {}
         }
     }
 
@@ -2541,7 +2541,7 @@ app.get('/api/collection/:collectionId/audio', imageLimiter, validateCollectionI
     // Set before sendFile: the `send` library skips its own guess when the header exists.
     res.setHeader('Content-Type', AUDIO_MIME_BY_EXT[ext] || 'application/octet-stream');
     res.setHeader('Cache-Control', 'public, max-age=86400');
-    res.sendFile(path.join(AUDIO_DIR, file));
+    res.sendFile(safeResolvePath(AUDIO_DIR, file));
 });
 
 // Add a gallery to a collection (admin only)
@@ -2643,7 +2643,10 @@ app.patch('/api/collection/:collectionId/downloads', adminLimiter, requireAuth, 
     const { collectionId } = req.params;
     const collectionExists = db.prepare(`SELECT 1 FROM collections WHERE id = ?`).get(collectionId);
     if (!collectionExists) return res.status(404).json({ error: 'Collection not found' });
-    const enabled = req.body.enabled !== false;
+    const enabled = req.body.enabled;
+    if (enabled !== true && enabled !== false) {
+        return res.status(400).json({ error: 'enabled must be a boolean' });
+    }
     db.prepare(`UPDATE collections SET downloads_enabled = ? WHERE id = ?`).run(enabled ? 1 : 0, collectionId);
     res.json({ success: true, downloadsEnabled: enabled });
 });
@@ -2653,7 +2656,10 @@ app.patch('/api/collection/:collectionId/comments-enabled', adminLimiter, requir
     const { collectionId } = req.params;
     const collectionExists = db.prepare(`SELECT 1 FROM collections WHERE id = ?`).get(collectionId);
     if (!collectionExists) return res.status(404).json({ error: 'Collection not found' });
-    const enabled = req.body.enabled !== false;
+    const enabled = req.body.enabled;
+    if (enabled !== true && enabled !== false) {
+        return res.status(400).json({ error: 'enabled must be a boolean' });
+    }
     db.prepare(`UPDATE collections SET comments_enabled = ? WHERE id = ?`).run(enabled ? 1 : 0, collectionId);
     res.json({ success: true, commentsEnabled: enabled });
 });
@@ -2685,7 +2691,7 @@ app.delete('/api/collection/:collectionId', adminLimiter, requireAuth, validateC
     if (fs.existsSync(backgroundsDir)) {
         const bgFile = fs.readdirSync(backgroundsDir).find(f => f.startsWith(`collection-${collectionId}`));
         if (bgFile) {
-            try { fs.unlinkSync(path.join(backgroundsDir, bgFile)); } catch (_) {}
+            try { fs.unlinkSync(safeResolvePath(backgroundsDir, bgFile)); } catch (_) {}
         }
     }
 
@@ -2771,7 +2777,7 @@ app.get('/api/galleries', adminLimiter, requireAuth, (req, res) => {
             let bgVersion = null;
             if (bgFile) {
                 try {
-                    bgVersion = Math.floor(fs.statSync(path.join(backgroundsDir, bgFile)).mtimeMs);
+                    bgVersion = Math.floor(fs.statSync(safeResolvePath(backgroundsDir, bgFile)).mtimeMs);
                 } catch (_) { /* file vanished between readdir and stat — treat as unversioned */ }
             }
 
