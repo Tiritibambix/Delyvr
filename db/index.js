@@ -18,11 +18,40 @@ const path = require('path');
 
 const SCHEMA_PATH = path.join(__dirname, 'schema.sql');
 
+// Columns added to `settings` after the first installs had already migrated.
+// CREATE TABLE IF NOT EXISTS does NOT alter an existing table, so a column
+// added to schema.sql alone would simply never appear on those installs and
+// every SELECT naming it would throw at startup. Each entry is the exact
+// column definition from schema.sql — keep the two in sync.
+//
+// ALTER TABLE ADD COLUMN accepts a CHECK constraint; its documented
+// restrictions are PRIMARY KEY/UNIQUE, non-constant defaults, REFERENCES with
+// foreign_keys on, and STORED generated columns. A NOT NULL column needs a
+// non-null default, which every entry below has — existing rows take that
+// default, which satisfies the CHECK by construction.
+const SETTINGS_ADDED_COLUMNS = [
+    ['slideshow_interval', `slideshow_interval INTEGER NOT NULL DEFAULT 5 CHECK (slideshow_interval IN (3,5,8,12))`],
+    ['slideshow_transition', `slideshow_transition TEXT NOT NULL DEFAULT 'fade' CHECK (slideshow_transition IN ('fade','slide','kenburns'))`]
+];
+
+// Idempotent: reads the live column list and adds only what is missing. A no-op
+// on a fresh database (schema.sql already created the columns) and on an
+// already-upgraded one.
+function ensureSettingsColumns(db) {
+    const existing = db.pragma('table_info(settings)').map(c => c.name);
+    if (existing.length === 0) return; // table absent — applySchema creates it with all columns
+    for (const [name, ddl] of SETTINGS_ADDED_COLUMNS) {
+        if (!existing.includes(name)) db.exec(`ALTER TABLE settings ADD COLUMN ${ddl}`);
+    }
+}
+
 // Applies the schema (every statement is CREATE ... IF NOT EXISTS, so this is
 // safe and cheap to re-run on every connection open — self-healing if a table
-// were ever dropped by hand).
+// were ever dropped by hand), then backfills any column added to an existing
+// table after the fact.
 function applySchema(db) {
     db.exec(fs.readFileSync(SCHEMA_PATH, 'utf8'));
+    ensureSettingsColumns(db);
 }
 
 // Opens the server's long-lived connection to an EXISTING database file and
@@ -59,4 +88,4 @@ function openDatabase(dbPath) {
     return db;
 }
 
-module.exports = { openDatabase, applySchema, SCHEMA_PATH };
+module.exports = { openDatabase, applySchema, ensureSettingsColumns, SCHEMA_PATH };

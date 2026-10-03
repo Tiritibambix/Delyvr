@@ -352,11 +352,19 @@ function ogDescription(key, language) {
 // visitor's resolved locale — this is the photographer's own display preference.
 const DATE_FORMATS = ['auto', 'dmy', 'mdy', 'ymd'];
 
+// Gallery slideshow, global for the whole site. Both lists must stay identical to
+// the CHECK constraints on settings.slideshow_interval / slideshow_transition.
+const SLIDESHOW_INTERVALS = [3, 5, 8, 12];
+const SLIDESHOW_TRANSITIONS = ['fade', 'slide', 'kenburns'];
+
 // Reads the full settings object (theme/website/socials/adminLanguage/
-// clientLanguage/dateFormat) — the `settings` row always exists post-migration
-// (a singleton created once, enforced by the schema's `CHECK (id = 1)`).
+// clientLanguage/dateFormat/slideshowInterval/slideshowTransition) — the
+// `settings` row always exists post-migration (a singleton created once,
+// enforced by the schema's `CHECK (id = 1)`).
 function getSettings() {
-    const row = db.prepare(`SELECT theme, website, admin_language, client_language, date_format FROM settings WHERE id = 1`).get();
+    const row = db.prepare(`SELECT theme, website, admin_language, client_language, date_format,
+                                   slideshow_interval, slideshow_transition
+                            FROM settings WHERE id = 1`).get();
     const socials = {};
     for (const s of db.prepare(`SELECT key, value FROM settings_socials`).all()) socials[s.key] = s.value;
     return {
@@ -365,7 +373,9 @@ function getSettings() {
         socials,
         adminLanguage: row.admin_language,
         clientLanguage: row.client_language,
-        dateFormat: row.date_format
+        dateFormat: row.date_format,
+        slideshowInterval: row.slideshow_interval,
+        slideshowTransition: row.slideshow_transition
     };
 }
 
@@ -381,6 +391,8 @@ function updateSettings(patch) {
         if (patch.adminLanguage !== undefined) { sets.push('admin_language = @admin_language'); params.admin_language = patch.adminLanguage; }
         if (patch.clientLanguage !== undefined) { sets.push('client_language = @client_language'); params.client_language = patch.clientLanguage; }
         if (patch.dateFormat !== undefined) { sets.push('date_format = @date_format'); params.date_format = patch.dateFormat; }
+        if (patch.slideshowInterval !== undefined) { sets.push('slideshow_interval = @slideshow_interval'); params.slideshow_interval = patch.slideshowInterval; }
+        if (patch.slideshowTransition !== undefined) { sets.push('slideshow_transition = @slideshow_transition'); params.slideshow_transition = patch.slideshowTransition; }
         if (sets.length > 0) {
             db.prepare(`UPDATE settings SET ${sets.join(', ')} WHERE id = 1`).run(params);
         }
@@ -826,7 +838,8 @@ app.get('/api/settings', (req, res) => {
 
 // POST /api/settings — admin only
 app.post('/api/settings', requireAuth, (req, res) => {
-    const { theme, website, socials, adminLanguage, clientLanguage, dateFormat } = req.body;
+    const { theme, website, socials, adminLanguage, clientLanguage, dateFormat,
+            slideshowInterval, slideshowTransition } = req.body;
     const patch = {};
     if (theme === 'light' || theme === 'dark') patch.theme = theme;
     if (typeof website === 'string') patch.website = website.trim().substring(0, 500);
@@ -839,6 +852,12 @@ app.post('/api/settings', requireAuth, (req, res) => {
     if (SUPPORTED_LANGUAGES.includes(adminLanguage)) patch.adminLanguage = adminLanguage;
     if (clientLanguage === 'auto' || SUPPORTED_LANGUAGES.includes(clientLanguage)) patch.clientLanguage = clientLanguage;
     if (DATE_FORMATS.includes(dateFormat)) patch.dateFormat = dateFormat;
+    // The interval MUST be coerced to a number: a <select> sends "5", and SQLite's
+    // `'5' IN (3,5,8,12)` is false (no type coercion against integer literals), so a
+    // bare string would trip the CHECK constraint and throw.
+    const interval = Number(slideshowInterval);
+    if (SLIDESHOW_INTERVALS.includes(interval)) patch.slideshowInterval = interval;
+    if (SLIDESHOW_TRANSITIONS.includes(slideshowTransition)) patch.slideshowTransition = slideshowTransition;
     updateSettings(patch);
     res.json(getSettings());
 });

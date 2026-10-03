@@ -127,7 +127,7 @@ connection open, so it's self-healing if a table were ever dropped by hand):
 | `favorites` | `gallery.favorites{}` | `(gallery_id, filename, visitor_id)` — `FOREIGN KEY (gallery_id, filename) REFERENCES files` means favoriting an already-deleted photo now 404s instead of silently creating a permanent orphan entry (see "Soft-delete and trash" and the photo-delete route — this is a deliberate, announced behavior change) |
 | `comments` | `gallery.comments{}` | same FK-to-`files` shape; `id` has no format `CHECK` — the app never validated a comment id's shape on delete either (plain string equality), so this isn't a regression |
 | `viewer_hashes` | `gallery.viewerHashes[]` | `(gallery_id, hash)` — SHA-256 hex of IP+UA, dedup for unique-view counting |
-| `settings` | `settings.json` | **singleton**, `id` pinned to `1` by a `CHECK`. `client_language` here is a **different domain** than the galleries/collections column of the same name: this one is `NOT NULL` and DOES store the literal string `'auto'` (a singleton has no "unset" state) |
+| `settings` | `settings.json` | **singleton**, `id` pinned to `1` by a `CHECK`. `client_language` here is a **different domain** than the galleries/collections column of the same name: this one is `NOT NULL` and DOES store the literal string `'auto'` (a singleton has no "unset" state). `slideshow_interval`/`slideshow_transition` were added after the first installs migrated, so they also live in `SETTINGS_ADDED_COLUMNS` — see the `ensureSettingsColumns()` note below |
 | `settings_socials` | `settings.socials{}` | key-value, not fixed columns or a JSON column — the server never enforced a fixed social-network key set (that list is a `shared.js` UI convention only), and a key-value table keeps every query in this project plain SQL |
 
 **PRAGMAs** (`db/index.js`'s `openDatabase()`, re-applied on **every** connection open —
@@ -156,6 +156,20 @@ successful migration. Run it via `docker compose run --rm delyvr npm run migrate
 (idempotent per the guard above; `--force` rebuilds from the JSON, discarding any SQL-only
 writes since). The script also bootstraps a brand-new install with no JSON files at all
 (same code path, tolerating their absence), so it's required before the very first boot too.
+
+**Adding a column to an existing table needs `ensureSettingsColumns()` (`db/index.js`), not
+just a schema edit.** Every statement in `schema.sql` is `CREATE TABLE IF NOT EXISTS`, which
+does **nothing** to a table that already exists — so a column added to `schema.sql` alone
+never appears on an install that migrated before it was written, and the first `SELECT`
+naming it throws at startup. `SETTINGS_ADDED_COLUMNS` is the declarative list of such
+columns; `ensureSettingsColumns()` reads `PRAGMA table_info` and `ALTER TABLE ... ADD
+COLUMN`s only what's missing, and it is called from `applySchema()` so the server, the
+migration script and the tests all get it. Each entry must be byte-identical to the column
+definition in `schema.sql`. Constraints: `ADD COLUMN` rejects `PRIMARY KEY`/`UNIQUE`,
+non-constant defaults, `REFERENCES` while `foreign_keys` is on, and `STORED` generated
+columns; a `NOT NULL` column needs a non-null default (existing rows take it, which is also
+what satisfies any `CHECK` by construction). `CHECK` itself is allowed.
+`test/schema.test.js` covers this against a hand-built pre-change `settings` table.
 
 **`db/operations.js`** holds only the handful of operations that touch more than one table
 — `deleteGalleryRow`, `softDeleteGallery`, `restoreGallery`, `addGalleryToCollection`,
@@ -211,11 +225,18 @@ All filesystem paths incorporating user-controlled values go through `safeResolv
 
 ### Settings persistence
 
-`getSettings()` reads the singleton `settings` row plus every `settings_socials` row and reassembles the same `{ theme, website, socials, adminLanguage, clientLanguage, dateFormat }` shape the JSON-era code returned. `updateSettings(patch)` applies only the keys present in `patch` — route handlers keep doing their own validation first, exactly as before, and only pass through fields that already passed it — in one `db.transaction()`.
+`getSettings()` reads the singleton `settings` row plus every `settings_socials` row and reassembles the same `{ theme, website, socials, adminLanguage, clientLanguage, dateFormat, slideshowInterval, slideshowTransition }` shape the JSON-era code returned. `updateSettings(patch)` applies only the keys present in `patch` — route handlers keep doing their own validation first, exactly as before, and only pass through fields that already passed it — in one `db.transaction()`.
 
-`GET /api/settings` is public — all client pages call it on load to apply the theme and render the social footer.
+`GET /api/settings` is public — all client pages call it on load to apply the theme, render the social footer and read the slideshow settings.
 
-`POST /api/settings` is admin-only — accepts `{ theme, website, socials, adminLanguage, clientLanguage, dateFormat }` and saves the merged result.
+`POST /api/settings` is admin-only — accepts `{ theme, website, socials, adminLanguage, clientLanguage, dateFormat, slideshowInterval, slideshowTransition }` and saves the merged result.
+
+**`slideshowInterval` must be coerced with `Number()` before it reaches the DB.** It arrives
+from a `<select>`, so the browser sends `"5"`, and SQLite's `'5' IN (3,5,8,12)` is **false**
+(no type coercion against integer literals) — a bare string trips the `CHECK` and throws.
+The route coerces, and `admin.html` sends a number as well. Conversely `openProfileModal()`
+has to `String()` it back when populating the `<select>`, since assigning the number `5` to
+`select.value` matches no `<option>` and silently leaves the control on its first entry.
 
 `PATCH /api/settings/theme` is used by the admin theme toggle.
 
@@ -223,13 +244,13 @@ All filesystem paths incorporating user-controlled values go through `safeResolv
 
 Two independent language concerns, with different scopes:
 
-- **Admin dashboard language** (`settings.adminLanguage`) — a single global preference, one of `en`/`fr`/`es`/`pt`/`it`. Set via the "Dashboard language" `<select>` in `admin.html`'s Profile modal (`POST /api/settings`). `admin.html` holds a full `adminTranslations` object (5 locales) and a global `t` reference reassigned by `applyAdminTranslations(lang)`, which also re-runs `loadGalleries()`/`loadCollections()`/`loadTrash()` so dynamically-rendered card templates pick up the new language. **Saving a language change triggers `location.reload()`** rather than attempting to live-retranslate every render call site — simpler and more robust given the size of the file.
+- **Admin dashboard language** (`settings.adminLanguage`) — a single global preference, one of `en`/`fr`/`es`/`pt`/`it`. Set via the "Dashboard language" `<select>` in `admin.html`'s Settings modal (`POST /api/settings`). `admin.html` holds a full `adminTranslations` object (5 locales) and a global `t` reference reassigned by `applyAdminTranslations(lang)`, which also re-runs `loadGalleries()`/`loadCollections()`/`loadTrash()` so dynamically-rendered card templates pick up the new language. **Saving a language change triggers `location.reload()`** rather than attempting to live-retranslate every render call site — simpler and more robust given the size of the file.
 - **Client-facing language** (for the client document `preview.html` and the OG share-preview text) — resolved per gallery/collection through a 3-tier cascade, **most specific wins**: the gallery's own `clientLanguage` override, else its containing collection's override (at most one, by construction — `collection_galleries.gallery_id` is `UNIQUE`), else the global default `settings.clientLanguage` (`'auto'` = browser-detected, like before this feature existed). Implemented by two resolver functions reused everywhere a language decision is needed (OG tags, `/info`, `/api/collection/:id`):
   ```js
   function resolveGalleryClientLanguage(galleryId) { /* gallery's client_language → its single collection's client_language (one indexed lookup) → settings.clientLanguage */ }
   function resolveCollectionClientLanguage(collectionId) { /* collection's client_language → settings.clientLanguage */ }
   ```
-  Set via `PATCH /api/gallery/:id/client-language` / `PATCH /api/collection/:id/client-language` (body `{ language }`, `'auto'` stored as `NULL`). The admin UI exposes this as a compact `<select>` on each gallery/collection card's `.gallery-bottom` row, plus a "Default client language" `<select>` (global) in the Profile modal.
+  Set via `PATCH /api/gallery/:id/client-language` / `PATCH /api/collection/:id/client-language` (body `{ language }`, `'auto'` stored as `NULL`). The admin UI exposes this as a compact `<select>` on each gallery/collection card's `.gallery-bottom` row, plus a "Default client language" `<select>` (global) in the Settings modal.
 
   Client pages no longer detect the browser language themselves. `GET /api/gallery/:id/info` and `GET /api/collection/:id` both include the resolved `clientLanguage` (`'auto'` or a specific code) in their response; each page reads `locale = resolveClientLocale(info.clientLanguage)` (defined in `shared.js`) only after that fetch resolves, then re-applies its static translations via an `applyStaticTranslations()` helper. `resolveClientLocale()` only handles the final `'auto'` → browser-detection step — the gallery/collection/global precedence itself lives server-side as the single source of truth, shared with the OG-tag generation below. `favorites.html` has no client-side i18n today and was left untouched.
 - **OG share-preview localization**: `OG_DESCRIPTIONS` (server.js) is a 3-key × 5-language map (`preview`, `collection`, `favorites`) read via `ogDescription(key, language)`, applied at all OG injection sites using the resolver functions above (gallery routes use `resolveGalleryClientLanguage`, the collection route uses `resolveCollectionClientLanguage`). `'auto'` falls back to English since OG crawlers have no browser to detect from.
@@ -371,6 +392,67 @@ the card.**
   under `max-width: 768px`, so a landscape phone would park the button in a hidden bar.
 - **The montage survives moving between galleries**, which is the whole point — see
   "One client document" below.
+
+### Gallery slideshow
+
+A fullscreen, auto-advancing slideshow of a gallery's **stills**, launched from the
+`.slideshow-btn` in the sticky `.actions-bar` (shown unconditionally by `loadGallery()`, so
+the button appears on a standalone gallery as well as inside a collection). Two global,
+photographer-set values in `settings`: `slideshow_interval` (3/5/8/12 s, default 5) and
+`slideshow_transition` (`fade`/`slide`/`kenburns`, default `fade`), edited in the Settings
+modal and read by `preview.html` through `getSiteSettings()`.
+
+**It is a separate overlay (`#slideshow`), deliberately not a mode of `.lightbox`.** The
+lightbox carries pinch-zoom-toward-midpoint, swipe navigation, the comment drawer and its
+own fullscreen handling; overloading it would put all of that at risk for no gain. The two
+share nothing but the audio button host.
+
+- **Same `position: fixed` ban as `.lightbox`** applies inside `#slideshow`: it is the
+  element passed to `requestFullscreen()`, so a `fixed` descendant does not resolve
+  reliably across engines. `.slideshow` is itself `fixed; inset: 0`, so `absolute` children
+  get identical geometry in both modes.
+- **Layers, not one `<img>`**: `ssRenderSlide()` appends a fresh `.ss-img` per slide (the
+  incoming one paints on top purely by DOM order) and drops the outgoing one once the
+  animation has run. That is also why the entry animation is a **keyframe, not a
+  transition** — a brand-new element has no previous value to transition from. `kenburns`
+  runs two animations at once: the 600 ms crossfade and the 8 s movement, with one of four
+  drift directions picked deterministically from `filename.charCodeAt(0) % 4` so a given
+  photo always moves the same way. `fade`/`slide` use `object-fit: contain`; `kenburns`
+  uses `cover`, because a slow push on a letterboxed image would just drift the bars.
+- **Videos are skipped entirely** (`photos.filter(p => !isVideoPhoto(p))`) — a clip of
+  arbitrary length has no meaning inside a fixed interval. `syncSlideshowButton()` hides the
+  button on an all-video gallery.
+- **The timer is re-armed per slide** (`ssArmTimer`), so resuming after a pause gives a full
+  interval rather than the remainder of the interrupted one. Manual navigation
+  (`slideshowNext`/`Prev`, and the arrow keys) **pauses**; the loop wraps infinitely in both
+  directions. The progress bar is *removed* on pause rather than frozen, so a paused
+  slideshow shows no bar instead of one that reads as stuck, and `ssStartProgress()` needs
+  its forced reflow (`void bar.offsetWidth`) or the restarted animation is coalesced away.
+- **Three integration points, each load-bearing:**
+  1. **Any fullscreen exit closes the slideshow**, handled in the shared `fullscreenchange`
+     listener. `Escape` is swallowed by the browser to exit fullscreen *before* any
+     `keydown` listener sees it, so that event is the only reliable signal.
+     `_ssUsedFullscreen` is tracked separately from `_ssActive` because
+     `requestFullscreen()` can be refused (iOS Safari on an arbitrary element) and the
+     slideshow still runs as a plain overlay — without the flag, a `fullscreenchange` fired
+     by the *lightbox's* own button would close a slideshow that never went fullscreen.
+     It is set from the event, not from the call's return value, which is a promise in
+     modern engines but `undefined` in older WebKit.
+  2. **`audioHostFor()` returns `#ssAudioSlot` first**, before the lightbox branch: the
+     montage button must live *inside* the fullscreened element or it vanishes — and a
+     slideshow with music is the montage's whole purpose. `placeAudioButton()` is called
+     from both `openSlideshow()` and `closeSlideshow()` (which clears `_ssActive` first).
+  3. **Teardown on every path that reassigns `photos`**: `resetGalleryViewState()` and the
+     index branch of `renderRoute()` both call `closeSlideshow()`, or a slideshow would
+     keep running against a stale array in collection mode.
+- **The toolbar auto-hides after 3 s, and re-arms on `pointerdown` as well as
+  `pointermove`.** The `pointerdown` half is not optional: a phone fires no `mousemove`, so
+  with movement alone the toolbar would hide and never return — taking the close button and
+  the montage control with it. A tap on the hidden toolbar passes through
+  (`pointer-events: none`) and brings it back, the same two-tap pattern the mobile lightbox
+  bars use.
+- `#kbHintWidget` is **not** extended for this: that list lives inside `.lightbox` and
+  describes *its* shortcuts. The slideshow's own toolbar carries the tooltips instead.
 
 ### Justified gallery layout
 
@@ -516,7 +598,7 @@ Gallery names use `contenteditable="false"` by default. Double-clicking (or clic
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
 | `GET` | `/api/settings` | | Get site settings |
-| `POST` | `/api/settings` | ✓ | Update theme, website, socials, languages, date format |
+| `POST` | `/api/settings` | ✓ | Update theme, website, socials, languages, date format, slideshow |
 | `PATCH` | `/api/settings/theme` | ✓ | Update theme only |
 
 ---
@@ -529,7 +611,8 @@ All HTML files are standalone — no bundler, no imports, all JS inline.
 
 Loaded by all client pages via `<script src="/shared.js">` before their inline `<script>` block. Provides:
 - `SOCIAL_ICONS` — SVG strings for website, instagram, facebook, pinterest, tiktok, linkedin, 500px, flickr, behance.
-- `applyTheme()` — fetches `GET /api/settings` and toggles `html.light` CSS class.
+- `getSiteSettings()` — `GET /api/settings`, fetched **once per page load** and shared by every consumer (theme, social footer, slideshow) via a memoised promise. It resolves to `{}` on any failure, so callers only handle missing keys, never a rejection. `applyTheme()` and `renderSocialFooter()` used to fetch the same endpoint separately, which meant two identical round-trips on every client page. **Read settings through this, never with a fresh `fetch('/api/settings')`.**
+- `applyTheme()` — toggles the `html.light` CSS class from the shared settings.
 - `renderSocialFooter()` — renders icon links into `#socialFooter` from settings; hides the container entirely if no links are configured.
 
 `admin.html` loads `shared.js` but defines its own `applyTheme()` that additionally updates the theme toggle button text — it overrides the shared version.
@@ -541,6 +624,8 @@ Loaded by all client pages via `<script src="/shared.js">` before their inline `
 - Login via in-memory `adminPassword` variable only, not persisted to sessionStorage or localStorage.
 - Password field has an eye toggle button (`.password-toggle`).
 - `applyTheme()` called on load — it also reads `settings.adminLanguage` and calls `applyAdminTranslations(lang)` (see "Language settings"). `toggleTheme()` uses optimistic update.
+- **The "Settings" modal** (`#profileModal`, formerly "Profile & Social Links") holds logo, website, socials, languages, date format and the slideshow settings. The element ids keep the `profile*` prefix — only the labels were renamed, via `t.profileTitle` *and* the separate `t.headerProfile` for the sidebar button. **Logo management lives in this modal**, not the sidebar: `#logoWrap`/`#adminLogo`/`#logoInput`/`#logoResetBtn` all moved into `.profile-modal-card`, which still sits **above** the inline `<script>` — that ordering is what keeps the top-level `document.getElementById('logoInput').addEventListener(...)` resolving at parse time, so do **not** park this block after the script (where the bulk-action bar lives). The sidebar keeps a display-only `#sidebarLogo`, and `refreshLogoImages()` cache-busts **both** `<img>` on upload/reset. `openProfileModal()` also re-runs `checkLogoState()` so the reset button is correct if the logo changed in another tab.
+- **`applyStaticTranslations()`-style null-guard trap in `applyAdminTranslations()`**: the two slideshow `<select>`s share one section heading, so their purpose is carried by `title`. `byId()` writes `textContent`, which is meaningless on a `<select>` — set `.title` directly, null-guarded, the way the `#logoWrap` title already is.
 - **Full i18n** (en/fr/es/pt/it): `adminTranslations` holds every locale; the module-scope `let t` is reassigned by `applyAdminTranslations(lang)` to the active locale and read by every render function and toast/error message. Static chrome (login, sidebar, every view and modal) carries `id`s set directly by `applyAdminTranslations`; dynamic templates (`renderGalleryItems`, `renderCollections`, the comments page, the photos/favorites/trash/picker modals, the bulk action bar) read `t.xxx` at render time.
 - **`confirmDialog(message, okLabel)`** — page-level async confirmation modal (`#confirmDialogOverlay`/`.confirm-dialog-card`, styled like the other modals, `z-index: 8500` so it can be triggered from inside another open modal) replacing every native `confirm()` in the file. Returns a Promise resolved by `confirmDialogResolve(result)`; default `okLabel` is `t.delete`. All 10 call sites await it: `resetLogo`, `bulkDelete`, `deleteSelectedPhotos`, `deletePhoto`, `resetComments`, `resetViews`, `resetFavorites`, `deleteGallery`, `purgeGallery`, `emptyTrash`.
 - Gallery list: `filterGalleries(query)` reads the current toolbar state, calls the pure `buildGalleryViewModel(galleries, collections, {query, sortBy, sortDir, filters})` to produce collection-grouped sections (an accordion, one `.gallery-group` per collection + a "No collection" group), and `renderGalleryItems(vm)` renders them from the `_galleriesData` cache. Every render path (load, search, sort, collection toggles) funnels through `filterGalleries`, so `_gallerySort` is always current at render time.
@@ -568,10 +653,12 @@ Loaded by all client pages via `<script src="/shared.js">` before their inline `
 
 ### `public/preview.html`
 
-- **Full-screen hero**: `.hero` is `height: 100vh`/`100dvh` (fallback cascade) with the gallery's background photo as an undimmed, full-bleed cover (`object-fit: cover`, no darkening overlay) — the site logo sits top-left, the gallery name bottom-left, and a "Show Gallery" button + the "Download All" button bottom-right. "Show Gallery" (`scrollToGallery()`) smooth-scrolls down to `#galleryContainer`. The three action-style buttons across the page (`.show-gallery-btn`, `.download-all-btn`, `.back-to-collection`) share one CSS rule set — same size/border/radius, theme-aware via an `html.light` override — rather than each having its own styling.
+- **Full-screen hero**: `.hero` is `height: 100vh`/`100dvh` (fallback cascade) with the gallery's background photo as an undimmed, full-bleed cover (`object-fit: cover`, no darkening overlay) — the site logo sits top-left, the gallery name bottom-left, and a "Show Gallery" button + the "Download All" button bottom-right. "Show Gallery" (`scrollToGallery()`) smooth-scrolls down to `#galleryContainer`. The outline action-style buttons across the page (`.show-gallery-btn`, `.back-to-collection`, `.slideshow-btn`) share one CSS rule set — same size/border/radius, theme-aware via an `html.light` override — rather than each having its own styling; extend those selectors instead of adding a variant. (`.download-all-btn` is the filled-gold exception.)
+- **Logo legibility over the hero**: the hero cover is undimmed and full-bleed, so `.hero-logo` carries a two-layer `filter: drop-shadow(0 2px 6px rgba(0,0,0,0.55)) drop-shadow(0 0 2px rgba(0,0,0,0.4))` — the first matches the house value on `.hero h1`, the second is a tight un-offset layer that separates thin SVG strokes, which a soft offset shadow alone leaves ambiguous. The collection index's `.logo` gets the same treatment (milder risk there: the cover runs at 30% opacity under `.bg-overlay`). `favorites.html`'s logo is on a plain page background and is deliberately left alone. **Limit:** `drop-shadow()` follows the alpha channel, so on an *opaque* JPEG logo it reads as a rectangular halo rather than hugging the glyph — `/api/logo` serves six formats and never tells the client which, so that cannot be detected client-side.
 - Justified/row-based gallery: photos grouped into `.gallery-row` flex rows built in JS, recomputed on resize.
 - Photos sorted server-side by filename stem (name without extension), extension as tiebreaker — see the preview.html layout section above.
 - Lightbox preloads N-1 and N+1 previews via `new Image()` on each navigation.
+- Fullscreen slideshow launched from `.actions-bar` — see "Gallery slideshow" above for the overlay, the transitions and the three integration points.
 - Mobile lightbox: pinch-to-zoom (up to 5x), one-finger pan while zoomed, swipe navigation when not zoomed. `touch-action: none` disables native browser zoom.
 - Animated images (GIF / animated WebP) show a static thumbnail + `GIF` badge in the grid and play in the lightbox — see "Animated images". The badge is driven by `photo.animated` from `/photos`; the lightbox `<img src=previewUrl>` resolves to the animated original with no extra code.
 - **Critique mode:** `critiqueMode = URLSearchParams.get('critique') === '1'`. When true: photo number badges rendered on grid cards, `#lbCritiqueNum` shown in lightbox, `#critiqueIndicator` shown in actions bar.
@@ -646,16 +733,19 @@ resolved from `data.clientLanguage` via `resolveClientLocale()`, gallery covers 
 - **Migrating the schema itself** (adding a column/table later, e.g. for proofing/analytics): edit `db/schema.sql` as `CREATE ... IF NOT EXISTS` / rely on an explicit `ALTER TABLE` run once — this project has no formal migration-numbering system beyond the one JSON→SQLite migration script, by design (there's exactly one schema version in play at a time, the running one).
 - **ZIP downloads use `store: true`** (no compression). Content-Length is intentionally omitted — archiver adds variable per-file data descriptors during streaming that make pre-calculation unreliable and cause "unexpected end of archive" errors.
 - **Filename sanitisation allows Unicode.** Only truly dangerous filesystem characters are stripped (`<>:"/\|?*` and control chars). Accents, spaces, ampersands, and **apostrophes** are preserved. `SAFE_FILENAME_RE` reflects this.
+- **Drop zones: the class is `drag-over`, hyphenated.** Every drop handler in `admin.html` adds `drag-over`; `admin.css` once styled `.drop-zone.dragover` instead, so the rule never matched and the main photo zone plus all three `.drop-zone-small` cover zones gave **no** visual feedback while a file hovered — they simply looked dead. If you add a drop zone, add the matching `.drag-over` rule and check the spelling on both sides.
+- **A drop zone needs three things, not one:** the `ondragover`/`ondragleave`/`ondrop` handlers, a client-side size guard, *and* a checked response. The collection cover vignette had only `onclick` while its tooltip promised drop; `handleColBgFile`/`handleInlineColBgFile` skipped the `MAX_BG_MB` guard that `handleBgFile` applies; and the create-flow cover `POST` discarded its result, so a 413 produced a collection with no cover and no message. When a cover upload fails *after* its collection was created, report it **without throwing** — the enclosing `catch` would otherwise claim the collection itself failed.
 - **Never embed a filename in an inline `onclick` string in admin.html.** Filenames can contain apostrophes (`l'été.jpg`). `escapeAttr` turns `'` into `&#39;`, which the browser HTML-decodes back to `'` *before* the JS in `onclick=` is parsed, breaking the handler. Attach handlers via a closure (`el.onclick = …`) or `data-*` attributes + a delegated listener reading `dataset` instead. The uuid `commentId` is safe, but the filename is not.
 - **`?card=1` on background routes** generates an 800px JPEG (fit: inside, quality 82) for use in collection gallery cards. `?thumb=1` stays at 200x200 for admin thumbnails.
 - **Critique mode** is entirely client-side. `?critique=1` in the URL enables photo numbering in `preview.html`. The admin copies the critique URL via `copyCritiqueLink()`. No server-side flag.
 - **Gallery name editing** requires disabling `draggable` on the parent `.gallery-item` during edit (set in `startGalleryRename`, restored in `finishGalleryRename`) so that text selection works. Without this, the browser intercepts mousedown for drag, preventing text selection.
 - **`squarePhotoGridCells()`** in the photos management modal measures `offsetWidth` of the first grid cell after `requestAnimationFrame` and sets explicit `style.height` on all cells. CSS `aspect-ratio` is unreliable in some mobile browsers when combined with grid and `position: absolute` content.
-- **Never use `position: fixed` inside `.lightbox`.** `.lightbox` is the element passed to
-  `requestFullscreen()`, and a `fixed` descendant of a top-layer element does not resolve
-  reliably across engines — that is what made the favorite/download bar disappear in mobile
-  fullscreen. `.lb-mobile-overlay`, `#lightboxSocialWidget` and `#kbHintWidget` are
-  therefore `position: absolute`: `.lightbox` is itself `position: fixed; inset: 0`, so the
-  geometry is identical in normal mode and correct in fullscreen. Anything else that must
-  be usable in fullscreen has to live **inside** `.lightbox` (see `placeAudioButton()`).
-- **`public/shared.js`** is loaded by all client pages via `<script src="/shared.js">`. It provides `SOCIAL_ICONS`, `applyTheme()`, and `renderSocialFooter()`. `admin.html` loads it but overrides `applyTheme()` locally to also update the theme toggle button text. Do not duplicate these functions into individual HTML files.
+- **Never use `position: fixed` inside `.lightbox` or `.slideshow`.** Both are elements
+  passed to `requestFullscreen()`, and a `fixed` descendant of a top-layer element does not
+  resolve reliably across engines — that is what made the favorite/download bar disappear in
+  mobile fullscreen. `.lb-mobile-overlay`, `#lightboxSocialWidget`, `#kbHintWidget` and
+  every `.ss-*` child are therefore `position: absolute`: each overlay is itself
+  `position: fixed; inset: 0`, so the geometry is identical in normal mode and correct in
+  fullscreen. Anything else that must be usable in fullscreen has to live **inside** the
+  fullscreened element (see `placeAudioButton()` / `audioHostFor()`).
+- **`public/shared.js`** is loaded by all client pages via `<script src="/shared.js">`. It provides `SOCIAL_ICONS`, `getSiteSettings()`, `applyTheme()`, `renderSocialFooter()` and `resolveClientLocale()`. `admin.html` loads it but overrides `applyTheme()` locally to also update the theme toggle button text. Do not duplicate these functions into individual HTML files, and read settings through `getSiteSettings()` rather than adding another `fetch('/api/settings')`.

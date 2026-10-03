@@ -3,7 +3,7 @@
 const { test, describe } = require('node:test');
 const assert = require('node:assert/strict');
 const Database = require('better-sqlite3');
-const { applySchema } = require('../db');
+const { applySchema, ensureSettingsColumns } = require('../db');
 
 // In-memory, freshly schema'd database per test. foreign_keys is OFF by
 // default on every new connection (even :memory: ones) — turned on here the
@@ -34,6 +34,87 @@ describe('connection pragmas', () => {
     });
 });
 
+// The scenario that CREATE TABLE IF NOT EXISTS cannot handle on its own: an
+// install that migrated to SQLite BEFORE a column was added to schema.sql. The
+// table already exists, so the CREATE is skipped and the column would never
+// appear — every SELECT naming it would throw at startup.
+describe('ensureSettingsColumns — upgrading an already-migrated database', () => {
+    // The `settings` DDL as it stood before the slideshow columns were added.
+    const LEGACY_SETTINGS_DDL = `
+        CREATE TABLE settings (
+            id              INTEGER PRIMARY KEY CHECK (id = 1),
+            theme           TEXT NOT NULL DEFAULT 'dark' CHECK (theme IN ('light','dark')),
+            website         TEXT NOT NULL DEFAULT '' CHECK (length(website) <= 500),
+            admin_language  TEXT NOT NULL DEFAULT 'en' CHECK (admin_language IN ('en','fr','es','pt','it')),
+            client_language TEXT NOT NULL DEFAULT 'auto' CHECK (client_language IN ('auto','en','fr','es','pt','it')),
+            date_format     TEXT NOT NULL DEFAULT 'auto' CHECK (date_format IN ('auto','dmy','mdy','ymd'))
+        )`;
+
+    function legacyDb() {
+        const db = new Database(':memory:');
+        db.pragma('foreign_keys = ON');
+        db.exec(LEGACY_SETTINGS_DDL);
+        db.prepare(`INSERT INTO settings (id, theme, website, admin_language, client_language, date_format)
+                    VALUES (1, 'light', 'https://example.com', 'fr', 'fr', 'dmy')`).run();
+        return db;
+    }
+
+    test('applySchema adds the missing columns and the existing row takes their defaults', () => {
+        const db = legacyDb();
+        const before = db.pragma('table_info(settings)').map(c => c.name);
+        assert.ok(!before.includes('slideshow_interval'));
+
+        applySchema(db);
+
+        const row = db.prepare(`SELECT theme, website, admin_language, client_language, date_format,
+                                       slideshow_interval, slideshow_transition
+                                FROM settings WHERE id = 1`).get();
+        // Defaults applied...
+        assert.equal(row.slideshow_interval, 5);
+        assert.equal(row.slideshow_transition, 'fade');
+        // ...and nothing else about the pre-existing row was disturbed.
+        assert.equal(row.theme, 'light');
+        assert.equal(row.website, 'https://example.com');
+        assert.equal(row.admin_language, 'fr');
+        assert.equal(row.client_language, 'fr');
+        assert.equal(row.date_format, 'dmy');
+        db.close();
+    });
+
+    test('the new columns keep their CHECK constraints after being added by ALTER TABLE', () => {
+        const db = legacyDb();
+        applySchema(db);
+        assert.throws(() => {
+            db.prepare(`UPDATE settings SET slideshow_interval = 7 WHERE id = 1`).run();
+        }, /CHECK constraint failed/);
+        assert.throws(() => {
+            db.prepare(`UPDATE settings SET slideshow_transition = 'wipe' WHERE id = 1`).run();
+        }, /CHECK constraint failed/);
+        db.close();
+    });
+
+    test('re-running it is an idempotent no-op — no duplicate-column error, values preserved', () => {
+        const db = legacyDb();
+        applySchema(db);
+        db.prepare(`UPDATE settings SET slideshow_interval = 12, slideshow_transition = 'kenburns' WHERE id = 1`).run();
+
+        assert.doesNotThrow(() => ensureSettingsColumns(db));
+        assert.doesNotThrow(() => applySchema(db));
+
+        const row = db.prepare(`SELECT slideshow_interval, slideshow_transition FROM settings WHERE id = 1`).get();
+        assert.deepEqual(row, { slideshow_interval: 12, slideshow_transition: 'kenburns' });
+        db.close();
+    });
+
+    test('it is also a no-op on a fresh database, where schema.sql already created the columns', () => {
+        const db = freshDb();
+        assert.doesNotThrow(() => ensureSettingsColumns(db));
+        const cols = db.pragma('table_info(settings)').map(c => c.name);
+        assert.equal(cols.filter(c => c === 'slideshow_interval').length, 1);
+        db.close();
+    });
+});
+
 describe('CHECK constraints — enums', () => {
     test('settings.theme rejects a value outside light/dark', () => {
         const db = freshDb();
@@ -59,6 +140,33 @@ describe('CHECK constraints — enums', () => {
             db.prepare(`INSERT INTO settings (id, theme, admin_language, client_language, date_format)
                         VALUES (1, 'dark', 'de', 'auto', 'auto')`).run();
         }, /CHECK constraint failed/);
+        db.close();
+    });
+
+    test('settings.slideshow_interval rejects a value outside 3/5/8/12', () => {
+        const db = freshDb();
+        assert.throws(() => {
+            db.prepare(`INSERT INTO settings (id, theme, admin_language, client_language, date_format, slideshow_interval)
+                        VALUES (1, 'dark', 'en', 'auto', 'auto', 7)`).run();
+        }, /CHECK constraint failed/);
+        db.close();
+    });
+
+    test('settings.slideshow_transition rejects a value outside fade/slide/kenburns', () => {
+        const db = freshDb();
+        assert.throws(() => {
+            db.prepare(`INSERT INTO settings (id, theme, admin_language, client_language, date_format, slideshow_transition)
+                        VALUES (1, 'dark', 'en', 'auto', 'auto', 'wipe')`).run();
+        }, /CHECK constraint failed/);
+        db.close();
+    });
+
+    test('a settings row inserted without the slideshow columns takes the 5 / fade defaults', () => {
+        const db = freshDb();
+        db.prepare(`INSERT INTO settings (id, theme, admin_language, client_language, date_format)
+                    VALUES (1, 'dark', 'en', 'auto', 'auto')`).run();
+        const row = db.prepare(`SELECT slideshow_interval, slideshow_transition FROM settings WHERE id = 1`).get();
+        assert.deepEqual(row, { slideshow_interval: 5, slideshow_transition: 'fade' });
         db.close();
     });
 

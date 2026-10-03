@@ -21,21 +21,28 @@ function resolveClientLocale(resolvedLanguage) {
     return supported.includes(short) ? short : 'en';
 }
 
+// GET /api/settings, fetched once per page load and shared by every consumer
+// (theme, social footer, slideshow). The first two used to fetch it separately,
+// which meant two identical round-trips on every client page. Resolves to {} on
+// any failure, so callers only need to handle missing keys, never a rejection.
+let _settingsPromise = null;
+function getSiteSettings() {
+    if (!_settingsPromise) {
+        _settingsPromise = fetch('/api/settings')
+            .then(r => r.ok ? r.json() : {})
+            .catch(() => ({}));
+    }
+    return _settingsPromise;
+}
+
 async function applyTheme() {
-    try {
-        const res = await fetch('/api/settings');
-        if (res.ok) {
-            const s = await res.json();
-            document.documentElement.classList.toggle('light', s.theme === 'light');
-        }
-    } catch (e) {}
+    const s = await getSiteSettings();
+    document.documentElement.classList.toggle('light', s.theme === 'light');
 }
 
 async function renderSocialFooter() {
     try {
-        const res = await fetch('/api/settings');
-        if (!res.ok) return;
-        const s = await res.json();
+        const s = await getSiteSettings();
         const container = document.getElementById('socialFooter');
         if (!container) return;
         const links = [];

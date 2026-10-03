@@ -48,6 +48,8 @@ When you share a gallery link with a client, here is what they get:
 
 **Comments:** Clients can leave a comment on any photo or video from the lightbox, with an optional name (no account needed — just like favorites, it's all anonymous unless they choose to type a name). Comments are public: everyone viewing the gallery sees the same conversation under each photo, like a guestbook. You can turn comments off for any gallery from your dashboard.
 
+**Slideshow:** A discreet **Slideshow** button sits in the bar above the photo grid. It starts a fullscreen, self-advancing show of the gallery's photos, with a thin progress bar and a toolbar that fades away after a few seconds so nothing competes with the images. Space pauses, the arrow keys step through it (and pause), and Escape — or leaving fullscreen any other way — closes it. Videos are skipped. If a montage is attached, its play button travels into the slideshow so the music stays within reach. You choose the pace and the transition once, in Settings, and it applies to every gallery.
+
 **Music:** You can attach an audio montage — a soundtrack of the wedding day, for instance — **to a collection, to a single gallery, or both**. A single small play button appears; tapping it starts the montage. Nothing plays on its own, your clients start it themselves, and they can stop it at any moment — including from their phone's lock screen, where the name and cover appear like any other track.
 
 Which one plays follows one simple rule:
@@ -70,7 +72,7 @@ That way a whole-event soundtrack is never cut short by opening a gallery, and a
 
 ### The dashboard
 
-The admin dashboard is a sidebar shell with separate pages you switch between: **Galleries**, **Collections**, and **Create** (where you make new galleries and collections side by side). Your logo sits at the top of the sidebar; your profile, the light/dark theme toggle, and logout are at the bottom. On desktop the sidebar is always visible; on mobile it collapses into a burger menu — tap to open, tap again to close — and every page stacks cleanly so all the important actions stay reachable.
+The admin dashboard is a sidebar shell with separate pages you switch between: **Galleries**, **Collections**, and **Create** (where you make new galleries and collections side by side). Your logo sits at the top of the sidebar; your settings, the light/dark theme toggle, and logout are at the bottom. On desktop the sidebar is always visible; on mobile it collapses into a burger menu — tap to open, tap again to close — and every page stacks cleanly so all the important actions stay reachable.
 
 ### Uploading
 
@@ -136,13 +138,17 @@ When you or a client shares a gallery or collection link on WhatsApp, iMessage, 
 
 ### Branding and settings
 
-Upload your logo from the top of the sidebar. It appears on every page including the client-facing ones. You can revert to the default logo at any time.
+Everything site-wide lives in the **Settings** modal, opened from the sidebar footer.
 
-The Profile modal (opened from the sidebar footer) lets you set your website URL and social links. Instagram, Facebook, Pinterest, TikTok, LinkedIn, 500px, Flickr, and Behance are supported. Only links you fill in appear on client pages.
+Upload your logo from the **Logo** section at the top of that modal. It appears on every page including the client-facing ones, and the sidebar logo updates immediately. You can revert to the default logo at any time.
 
-The Profile modal also has a **Date format** picker for the dashboard: keep "Auto" to follow your browser, or pick `31/12/2026 · 14:30`, `12/31/2026 · 2:30 PM`, or `2026-12-31 · 14:30`. It sets the clock too (24-hour, except the US format). This only changes what *you* see in the dashboard — your clients' pages always show dates in their own language.
+Settings also lets you set your website URL and social links. Instagram, Facebook, Pinterest, TikTok, LinkedIn, 500px, Flickr, and Behance are supported. Only links you fill in appear on client pages.
 
-The Profile modal also has two language pickers: **Dashboard language** changes the admin interface itself (saving reloads the page), and **Default client language** sets the site-wide fallback used by client pages and link previews when a gallery or collection doesn't have its own override. To override the language for a single gallery or collection, use the small language dropdown on its card in the dashboard — "Auto" inherits from the collection or the global default.
+There is a **Date format** picker for the dashboard: keep "Auto" to follow your browser, or pick `31/12/2026 · 14:30`, `12/31/2026 · 2:30 PM`, or `2026-12-31 · 14:30`. It sets the clock too (24-hour, except the US format). This only changes what *you* see in the dashboard — your clients' pages always show dates in their own language.
+
+Two language pickers: **Dashboard language** changes the admin interface itself (saving reloads the page), and **Default client language** sets the site-wide fallback used by client pages and link previews when a gallery or collection doesn't have its own override. To override the language for a single gallery or collection, use the small language dropdown on its card in the dashboard — "Auto" inherits from the collection or the global default.
+
+Finally, a **Slideshow** section sets how the gallery slideshow plays for your clients: the time each photo stays on screen (3, 5, 8 or 12 seconds) and the transition between them — **Fade**, **Slide**, or **Ken Burns** (a slow push across the photo). These apply to every gallery.
 
 Native browser confirmation popups are never used — every destructive action (delete, reset, empty trash) shows an in-app confirmation dialog styled like the rest of the dashboard.
 
@@ -221,7 +227,16 @@ Delyvr is now running at `http://localhost:3000`. Gallery data is stored in `./d
 docker compose pull && docker compose up -d
 ```
 
-If the update note for that version mentions a database change, back up `./data/` first and re-run `docker compose run --rm delyvr npm run migrate -- --force` before starting.
+**Schema changes apply themselves on restart.** When a release adds a column, the server
+adds it to your existing database at startup, with its default value, and leaves every
+other row untouched. There is nothing to run and no downtime beyond the restart.
+
+> **Do not run `npm run migrate -- --force` to update.** That command is not an upgrade
+> path: it rebuilds the database **from the original `galleries.json` / `collections.json` /
+> `settings.json`**, discarding everything written since you first migrated — every
+> favorite, comment, view count, and any gallery created after the switch to SQLite. It
+> exists only to redo the one-time import from scratch. If you ever do need it, back up
+> `./data/` first.
 
 ---
 
@@ -511,7 +526,7 @@ delyvr/
 | Method | Endpoint | Auth | Description |
 |--------|----------|------|-------------|
 | `GET` | `/api/settings` | | Get site settings |
-| `POST` | `/api/settings` | ✓ | Update theme, website, social links, dashboard language, and default client language |
+| `POST` | `/api/settings` | ✓ | Update theme, website, social links, languages, date format, and slideshow settings |
 | `PATCH` | `/api/settings/theme` | ✓ | Update theme only |
 
 Authenticated endpoints require the `X-Admin-Password` header.

@@ -533,12 +533,22 @@ body { display: flex; flex-direction: column; height: 100%; }
 }
 .logo-wrap:hover .logo-hint { opacity: 1; }
 
-.logo-reset {
-    display: none; font-size: 11px; color: var(--muted);
-    background: none; border: none; cursor: pointer;
-    text-decoration: underline; font-family: inherit; margin-top: 2px;
+/* Logo management, now inside the Settings modal. These must follow `.logo-wrap img`
+   above: equal specificity, so source order is what lets the max-width win — the
+   sidebar's `min(200px, 25vw)` was tuned for a 232px rail, not a 480px modal card. */
+.profile-logo-box {
+    background: var(--bg3); border: 1px solid var(--border2);
+    border-radius: 3px; padding: 16px 12px; margin-bottom: 8px;
 }
-.logo-reset:hover { color: var(--error); }
+.profile-logo-box img { max-height: 56px; max-width: 70%; }
+.profile-logo-reset { justify-content: center; width: 100%; }
+
+/* Sidebar logo: display only, so it needs sizing but none of the hover affordance.
+   align-self stops the flex column (.sidebar-brand) from stretching it full width. */
+.sidebar-brand > img {
+    max-height: 44px; max-width: 100%;
+    width: auto; height: auto; object-fit: contain; align-self: center;
+}
 
 .header-nav { display: flex; align-items: center; gap: 12px; }
 
@@ -606,7 +616,10 @@ body { display: flex; flex-direction: column; height: 100%; }
     transition: border-color 0.2s;
 }
 .drop-zone:hover { border-color: var(--muted); }
-.drop-zone.dragover { border-color: var(--accent); background: var(--bg2); }
+/* `drag-over`, hyphenated: this is the class every drop handler in admin.html adds.
+   It used to read `.dragover`, so it never matched and the zone stayed inert while a
+   file hovered over it — the zone looked dead. Keep the two spellings in sync. */
+.drop-zone.drag-over { border-color: var(--accent); background: var(--bg2); }
 .drop-zone svg { width: 30px; height: 30px; color: var(--muted); }
 .drop-zone p { font-size: 12px; color: var(--muted); text-align: center; line-height: 1.4; }
 
@@ -618,6 +631,7 @@ body { display: flex; flex-direction: column; height: 100%; }
     position: relative; overflow: hidden;
 }
 .drop-zone-small:hover { border-color: var(--muted); }
+.drop-zone-small.drag-over { border-color: var(--accent); background: var(--bg2); }
 #colBgDropZone { margin-top: 10px; }
 .drop-zone-small p { font-size: 12px; color: var(--muted); }
 
@@ -829,7 +843,9 @@ body { display: flex; flex-direction: column; height: 100%; }
     display: flex; align-items: center; justify-content: center;
     opacity: 0; transition: opacity 0.15s;
 }
-.collection-cover-thumb:hover .collection-cover-overlay { opacity: 1; }
+.collection-cover-thumb:hover .collection-cover-overlay,
+.collection-cover-thumb.drag-over .collection-cover-overlay { opacity: 1; }
+.collection-cover-thumb.drag-over { border-color: var(--accent); }
 .collection-cover-overlay svg { width: 16px; height: 16px; color: #fff; }
 
 .collection-info { flex: 1; min-width: 0; }

@@ -133,7 +133,13 @@ CREATE TABLE IF NOT EXISTS settings (
     website         TEXT NOT NULL DEFAULT '' CHECK (length(website) <= 500),
     admin_language  TEXT NOT NULL DEFAULT 'en' CHECK (admin_language IN ('en','fr','es','pt','it')),
     client_language TEXT NOT NULL DEFAULT 'auto' CHECK (client_language IN ('auto','en','fr','es','pt','it')),
-    date_format     TEXT NOT NULL DEFAULT 'auto' CHECK (date_format IN ('auto','dmy','mdy','ymd'))
+    date_format     TEXT NOT NULL DEFAULT 'auto' CHECK (date_format IN ('auto','dmy','mdy','ymd')),
+    -- Gallery slideshow, global for the whole site. Both are also added by
+    -- ensureSettingsColumns() in db/index.js, because CREATE TABLE IF NOT EXISTS
+    -- does nothing to an install that was migrated before these existed. Keep the
+    -- two definitions identical.
+    slideshow_interval   INTEGER NOT NULL DEFAULT 5 CHECK (slideshow_interval IN (3,5,8,12)),
+    slideshow_transition TEXT NOT NULL DEFAULT 'fade' CHECK (slideshow_transition IN ('fade','slide','kenburns'))
 );
 
 -- Replaces settings.socials = { [networkKey]: url }. A key-value table rather

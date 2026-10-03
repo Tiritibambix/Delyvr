@@ -77,7 +77,15 @@
             max-height: 48px;
             width: auto;
             z-index: 2;
-            filter: drop-shadow(0 1px 4px rgba(0,0,0,0.5));
+            /* The hero cover is undimmed and full-bleed, so a pale logo can sink straight
+               into a bright photo. First layer matches the house value used by `.hero h1`
+               below; the second is a tight, un-offset layer that separates thin SVG
+               strokes, which a soft offset shadow alone leaves ambiguous.
+               Note: drop-shadow() follows the alpha channel, so on an opaque JPEG logo
+               this reads as a rectangular halo rather than hugging the glyph. /api/logo
+               serves six formats and never tells the client which, so that case cannot be
+               detected here — and the halo still separates the logo from the photo. */
+            filter: drop-shadow(0 2px 6px rgba(0,0,0,0.55)) drop-shadow(0 0 2px rgba(0,0,0,0.4));
         }
 
         .hero h1 {
@@ -173,7 +181,8 @@
 
 
         .show-gallery-btn,
-        .back-to-collection {
+        .back-to-collection,
+        .slideshow-btn {
             display: inline-flex;
             align-items: center;
             gap: 8px;
@@ -193,27 +202,39 @@
         }
 
         .show-gallery-btn:hover,
-        .back-to-collection:hover {
+        .back-to-collection:hover,
+        .slideshow-btn:hover {
             background: rgba(255,255,255,0.12);
         }
 
         /* .show-gallery-btn n'est jamais soumis au thème clair : il vit toujours
            sur la photo de couverture non assombrie, donc il garde la même
            couleur claire que le titre, quel que soit le thème du site. */
-        html.light .back-to-collection {
+        html.light .back-to-collection,
+        html.light .slideshow-btn {
             border-color: rgba(0,0,0,0.55);
             color: rgba(0,0,0,0.85);
             text-shadow: none;
         }
 
-        html.light .back-to-collection:hover {
+        html.light .back-to-collection:hover,
+        html.light .slideshow-btn:hover {
             background: rgba(0,0,0,0.06);
         }
 
-        .back-to-collection svg {
+        .back-to-collection svg,
+        .slideshow-btn svg {
             width: 14px;
             height: 14px;
             flex-shrink: 0;
+        }
+
+        /* The label is the first thing to go on a narrow phone: the actions bar also
+           carries the back link and the montage button, and the play triangle alone
+           still reads as "start". */
+        @media (max-width: 480px) {
+            .slideshow-btn { padding: 9px 11px; }
+            .slideshow-btn span { display: none; }
         }
 
         .download-all-btn {
@@ -979,6 +1000,143 @@
             height: 16px;
         }
 
+        /* ══════════════════════════════════════════════════════════════════
+           SLIDESHOW
+
+           A separate overlay, NOT a mode of .lightbox. The lightbox carries
+           pinch-zoom-toward-midpoint, swipe nav, the comment drawer and its own
+           fullscreen handling; overloading it would put all of that at risk for
+           no gain. The two share nothing but the audio button host.
+
+           Same rule as .lightbox: nothing inside here may be `position: fixed`.
+           This element is what requestFullscreen() is called on, and a fixed
+           descendant of a top-layer element does not resolve reliably across
+           engines. .slideshow is itself fixed/inset:0, so absolute children get
+           identical geometry in both normal and fullscreen mode.
+           ══════════════════════════════════════════════════════════════════ */
+        .slideshow {
+            position: fixed;
+            inset: 0;
+            z-index: 1200; /* above .lightbox (1000) — the two are never open together, but this keeps intent explicit */
+            background: #000;
+            display: none;
+            overflow: hidden;
+        }
+        .slideshow.active { display: block; }
+        .slideshow.hide-cursor { cursor: none; }
+
+        .ss-stage { position: absolute; inset: 0; }
+
+        /* One <img> layer per slide. Layers are appended (so the incoming one paints
+           on top by DOM order) and the outgoing one is removed once the animation has
+           run — which is also why the entry animation is a keyframe and not a
+           transition: a fresh element has no previous value to transition from. */
+        .ss-img {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+            opacity: 0;
+        }
+        .ss-img.ss-fade { animation: ssFadeIn 600ms ease-out forwards; }
+        .ss-img.ss-slide { animation: ssSlideIn 350ms cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+        .ss-img.ss-slide.ss-rev { animation-name: ssSlideInRev; }
+
+        /* Ken Burns fills the frame instead of fitting it — a slow push on a letterboxed
+           image would just drift the bars around. Two animations run at once: the 600ms
+           crossfade and the 8s movement. */
+        .ss-img.ss-kenburns { object-fit: cover; }
+        .ss-img.ss-kenburns.ss-ko0 { animation: ssFadeIn 600ms ease-out forwards, ssKb0 8s ease-out forwards; }
+        .ss-img.ss-kenburns.ss-ko1 { animation: ssFadeIn 600ms ease-out forwards, ssKb1 8s ease-out forwards; }
+        .ss-img.ss-kenburns.ss-ko2 { animation: ssFadeIn 600ms ease-out forwards, ssKb2 8s ease-out forwards; }
+        .ss-img.ss-kenburns.ss-ko3 { animation: ssFadeIn 600ms ease-out forwards, ssKb3 8s ease-out forwards; }
+
+        @keyframes ssFadeIn { from { opacity: 0; } to { opacity: 1; } }
+        @keyframes ssSlideIn {
+            from { opacity: 0; transform: translateX(30%); }
+            to   { opacity: 1; transform: translateX(0); }
+        }
+        @keyframes ssSlideInRev {
+            from { opacity: 0; transform: translateX(-30%); }
+            to   { opacity: 1; transform: translateX(0); }
+        }
+        @keyframes ssKb0 { from { transform: scale(1) translate(0, 0); } to { transform: scale(1.12) translate(-1%, -1%); } }
+        @keyframes ssKb1 { from { transform: scale(1) translate(0, 0); } to { transform: scale(1.12) translate(1%, -1%); } }
+        @keyframes ssKb2 { from { transform: scale(1) translate(0, 0); } to { transform: scale(1.12) translate(-1%, 1%); } }
+        @keyframes ssKb3 { from { transform: scale(1) translate(0, 0); } to { transform: scale(1.12) translate(1%, 1%); } }
+
+        /* Progress bar. Re-created per slide so the animation restarts from 0 — and
+           removed on pause rather than paused in place, so a paused slideshow shows no
+           bar at all instead of a misleading frozen one. */
+        .ss-progress {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 2px;
+            background: rgba(255,255,255,0.7);
+            transform: scaleX(0);
+            transform-origin: left center;
+            z-index: 3;
+        }
+        .ss-progress.running { animation: ssProgress linear forwards; }
+        @keyframes ssProgress { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+
+        .ss-toolbar {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            z-index: 4;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            padding: 16px 20px;
+            background: linear-gradient(to top, rgba(0,0,0,0.6), transparent);
+            opacity: 1;
+            transition: opacity 300ms;
+        }
+        .ss-toolbar.hidden { opacity: 0; pointer-events: none; }
+
+        .ss-btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 34px;
+            height: 34px;
+            background: rgba(0,0,0,0.45);
+            border: 1px solid rgba(255,255,255,0.25);
+            border-radius: 3px;
+            color: #fff;
+            cursor: pointer;
+            font-family: inherit;
+            transition: background 0.2s, border-color 0.2s;
+        }
+        .ss-btn:hover { background: rgba(255,255,255,0.18); border-color: rgba(255,255,255,0.5); }
+        .ss-btn svg { width: 16px; height: 16px; }
+
+        /* #audioPlayer is always in the DOM — only its `.visible` class decides whether
+           it shows — so :empty is not enough: placeAudioButton() parks the button here
+           even with no montage, and the flex `gap` would then leave a 10px hole. This
+           toolbar is centred, so that hole visibly offsets the whole cluster (which is
+           why #barAudioSlot can live with the same quirk and this one cannot). */
+        #ssAudioSlot:not(:has(.audio-player.visible)) { display: none; }
+
+        .ss-counter {
+            font-size: 12px;
+            font-variant-numeric: tabular-nums;
+            color: rgba(255,255,255,0.75);
+            min-width: 54px;
+            text-align: center;
+        }
+
+        @media (max-width: 768px) {
+            .ss-toolbar { padding: 12px 14px; gap: 8px; }
+            .ss-btn { width: 38px; height: 38px; }
+        }
+
         /* Lightbox */
         .lightbox {
             position: fixed;
@@ -1435,6 +1593,9 @@
         .logo {
             display: inline-block; height: auto; max-height: 96px;
             max-width: min(380px, 75vw); width: auto; object-fit: contain;
+            /* Same treatment as .hero-logo: this sits over .bg-image too. Milder risk
+               here (the cover runs at 30% opacity under .bg-overlay) but the same fix. */
+            filter: drop-shadow(0 2px 6px rgba(0,0,0,0.55)) drop-shadow(0 0 2px rgba(0,0,0,0.4));
         }
         .collection-title {
             font-family: 'Fraunces', serif;
@@ -1645,6 +1806,10 @@
             Critique
         </span>
         <span id="barAudioSlot"></span>
+        <button class="slideshow-btn" id="slideshowBtn" onclick="openSlideshow()" style="display:none;">
+            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+            <span id="slideshowBtnText"></span>
+        </button>
     </div>
 
     <!-- Gallery Grid -->
@@ -1653,6 +1818,30 @@
     </div>
 
     <!-- Lightbox -->
+    <!-- Slideshow overlay. A sibling of .lightbox, never a child: this element is the
+         one passed to requestFullscreen(), and the audio button has to be re-parented
+         INTO it (see placeAudioButton) or it would vanish in fullscreen. -->
+    <div class="slideshow" id="slideshow">
+        <div class="ss-stage" id="ssStage"></div>
+        <div class="ss-progress" id="ssProgress"></div>
+        <div class="ss-toolbar" id="ssToolbar">
+            <button class="ss-btn" id="ssPrevBtn" onclick="slideshowPrev()">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </button>
+            <button class="ss-btn" id="ssPlayBtn" onclick="toggleSlideshowPlay()">
+                <svg id="ssPlayIcon" viewBox="0 0 24 24" fill="currentColor"></svg>
+            </button>
+            <button class="ss-btn" id="ssNextBtn" onclick="slideshowNext()">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </button>
+            <span class="ss-counter" id="ssCounter"></span>
+            <span id="ssAudioSlot"></span>
+            <button class="ss-btn" id="ssCloseBtn" onclick="closeSlideshow()">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18" stroke-linecap="round"/><line x1="6" y1="6" x2="18" y2="18" stroke-linecap="round"/></svg>
+            </button>
+        </div>
+    </div>
+
     <div class="lightbox" id="lightbox">
         <!-- Desktop Controls -->
         <button class="lightbox-close" onclick="closeLightbox()">
@@ -1843,6 +2032,10 @@
                 galleries: 'galleries', gallery: 'gallery', photos: 'photos', photo: 'photo',
                 browse: 'Browse', copyLink: 'Copy Link', copied: 'Copied!',
                 playMontage: 'Play the montage', pauseMontage: 'Pause the montage',
+                slideshow: 'Slideshow',
+                slideshowHint: 'Start fullscreen slideshow — Space pauses, Esc exits',
+                slideshowPlay: 'Play', slideshowPause: 'Pause',
+                slideshowPrev: 'Previous', slideshowNext: 'Next', slideshowClose: 'Exit slideshow',
                 collectionNotFoundTitle: 'Collection Not Found',
                 collectionNotFoundText: 'This collection may have been removed or the link is incorrect.'
             },
@@ -1876,6 +2069,10 @@
                 galleries: 'galerias', gallery: 'galeria', photos: 'fotos', photo: 'foto',
                 browse: 'Ver fotos', copyLink: 'Copiar link', copied: 'Copiado!',
                 playMontage: 'Ouvir a montagem', pauseMontage: 'Pausar',
+                slideshow: 'Apresentação',
+                slideshowHint: 'Iniciar a apresentação em tela cheia — Espaço pausa, Esc sai',
+                slideshowPlay: 'Reproduzir', slideshowPause: 'Pausar',
+                slideshowPrev: 'Anterior', slideshowNext: 'Próxima', slideshowClose: 'Sair da apresentação',
                 collectionNotFoundTitle: 'Coleção Não Encontrada',
                 collectionNotFoundText: 'Esta coleção pode ter sido removida ou o link está incorreto.'
             },
@@ -1909,6 +2106,10 @@
                 galleries: 'galerías', gallery: 'galería', photos: 'fotos', photo: 'foto',
                 browse: 'Ver fotos', copyLink: 'Copiar enlace', copied: '¡Copiado!',
                 playMontage: 'Escuchar el montaje', pauseMontage: 'Pausar',
+                slideshow: 'Diapositivas',
+                slideshowHint: 'Iniciar el pase a pantalla completa — Espacio pausa, Esc sale',
+                slideshowPlay: 'Reproducir', slideshowPause: 'Pausar',
+                slideshowPrev: 'Anterior', slideshowNext: 'Siguiente', slideshowClose: 'Salir del pase',
                 collectionNotFoundTitle: 'Colección No Encontrada',
                 collectionNotFoundText: 'Esta colección puede haber sido eliminada o el enlace es incorrecto.'
             },
@@ -1942,6 +2143,10 @@
                 galleries: 'gallerie', gallery: 'galleria', photos: 'foto', photo: 'foto',
                 browse: 'Sfoglia', copyLink: 'Copia link', copied: 'Copiato!',
                 playMontage: 'Ascolta il montaggio', pauseMontage: 'Metti in pausa',
+                slideshow: 'Presentazione',
+                slideshowHint: 'Avvia la presentazione a schermo intero — Spazio mette in pausa, Esc esce',
+                slideshowPlay: 'Riproduci', slideshowPause: 'Pausa',
+                slideshowPrev: 'Precedente', slideshowNext: 'Successiva', slideshowClose: 'Esci dalla presentazione',
                 collectionNotFoundTitle: 'Collezione Non Trovata',
                 collectionNotFoundText: 'Questa collezione potrebbe essere stata rimossa o il link non è corretto.'
             },
@@ -1975,6 +2180,10 @@
                 galleries: 'galeries', gallery: 'galerie', photos: 'photos', photo: 'photo',
                 browse: 'Parcourir', copyLink: 'Copier le lien', copied: 'Copié !',
                 playMontage: 'Écouter le montage', pauseMontage: 'Mettre en pause',
+                slideshow: 'Diaporama',
+                slideshowHint: 'Lancer le diaporama en plein écran — Espace met en pause, Échap quitte',
+                slideshowPlay: 'Lecture', slideshowPause: 'Pause',
+                slideshowPrev: 'Précédente', slideshowNext: 'Suivante', slideshowClose: 'Quitter le diaporama',
                 collectionNotFoundTitle: 'Collection introuvable',
                 collectionNotFoundText: 'Cette collection a peut-être été supprimée ou le lien est incorrect.'
             }
@@ -2008,6 +2217,20 @@
             document.getElementById('kbLabelNavigate').textContent = t.kbNavigate;
             document.getElementById('lightboxSocialToggleBtn').title = t.socialLinks;
             document.getElementById('lightboxSocialToggleBtn').setAttribute('aria-label', t.socialLinks);
+            document.getElementById('slideshowBtnText').textContent = t.slideshow;
+            document.getElementById('slideshowBtn').title = t.slideshowHint;
+            document.getElementById('slideshowBtn').setAttribute('aria-label', t.slideshow);
+            [['ssPrevBtn', t.slideshowPrev], ['ssNextBtn', t.slideshowNext], ['ssCloseBtn', t.slideshowClose]]
+                .forEach(([id, label]) => {
+                    const el = document.getElementById(id);
+                    el.title = label;
+                    el.setAttribute('aria-label', label);
+                });
+            // The play/pause button is deliberately NOT labelled here: its label depends
+            // on playback state, and reading that state from this function would touch a
+            // `let` declared further down — applyStaticTranslations() runs at load time,
+            // so that would be a temporal-dead-zone ReferenceError aborting the script.
+            // openSlideshow() labels it instead, by which point everything is initialised.
         }
         applyStaticTranslations();
 
@@ -2373,6 +2596,7 @@
             _commentDrawerFilename = null;
             _commentDrawerComments = [];
             closeLightbox();
+            closeSlideshow();   // `photos` was just emptied — a running slideshow would be stale
             resetZoom();
             closeCommentDrawer();
             document.getElementById('notFound').classList.remove('active');
@@ -2417,6 +2641,7 @@
                 document.getElementById('heroSection').style.display = 'flex';
                 document.getElementById('actionsBar').style.display = 'flex';
                 placeAudioButton(); // hero/bar exist now — dock the control into them
+                syncSlideshowButton(); // `photos` is populated, so we know if there are stills
 
                 // Critique mode indicator
                 if (critiqueMode) {
@@ -3142,6 +3367,251 @@
             }
         }
 
+        // ══════════════════════════════════════════════════════════════════
+        // SLIDESHOW
+        //
+        // A separate overlay rather than a mode of the lightbox — see the CSS
+        // block for why. Settings are global and photographer-set.
+        // ══════════════════════════════════════════════════════════════════
+
+        const SS_TOOLBAR_IDLE_MS = 3000;
+        const SS_INTERVALS = [3, 5, 8, 12];
+        const SS_TRANSITIONS = ['fade', 'slide', 'kenburns'];
+        const SS_ICON_PLAY = '<path d="M8 5v14l11-7z"/>';
+        const SS_ICON_PAUSE = '<path d="M6 5h4v14H6zM14 5h4v14h-4z"/>';
+
+        let _ssPhotos = [];
+        let _ssIndex = 0;
+        let _ssPlaying = false;
+        let _ssActive = false;
+        let _ssTimer = null;
+        let _ssIdleTimer = null;
+        let _ssInterval = 5;
+        let _ssTransition = 'fade';
+        // Tracked apart from _ssActive because requestFullscreen() can be refused
+        // (iOS Safari does not grant it on an arbitrary element) and the slideshow
+        // still runs as a plain overlay in that case. Without this flag, a
+        // fullscreenchange fired by the LIGHTBOX's own fullscreen button would close
+        // a slideshow that never entered fullscreen at all.
+        let _ssUsedFullscreen = false;
+
+        // Global settings, read once per page load from the shared promise in
+        // shared.js. Validated client-side too: the response is not trusted to be
+        // in range just because the server validates on write.
+        getSiteSettings().then(s => {
+            const n = Number(s.slideshowInterval);
+            if (SS_INTERVALS.includes(n)) _ssInterval = n;
+            if (SS_TRANSITIONS.includes(s.slideshowTransition)) _ssTransition = s.slideshowTransition;
+        });
+
+        // The button is pointless on an all-video gallery, and a slideshow of zero
+        // stills would open an empty black overlay.
+        function syncSlideshowButton() {
+            const btn = document.getElementById('slideshowBtn');
+            if (!btn) return;
+            const hasStills = Array.isArray(photos) && photos.some(p => !isVideoPhoto(p));
+            btn.style.display = hasStills ? 'inline-flex' : 'none';
+        }
+
+        function openSlideshow() {
+            // Videos are skipped entirely: a slideshow is a paced sequence of stills,
+            // and a clip of arbitrary length has no meaning inside a fixed interval.
+            _ssPhotos = photos.filter(p => !isVideoPhoto(p));
+            if (_ssPhotos.length === 0) return;
+
+            _ssActive = true;
+            _ssIndex = 0;
+            const el = document.getElementById('slideshow');
+            el.classList.add('active');
+
+            // Fullscreen is requested, never required. _ssUsedFullscreen is set by the
+            // fullscreenchange handler rather than from this call's return value, which
+            // is a promise in modern engines but undefined in older WebKit.
+            const req = el.requestFullscreen || el.webkitRequestFullscreen;
+            if (req) {
+                try {
+                    const p = req.call(el);
+                    if (p && typeof p.catch === 'function') p.catch(() => {});
+                } catch (_) {}
+            }
+
+            placeAudioButton(); // re-parent the montage control INTO the fullscreened element
+            ssRenderSlide(1);
+            ssPlay();            // autostart
+            ssArmIdle();
+        }
+
+        function closeSlideshow() {
+            if (!_ssActive) return;
+            _ssActive = false;
+            ssPause();
+            clearTimeout(_ssIdleTimer);
+            _ssIdleTimer = null;
+
+            // Only exit if still IN fullscreen: this also runs as the "fullscreen was
+            // just left" handler, where exiting again would throw.
+            if (_ssUsedFullscreen && document.fullscreenElement) {
+                const exit = document.exitFullscreen || document.webkitExitFullscreen;
+                if (exit) exit.call(document).catch(() => {});
+            }
+            _ssUsedFullscreen = false;
+
+            const el = document.getElementById('slideshow');
+            el.classList.remove('active', 'hide-cursor');
+            document.getElementById('ssStage').innerHTML = '';
+            document.getElementById('ssToolbar').classList.remove('hidden');
+            _ssPhotos = [];
+            placeAudioButton(); // hand the montage control back to the page chrome
+        }
+
+        function ssRenderSlide(direction) {
+            const stage = document.getElementById('ssStage');
+            const photo = _ssPhotos[_ssIndex];
+            if (!photo) return;
+
+            const img = document.createElement('img');
+            img.className = 'ss-img ss-' + _ssTransition;
+            if (_ssTransition === 'kenburns') {
+                // Four drift directions picked deterministically from the filename, so a
+                // given photo always moves the same way instead of changing each pass.
+                img.classList.add('ss-ko' + (photo.filename.charCodeAt(0) % 4));
+            }
+            if (direction < 0) img.classList.add('ss-rev');
+            img.decoding = 'async';
+            img.alt = '';
+            img.src = photo.previewUrl || photo.url;
+            stage.appendChild(img);
+
+            // Drop the outgoing layer(s) once the incoming animation has run. The
+            // incoming layer paints on top meanwhile purely by DOM order.
+            const settle = (_ssTransition === 'slide' ? 350 : 600) + 50;
+            setTimeout(() => {
+                while (stage.children.length > 1 && stage.firstElementChild !== img) {
+                    stage.removeChild(stage.firstElementChild);
+                }
+            }, settle);
+
+            ssUpdateCounter();
+            ssPreloadAhead();
+        }
+
+        function ssPreloadAhead() {
+            // Next two, wrapping. decode() gets the bitmap ready so a large preview
+            // does not stutter at the moment of the swap.
+            for (let n = 1; n <= 2; n++) {
+                const p = _ssPhotos[(_ssIndex + n) % _ssPhotos.length];
+                if (!p) continue;
+                const pre = new Image();
+                pre.decoding = 'async';
+                pre.src = p.previewUrl || p.url;
+                if (pre.decode) pre.decode().catch(() => {});
+            }
+        }
+
+        // Loops infinitely in both directions.
+        function ssGo(direction) {
+            _ssIndex = (_ssIndex + direction + _ssPhotos.length) % _ssPhotos.length;
+            ssRenderSlide(direction);
+            if (_ssPlaying) { ssStartProgress(); ssArmTimer(); }
+        }
+
+        function ssArmTimer() {
+            clearTimeout(_ssTimer);
+            // Re-armed per slide, so resuming after a pause gives a full interval
+            // rather than the remainder of the one that was interrupted.
+            _ssTimer = setTimeout(() => ssGo(1), _ssInterval * 1000);
+        }
+
+        function ssPlay() {
+            _ssPlaying = true;
+            ssSyncPlayIcon();
+            ssStartProgress();
+            ssArmTimer();
+        }
+
+        function ssPause() {
+            _ssPlaying = false;
+            clearTimeout(_ssTimer);
+            _ssTimer = null;
+            ssStopProgress();
+            ssSyncPlayIcon();
+        }
+
+        function toggleSlideshowPlay() { _ssPlaying ? ssPause() : ssPlay(); }
+
+        // Manual navigation pauses: having the timer fire moments after a deliberate
+        // step would feel like the slideshow fighting the viewer.
+        function slideshowNext() { ssPause(); ssGo(1); }
+        function slideshowPrev() { ssPause(); ssGo(-1); }
+
+        function ssStartProgress() {
+            const bar = document.getElementById('ssProgress');
+            bar.classList.remove('running');
+            // Forced reflow: removing and re-adding the class in the same frame is
+            // coalesced, and the animation would simply never restart.
+            void bar.offsetWidth;
+            bar.style.animationDuration = _ssInterval + 's';
+            bar.classList.add('running');
+        }
+
+        function ssStopProgress() {
+            // Removed rather than paused in place, so a paused slideshow shows no bar
+            // at all instead of a frozen one that reads as stuck.
+            document.getElementById('ssProgress').classList.remove('running');
+        }
+
+        function ssSyncPlayIcon() {
+            const icon = document.getElementById('ssPlayIcon');
+            if (icon) icon.innerHTML = _ssPlaying ? SS_ICON_PAUSE : SS_ICON_PLAY;
+            const btn = document.getElementById('ssPlayBtn');
+            if (btn) {
+                const label = _ssPlaying ? t.slideshowPause : t.slideshowPlay;
+                btn.title = label;
+                btn.setAttribute('aria-label', label);
+            }
+        }
+
+        function ssUpdateCounter() {
+            const el = document.getElementById('ssCounter');
+            if (el) el.textContent = `${_ssIndex + 1} / ${_ssPhotos.length}`;
+        }
+
+        function ssArmIdle() {
+            clearTimeout(_ssIdleTimer);
+            const toolbar = document.getElementById('ssToolbar');
+            const root = document.getElementById('slideshow');
+            toolbar.classList.remove('hidden');
+            root.classList.remove('hide-cursor');
+            _ssIdleTimer = setTimeout(() => {
+                toolbar.classList.add('hidden');
+                root.classList.add('hide-cursor');
+            }, SS_TOOLBAR_IDLE_MS);
+        }
+
+        // pointerdown as well as pointermove, and this is not optional: a phone fires no
+        // mousemove, so with movement alone the toolbar would hide after 3s and never
+        // come back — taking the close button and the montage control with it.
+        // A tap on the hidden toolbar passes through (pointer-events: none) and brings it
+        // back, the same two-tap pattern the mobile lightbox bars already use.
+        ['pointermove', 'pointerdown'].forEach(evt => {
+            document.getElementById('slideshow').addEventListener(evt, () => {
+                if (_ssActive) ssArmIdle();
+            });
+        });
+
+        // Capture phase, and it returns immediately unless the slideshow is open, so it
+        // cannot interfere with the lightbox's own capture-phase handler (which likewise
+        // bails out unless .lightbox is active).
+        document.addEventListener('keydown', (e) => {
+            if (!_ssActive) return;
+            if (e.metaKey || e.ctrlKey || e.altKey) return;
+            if (e.key === 'Escape') { e.preventDefault(); closeSlideshow(); }
+            else if (e.key === 'ArrowRight') { e.preventDefault(); slideshowNext(); }
+            else if (e.key === 'ArrowLeft') { e.preventDefault(); slideshowPrev(); }
+            // Space would scroll the page underneath without preventDefault.
+            else if (e.key === ' ' || e.code === 'Space') { e.preventDefault(); toggleSlideshowPlay(); }
+        }, true);
+
         // Changer l'icône fullscreen selon l'état + reset zoom (layout change)
         document.addEventListener('fullscreenchange', () => {
             resetZoom();
@@ -3153,6 +3623,17 @@
                 const el = document.getElementById(id);
                 if (el) el.innerHTML = newPath;
             });
+
+            // Slideshow fullscreen, both directions. Entering records that this overlay
+            // owns the fullscreen session; leaving by ANY route closes the slideshow —
+            // including Escape, which the browser swallows to exit fullscreen before any
+            // keydown listener sees it, making this event the only reliable signal.
+            const ssEl = document.getElementById('slideshow');
+            if (document.fullscreenElement === ssEl) {
+                _ssUsedFullscreen = true;
+            } else if (!document.fullscreenElement && _ssActive && _ssUsedFullscreen) {
+                closeSlideshow();
+            }
         });
 
 
@@ -3361,6 +3842,10 @@
         // never interrupted. Crucially, the lightbox hosts are INSIDE .lightbox — the
         // fullscreen element — so the control survives fullscreen instead of vanishing.
         function audioHostFor() {
+            // Slideshow first: it is the element passed to requestFullscreen(), so the
+            // montage control has to live INSIDE it or fullscreen renders it out of
+            // existence — and a slideshow with music is the montage's whole purpose.
+            if (_ssActive) return document.getElementById('ssAudioSlot');
             const lb = document.getElementById('lightbox');
             if (lb && lb.classList.contains('active')) {
                 // Deliberately NOT _isMobileLB(): that also matches (max-height: 500px),
@@ -3432,6 +3917,7 @@
                 });
                 document.getElementById('notFound').classList.remove('active');
                 closeLightbox();
+                closeSlideshow();   // `photos` is about to stop describing what is on screen
                 galleryId = null;   // force a reload if the same gallery is reopened
                 // Back on the index: restore the collection's montage (a no-op when
                 // it is already the loaded track, so it keeps playing) or clear the
