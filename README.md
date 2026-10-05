@@ -38,7 +38,7 @@ This application was built with the help of AI and is provided as-is. Reasonable
 
 When you share a gallery link with a client, here is what they get:
 
-**On desktop:** A full justified grid of photos that fills the screen beautifully. Clicking any photo opens a full-screen lightbox with keyboard navigation (arrow keys, Escape). They can mark their favorites with a heart, download individual photos, or grab everything as a ZIP with one click. The ZIP filename keeps accents and special characters exactly as you named the files.
+**On desktop:** The cover photo fills the screen, and as they scroll down to the photos it drifts upward more slowly than the page, giving a subtle sense of depth, as if the cover sat further back. Below it, a full justified grid of photos that fills the screen beautifully. Clicking any photo opens a full-screen lightbox with keyboard navigation (arrow keys, Escape). They can mark their favorites with a heart, download individual photos, or grab everything as a ZIP with one click, audio montage included if the gallery has one. The ZIP filename keeps accents and special characters exactly as you named the files.
 
 **On mobile:** The same gallery, fully optimised for touch. Swipe left and right to navigate between photos in the lightbox. Pinch with two fingers to zoom in up to 5x, then drag with one finger to pan. Tap to show or hide the action bar. Nothing breaks, nothing is hidden.
 
@@ -46,11 +46,11 @@ When you share a gallery link with a client, here is what they get:
 
 **Favorites:** Clients can heart the photos they love, from the grid or inside the lightbox. Each person gets their own anonymous vote, so multiple people reviewing the same gallery don't overwrite each other's picks. You see the results sorted by vote count in your dashboard.
 
-**Comments:** Clients can leave a comment on any photo or video from the lightbox, with an optional name (no account needed — just like favorites, it's all anonymous unless they choose to type a name). Comments are public: everyone viewing the gallery sees the same conversation under each photo, like a guestbook. You can turn comments off for any gallery from your dashboard.
+**Comments:** Clients can leave a comment on any photo or video from the lightbox, with an optional name (no account needed; just like favorites, it's all anonymous unless they choose to type a name). Comments are public: everyone viewing the gallery sees the same conversation under each photo, like a guestbook. You can turn comments off for any gallery from your dashboard.
 
-**Slideshow:** A discreet **Slideshow** button sits in the bar above the photo grid. It starts a fullscreen, self-advancing show of the gallery's photos, with a thin progress bar and a toolbar that fades away after a few seconds so nothing competes with the images. Space pauses, the arrow keys step through it (and pause), and Escape — or leaving fullscreen any other way — closes it. Videos are skipped. If a montage is attached, its play button travels into the slideshow so the music stays within reach. You choose the pace and the transition once, in Settings, and it applies to every gallery.
+**Slideshow:** A discreet **Slideshow** button sits in the bar above the photo grid. It starts a fullscreen, self-advancing show of the gallery's photos, with a thin progress bar and a toolbar that fades away after a few seconds so nothing competes with the images. Space pauses, the arrow keys step through it (and pause), and Escape (or leaving fullscreen any other way) closes it. Videos are skipped. If a montage is attached, its play button travels into the slideshow so the music stays within reach. You choose the pace and the transition once, in Settings, and it applies to every gallery.
 
-**Music:** You can attach an audio montage — a soundtrack of the wedding day, for instance — **to a collection, to a single gallery, or both**. A single small play button appears; tapping it starts the montage. Nothing plays on its own, your clients start it themselves, and they can stop it at any moment — including from their phone's lock screen, where the name and cover appear like any other track.
+**Music:** You can attach an audio montage (a soundtrack of the wedding day, for instance) **to a collection, to a single gallery, or both**. On the cover and on the collection page it appears as a proper button reading **"Play the audio"**, sitting right above "Download all" and the same width, with a thin progress bar along its bottom edge while it plays. In the tighter places (the sticky bar, the lightbox, the slideshow) it shrinks back to a single icon so it never competes with the photos. Nothing plays on its own, your clients start it themselves, and they can stop it at any moment, including from their phone's lock screen, where the name and cover appear like any other track. **They also get the file itself**: the montage is included in the download, so the soundtrack of the day leaves with the photos.
 
 Which one plays follows one simple rule:
 
@@ -62,7 +62,7 @@ Which one plays follows one simple rule:
 
 That way a whole-event soundtrack is never cut short by opening a gallery, and a gallery that belongs to no collection can still have its own music.
 
-**Language:** Client pages display in English, French, Spanish, Portuguese, or Italian. By default the language follows the visitor's browser, but you can force a specific language — globally, per collection, or per gallery (a gallery's own setting always wins over its collection's, which in turn wins over your global default). This also controls the language of the link-preview text shown when a gallery or collection is shared on WhatsApp, iMessage, or social media.
+**Language:** Client pages display in English, French, Spanish, Portuguese, or Italian. By default the language follows the visitor's browser, but you can force a specific language: globally, per collection, or per gallery (a gallery's own setting always wins over its collection's, which in turn wins over your global default). This also controls the language of the link-preview text shown when a gallery or collection is shared on WhatsApp, iMessage, or social media.
 
 **Branding:** Your logo appears on every page. Your Instagram, website, and other social links appear in the footer. The whole thing looks like yours.
 
@@ -72,13 +72,13 @@ That way a whole-event soundtrack is never cut short by opening a gallery, and a
 
 ### The dashboard
 
-The admin dashboard is a sidebar shell with separate pages you switch between: **Galleries**, **Collections**, and **Create** (where you make new galleries and collections side by side). Your logo sits at the top of the sidebar; your settings, the light/dark theme toggle, and logout are at the bottom. On desktop the sidebar is always visible; on mobile it collapses into a burger menu — tap to open, tap again to close — and every page stacks cleanly so all the important actions stay reachable.
+The admin dashboard is a sidebar shell with separate pages you switch between: **Galleries**, **Collections**, and **Create** (where you make new galleries and collections side by side). Your logo sits at the top of the sidebar; your settings, the light/dark theme toggle, and logout are at the bottom. On desktop the sidebar is always visible; on mobile it collapses into a burger menu (tap to open, tap again to close), and every page stacks cleanly so all the important actions stay reachable.
 
 ### Uploading
 
-Drop photos or entire folders onto the upload zone. The gallery name is pre-filled from the folder name. Photos are uploaded in batches so large sessions (150+ photos) work reliably, and a connection that stalls mid-transfer is retried automatically instead of hanging forever — if it truly can't recover you get a clear message rather than a silent freeze. ICC color profiles (Adobe RGB, Display P3, etc.) are preserved in every generated thumbnail and preview, so what your clients see in the browser matches what you edited in Lightroom.
+Drop photos or entire folders onto the upload zone. The gallery name is pre-filled from the folder name. Photos are uploaded in batches so large sessions (150+ photos) work reliably, and a connection that stalls mid-transfer is retried automatically instead of hanging forever. If it truly can't recover you get a clear message rather than a silent freeze. ICC color profiles (Adobe RGB, Display P3, etc.) are preserved in every generated thumbnail and preview, so what your clients see in the browser matches what you edited in Lightroom.
 
-Uploads keep running while you work. A compact progress panel sits in the sidebar, so you can leave the Create page and browse your galleries and collections without losing sight of it — and if an upload finishes while you're on another page, a pop-up hands you the share link. A red banner reminds you not to close the tab or reload mid-upload (the browser warns you too), and a **Cancel upload** button stops the transfer and removes whatever was already uploaded, so you're never left with a half-finished gallery.
+Uploads keep running while you work. A compact progress panel sits in the sidebar, so you can leave the Create page and browse your galleries and collections without losing sight of it, and if an upload finishes while you're on another page, a pop-up hands you the share link. A red banner reminds you not to close the tab or reload mid-upload (the browser warns you too), and a **Cancel upload** button stops the transfer and removes whatever was already uploaded, so you're never left with a half-finished gallery.
 
 **Video clips:** You can also drop `.mp4`, `.mov`, `.webm`, and `.m4v` video files into a gallery alongside photos. Delyvr automatically generates a poster thumbnail for each video, shows a play badge in the gallery grid, and plays the video with full controls (including seeking) in the lightbox.
 
@@ -86,9 +86,9 @@ Uploads keep running while you work. A compact progress panel sits in the sideba
 
 You can also add a cover image (hero photo) to each gallery. This appears as the full-bleed background on the client download page and as the preview thumbnail in collections.
 
-**Multiple galleries at once:** Drop two or more folders together and Delyvr creates one gallery per folder, named after each folder. Each pending gallery gets its own small cover-image drop zone, so you can set a different cover per gallery before creating them — then a single "Create N galleries" button uploads everything with one overall progress bar. Any loose files dropped alongside the folders are ignored, with a note explaining why.
+**Multiple galleries at once:** Drop two or more folders together and Delyvr creates one gallery per folder, named after each folder. Each pending gallery gets its own small cover-image drop zone, so you can set a different cover per gallery before creating them. A single "Create N galleries" button then uploads everything with one overall progress bar. Any loose files dropped alongside the folders are ignored, with a note explaining why.
 
-**Assign to a collection on creation:** Whether you're creating one gallery or several at once, you can pick an existing collection from the dropdown, or check "Include the gallery being created" (or "Include the galleries being created" for a multi-folder drop) and name a new collection — it's created once and every new gallery is added to it automatically. The create button updates accordingly, e.g. "Create gallery + collection" or "Create 3 galleries + collection".
+**Assign to a collection on creation:** Whether you're creating one gallery or several at once, you can pick an existing collection from the dropdown, or check "Include the gallery being created" (or "Include the galleries being created" for a multi-folder drop) and name a new collection; it's created once and every new gallery is added to it automatically. The create button updates accordingly, e.g. "Create gallery + collection" or "Create 3 galleries + collection".
 
 ### Managing galleries
 
@@ -96,25 +96,25 @@ You can also add a cover image (hero photo) to each gallery. This appears as the
 
 **Search:** Type in the search box above the gallery list to filter by name. Instant, no page reload.
 
-**Manage photos:** Click the grid icon on any gallery card to open a photo manager. Photos are displayed at their natural proportions in a justified layout. You can add new photos by dropping them into the zone or browsing — they are queued with a list where you can remove individual ones before uploading. To delete, hover a photo and click the trash icon for one at a time, or use the Select button to pick multiple photos and delete them in one go. All confirmations happen inside the app, no browser popups.
+**Manage photos:** Click the grid icon on any gallery card to open a photo manager. Photos are displayed at their natural proportions in a justified layout. You can add new photos by dropping them into the zone or browsing; they are queued with a list where you can remove individual ones before uploading. To delete, hover a photo and click the trash icon for one at a time, or use the Select button to pick multiple photos and delete them in one go. All confirmations happen inside the app, no browser popups.
 
 **Cover image:** Click or drag a photo onto the gallery cover area to change it.
 
 **Downloads toggle:** Each gallery has a Downloads switch. Turn it off for draft galleries where you want clients to mark favorites before you release the full files.
 
-**Comments toggle:** Each gallery also has a Comments switch, on by default. Turn it off for galleries where you don't want a public comment wall — the comment button simply disappears from the lightbox for clients.
+**Comments toggle:** Each gallery also has a Comments switch, on by default. Turn it off for galleries where you don't want a public comment wall: the comment button simply disappears from the lightbox for clients.
 
 **Gallery stats:** Each gallery shows how many times the ZIP has been downloaded and how many unique visitors have viewed it.
 
 **Favorites:** Click View on a gallery to see which photos were hearted and how many times. Click Reset to clear all votes when you start a new review round. You can also export the full list as a CSV file to process selections in your own tools.
 
-**Comments:** Click View on a gallery to open a dedicated moderation page built for reading. A left rail lists every commented photo with its critique number and comment count; selecting one shows that photo large next to its full thread, so you read the feedback beside the image it's about — ideal when Delyvr doubles as a peer-critique platform. Delete individual comments to remove spam, or click Clear all to empty the whole gallery.
+**Comments:** Click View on a gallery to open a dedicated moderation page built for reading. A left rail lists every commented photo with its critique number and comment count; selecting one shows that photo large next to its full thread, so you read the feedback beside the image it's about, ideal when Delyvr doubles as a peer-critique platform. Delete individual comments to remove spam, or click Clear all to empty the whole gallery.
 
 **Bulk operations:** Click Select in the gallery section header to enter selection mode. Select individual galleries or use Select all. Then enable or disable downloads for all selected galleries at once, add them to a collection, or delete them. Click Cancel or press Escape to exit.
 
 **Critique mode:** When reviewing photos with other photographers, use the ordered list icon on any gallery to copy a special critique link. Share that link with your colleagues. In their browser, every photo in the grid and lightbox shows a number, so they can say "look at photo 23" without any ambiguity. Your regular clients never see these numbers as they use a different link.
 
-**Favorites ranking page:** The favorites modal in the admin has a "Copy ranking link" button. Share that link with your clients or collaborators and they get a clean, public page showing every favorited photo ranked from most voted to least voted, with gold/silver/bronze badges for the top three. The page follows the same style as the rest of the site, respects the theme, and shows your social footer. There is also an "Export CSV" button on that page. The page is read-only — it leads nowhere else.
+**Favorites ranking page:** The favorites modal in the admin has a "Copy ranking link" button. Share that link with your clients or collaborators and they get a clean, public page showing every favorited photo ranked from most voted to least voted, with gold/silver/bronze badges for the top three. The page follows the same style as the rest of the site, respects the theme, and shows your social footer. There is also an "Export CSV" button on that page. The page is read-only: it leads nowhere else.
 
 ### Trash
 
@@ -126,11 +126,11 @@ Collections let you group multiple galleries under a single link. The typical se
 
 Creating a collection: type a name, click Create, then add galleries. There are several ways to do it: use the Add gallery button to open a picker where you can select multiple galleries at once (each shown with its cover photo and count), or drag gallery cards directly from the gallery list and drop them into the collection. Reorder galleries by dragging the pills or using the arrow buttons (always visible on mobile where drag is unreliable).
 
-Each collection can have its own cover image. The collection link shows all galleries with their covers, a total photo count, and a download-all button that packages everything into a ZIP with one subfolder per gallery.
+Each collection can have its own cover image. The collection link shows all galleries with their covers, a total photo count, and a download-all button that packages everything into a ZIP with one subfolder per gallery, plus the collection's audio montage at the root if there is one.
 
-**Audio montage:** Each collection card **and each gallery card** has an audio row where you can add a montage (MP3 or M4A/AAC are the safest — they play everywhere; Ogg/Opus is uneven on Safari and WAV/FLAC are needlessly heavy). The filename, duration and size are shown once uploaded, and you can replace or remove it at any time. Your clients get a discreet play button on the collection that keeps playing as they browse from gallery to gallery. Note that a collection link is public to anyone holding it, so the montage is too.
+**Audio montage:** Each collection card **and each gallery card** has an audio row where you can add a montage (MP3 or M4A/AAC are the safest, since they play everywhere; Ogg/Opus is uneven on Safari and WAV/FLAC are needlessly heavy). The filename, duration and size are shown once uploaded, and you can replace or remove it at any time. Your clients get a labelled play button on the collection that keeps playing as they browse from gallery to gallery, and the file travels with the download: a collection's montage sits at the root of the collection ZIP, and a gallery's own montage goes into that gallery's ZIP. A gallery that sits inside a collection with its own soundtrack does not duplicate it: the track belongs to the event, so it ships once, with the collection. Note that a collection link is public to anyone holding it, so the montage is too.
 
-Collections have their own Downloads and Comments toggles, next to each collection's name. Turning either off blocks it for every gallery in the collection, even if that gallery's own toggle is on — useful for disabling comments or downloads across a whole event at once instead of gallery by gallery.
+Collections have their own Downloads and Comments toggles, next to each collection's name. Turning either off blocks it for every gallery in the collection, even if that gallery's own toggle is on, which is useful for disabling comments or downloads across a whole event at once instead of gallery by gallery.
 
 ### Social media previews
 
@@ -144,13 +144,13 @@ Upload your logo from the **Logo** section at the top of that modal. It appears 
 
 Settings also lets you set your website URL and social links. Instagram, Facebook, Pinterest, TikTok, LinkedIn, 500px, Flickr, and Behance are supported. Only links you fill in appear on client pages.
 
-There is a **Date format** picker for the dashboard: keep "Auto" to follow your browser, or pick `31/12/2026 · 14:30`, `12/31/2026 · 2:30 PM`, or `2026-12-31 · 14:30`. It sets the clock too (24-hour, except the US format). This only changes what *you* see in the dashboard — your clients' pages always show dates in their own language.
+There is a **Date format** picker for the dashboard: keep "Auto" to follow your browser, or pick `31/12/2026 · 14:30`, `12/31/2026 · 2:30 PM`, or `2026-12-31 · 14:30`. It sets the clock too (24-hour, except the US format). This only changes what *you* see in the dashboard; your clients' pages always show dates in their own language.
 
-Two language pickers: **Dashboard language** changes the admin interface itself (saving reloads the page), and **Default client language** sets the site-wide fallback used by client pages and link previews when a gallery or collection doesn't have its own override. To override the language for a single gallery or collection, use the small language dropdown on its card in the dashboard — "Auto" inherits from the collection or the global default.
+Two language pickers: **Dashboard language** changes the admin interface itself (saving reloads the page), and **Default client language** sets the site-wide fallback used by client pages and link previews when a gallery or collection doesn't have its own override. To override the language for a single gallery or collection, use the small language dropdown on its card in the dashboard, where "Auto" inherits from the collection or the global default.
 
-Finally, a **Slideshow** section sets how the gallery slideshow plays for your clients: the time each photo stays on screen (3, 5, 8 or 12 seconds) and the transition between them — **Fade**, **Slide**, or **Ken Burns** (a slow push across the photo). These apply to every gallery.
+Finally, a **Slideshow** section sets how the gallery slideshow plays for your clients: the time each photo stays on screen (3, 5, 8 or 12 seconds) and the transition between them: **Fade**, **Slide**, or **Ken Burns** (a slow push across the photo). These apply to every gallery.
 
-Native browser confirmation popups are never used — every destructive action (delete, reset, empty trash) shows an in-app confirmation dialog styled like the rest of the dashboard.
+Native browser confirmation popups are never used: every destructive action (delete, reset, empty trash) shows an in-app confirmation dialog styled like the rest of the dashboard.
 
 Light and dark mode can be toggled from the sidebar. The theme applies instantly to every visitor.
 
@@ -201,7 +201,7 @@ GALLERY_DIR=./data
 ### 4. Create the database (one-time)
 
 Delyvr stores galleries/collections/settings in a SQLite database file, created once by a
-migration/bootstrap command — required before the very first start, and again after any
+migration/bootstrap command. It is required before the very first start, and again after any
 upgrade from a version that still used `galleries.json`/`collections.json`/`settings.json`:
 
 ```bash
@@ -210,7 +210,7 @@ docker compose run --rm delyvr npm run migrate
 
 This is safe to run on a brand-new install too (no JSON files yet → an all-defaults
 database). It refuses to run again once `data/delyvr.sqlite` exists (pass `--force` after
-`--` to rebuild it from the JSON files, discarding anything written since) — so running it
+`--` to rebuild it from the JSON files, discarding anything written since), so running it
 twice by accident does nothing destructive.
 
 ### 5. Start the container
@@ -233,7 +233,7 @@ other row untouched. There is nothing to run and no downtime beyond the restart.
 
 > **Do not run `npm run migrate -- --force` to update.** That command is not an upgrade
 > path: it rebuilds the database **from the original `galleries.json` / `collections.json` /
-> `settings.json`**, discarding everything written since you first migrated — every
+> `settings.json`**, discarding everything written since you first migrated: every
 > favorite, comment, view count, and any gallery created after the switch to SQLite. It
 > exists only to redo the one-time import from scratch. If you ever do need it, back up
 > `./data/` first.
@@ -301,7 +301,7 @@ The following measures are implemented in the codebase:
 
 **Critique workflow:** When reviewing photos with fellow photographers, use the critique link (ordered list icon on each gallery card). They see numbered photos and can say "photo 12" instead of describing it. Regular clients use the normal link and never see numbers.
 
-**Comments workflow:** Comments are public to everyone with the gallery link — great for a shared family/wedding gallery where guests react to each other's comments, but turn the Comments toggle off for galleries shared with a single private client if you'd rather they send feedback another way.
+**Comments workflow:** Comments are public to everyone with the gallery link. That is great for a shared family/wedding gallery where guests react to each other's comments, but turn the Comments toggle off for galleries shared with a single private client if you'd rather they send feedback another way.
 
 **Naming files:** The filename controls sort order in the gallery. Photos are sorted by the name *without its extension*, so a companion file named after the photo it should follow (e.g. a GIF `wedding-036-gif.gif` next to `wedding-036.jpg`) lands right after it, just like in your file explorer. Rename files before importing if you want a specific sequence. Accents and special characters in filenames are preserved.
 
@@ -419,7 +419,7 @@ pm2 save && pm2 startup
 delyvr/
 ├── server.js           # Express server, all routes and middleware
 ├── db/                 # SQLite connection, schema, and the few multi-table operations
-├── scripts/            # migrate-json-to-sqlite.js — one-time database bootstrap
+├── scripts/            # migrate-json-to-sqlite.js: one-time database bootstrap
 ├── test/               # node --test suite for the database layer
 ├── package.json
 ├── Dockerfile
@@ -440,7 +440,7 @@ delyvr/
     ├── og-cache/       # 1200x630 OG images, generated on first share
     ├── audio/          # Audio montages (per collection or per gallery), stored verbatim
     ├── logo.*          # Custom logo if uploaded
-    ├── delyvr.sqlite   # The database — created once by `npm run migrate`
+    ├── delyvr.sqlite   # The database, created once by `npm run migrate`
     ├── galleries.json  # Pre-migration data, kept as a fallback, unused once migrated
     ├── collections.json
     └── settings.json
@@ -549,22 +549,22 @@ Add `client_max_body_size 500M;` to your Nginx config then run `sudo systemctl r
 
 Split into multiple galleries, or add `proxy_read_timeout 300;` to your Nginx config.
 
-### Server won't start — "ADMIN_PASSWORD is not set"
+### Server won't start: "ADMIN_PASSWORD is not set"
 
 ```bash
 cp .env.example .env && nano .env
 ```
 
-### Server won't start — "SQLite database not found"
+### Server won't start: "SQLite database not found"
 
-The database is created once by a separate command, not automatically on first boot — run it, then start normally:
+The database is created once by a separate command, not automatically on first boot. Run it, then start normally:
 
 ```bash
 docker compose run --rm delyvr npm run migrate
 docker compose up -d
 ```
 
-(Bare-metal: `npm run migrate` then `npm start`.) Safe to run even with no `galleries.json`/`collections.json`/`settings.json` present yet — it bootstraps an empty database in that case.
+(Bare-metal: `npm run migrate` then `npm start`.) Safe to run even with no `galleries.json`/`collections.json`/`settings.json` present yet; it bootstraps an empty database in that case.
 
 ### Admin access blocked unexpectedly
 
@@ -574,4 +574,4 @@ If `ADMIN_ALLOWED_IPS` is set, check `docker logs delyvr` for `[AUTH]` entries s
 
 ## License
 
-MIT — free to use and modify for your photography business.
+MIT. Free to use and modify for your photography business.

@@ -63,6 +63,11 @@
             object-fit: cover;
             object-position: center;
             opacity: 0;
+            /* `transform` is deliberately NOT in this transition list: the scroll
+               parallax (updateHeroParallax) writes it once per frame, and a
+               transition there would lag every frame behind the scroll. Keep this
+               to opacity only. `inset: 0` is likewise load-bearing — see the
+               parallax comment in the script for why no extra height is needed. */
             transition: opacity 1s ease;
         }
 
@@ -118,9 +123,25 @@
             right: 28px;
             z-index: 2;
             display: flex;
-            align-items: center;
+            /* flex-end, not center: keeps "Show Gallery" level with "Download All"
+               instead of centring it against the two-high audio/download column. */
+            align-items: flex-end;
             gap: 12px;
         }
+
+        /* align-items: stretch is what makes the audio button exactly as wide as the
+           download button — "same size" comes from the layout, not a hard-coded width,
+           which also means the button never resizes between its play and pause labels. */
+        .hero-actions-stack {
+            display: flex;
+            flex-direction: column;
+            align-items: stretch;
+            gap: 8px;
+        }
+        /* Both buttons are now the same width, so they must align their contents the
+           same way — left-aligned text in a stretched gold button reads as a bug.
+           The audio button already centres (base .audio-player rule). */
+        .hero-actions-stack .download-all-btn { justify-content: center; }
 
         @media (max-width: 480px) {
             .hero-logo { top: 16px; left: 16px; max-height: 36px; }
@@ -137,6 +158,14 @@
                 flex-wrap: wrap;
                 justify-content: flex-end;
             }
+            /* `bottom: 70px` above was tuned to clear ONE row of buttons. With a
+               montage the cluster is two rows tall (audio stacked over download), so
+               the title needs more clearance — but only then, hence :has() (already
+               used for the same kind of test on #ssAudioSlot further down).
+               The button is a descendant of .hero only while it is parked in the hero:
+               once placeAudioButton() moves it to the sticky bar the selector stops
+               matching and the title returns to 70px, with no JS involved. */
+            .hero:has(.audio-player.visible) h1 { bottom: 118px; }
         }
 
         /* Actions Bar */
@@ -1724,10 +1753,9 @@
         .coll-audio-wrap { display: flex; justify-content: center; position: relative; z-index: 10; }
         .coll-audio-wrap .audio-player { margin-top: 20px; }
 
-        /* Hero + sticky actions bar + collection index: a bordered round icon, sized
-           like the buttons it sits next to. */
-        .hero-actions .audio-player,
-        .coll-audio-wrap .audio-player,
+        /* Sticky actions bar: a bordered round icon, sized like the buttons it sits
+           next to. The bar is already dense (back link, critique chip, slideshow
+           button), so it keeps the compact form the hero no longer uses. */
         .actions-bar .audio-player {
             width: 34px; height: 34px; border-radius: 50%;
             border: 1px solid rgba(255,255,255,0.35);
@@ -1737,12 +1765,63 @@
                cross-fade declared on the base .audio-player selector. */
             transition: background 0.2s, border-color 0.2s, opacity 0.14s ease, transform 0.14s ease;
         }
-        .hero-actions .audio-player:hover,
-        .coll-audio-wrap .audio-player:hover,
         .actions-bar .audio-player:hover { background: rgba(0,0,0,0.45); border-color: #fff; }
-        .hero-actions .audio-player svg,
-        .coll-audio-wrap .audio-player svg,
         .actions-bar .audio-player svg { width: 14px; height: 14px; }
+
+        /* ── Wide labelled variant: hero cluster + collection index ──────────
+           A 34px unlabelled circle between two wide labelled buttons went unnoticed,
+           and the montage is the feature most worth noticing. These two hosts have the
+           room for a real button; the sticky bar above keeps the compact form, and the
+           lightbox / slideshow hosts below have no choice (20px over the photo, a
+           column of 44px circles, a 34px toolbar).
+           Metrics mirror .download-all-btn so the two stack as one unit. */
+        .hero-actions .audio-player,
+        .coll-audio-wrap .audio-player {
+            gap: 8px;
+            padding: 10px 18px;
+            border-radius: 3px;
+            border: 1px solid rgba(255,255,255,0.35);
+            color: #fff; background: rgba(0,0,0,0.25);
+            backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+            font-family: inherit; font-size: 13px; font-weight: 500;
+            white-space: nowrap;
+            text-shadow: 0 1px 3px rgba(0,0,0,0.5);
+            overflow: hidden; /* clips the progress bar to the rounded corners */
+            /* Same note as above: re-declare the cross-fade or placeAudioButton()
+               stops easing. Keep in sync with AUDIO_FADE_MS. */
+            transition: background 0.2s, border-color 0.2s, opacity 0.14s ease, transform 0.14s ease;
+        }
+        .hero-actions .audio-player:hover,
+        .coll-audio-wrap .audio-player:hover { background: rgba(0,0,0,0.45); border-color: #fff; }
+        /* "un tout petit peu plus gros" — 16px instead of the 14px the compact hosts use. */
+        .hero-actions .audio-player svg,
+        .coll-audio-wrap .audio-player svg { width: 16px; height: 16px; }
+        /* Full width ONLY in the hero stack, where it has to match the download button.
+           On the collection index .coll-audio-wrap is a page-wide centring flex box, so
+           100% there would stretch the button across the whole page. */
+        .hero-actions .audio-player { width: 100%; }
+
+        /* The label only exists in these two hosts; everywhere else the button is
+           icon-only and the name lives in its title/aria-label. */
+        .audio-player .audio-btn-label { display: none; }
+        .hero-actions .audio-player .audio-btn-label,
+        .coll-audio-wrap .audio-player .audio-btn-label { display: inline; }
+
+        /* The circular ::before ring cannot survive a wide button: border-radius: 50%
+           plus a radial-gradient(farthest-side) mask turn it into an ellipse of uneven
+           thickness. Replaced by a 2px bar along the bottom edge, driven by the SAME
+           --audio-progress property — the idiom .ss-progress already uses for the
+           slideshow (2px, scaleX, origin left). */
+        .hero-actions .audio-player::before,
+        .coll-audio-wrap .audio-player::before { display: none; }
+        .hero-actions .audio-player::after,
+        .coll-audio-wrap .audio-player::after {
+            content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: 2px;
+            background: var(--accent);
+            transform: scaleX(calc(var(--audio-progress, 0) / 100));
+            transform-origin: left center;
+            pointer-events: none;
+        }
         html.light .actions-bar .audio-player {
             border-color: var(--border); color: var(--text); background: transparent;
         }
@@ -1778,18 +1857,26 @@
             <button class="show-gallery-btn" id="showGalleryBtn" onclick="scrollToGallery()">
                 <span id="showGalleryText"></span>
             </button>
-            <a class="download-all-btn" id="downloadAllBtn" href="#">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M12 4v12m0 0l-4-4m4 4l4-4M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2" stroke-linecap="round" stroke-linejoin="round"/>
-                </svg>
-                <span id="downloadAllText"></span>
-            </a>
-            <span id="heroAudioSlot">
-                <button class="audio-player" id="audioPlayer" onclick="toggleMontage()">
-                    <svg id="audioIconPlay" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
-                    <svg id="audioIconPause" viewBox="0 0 24 24" fill="currentColor" style="display:none"><path d="M6 5h4v14H6zM14 5h4v14h-4z"/></svg>
-                </button>
-            </span>
+            <!-- Audio stacked directly ABOVE Download All, in a column that stretches
+                 both to the same width. When downloads are disabled the existing code
+                 hides #downloadAllBtn, and a display:none flex item consumes no gap —
+                 so the audio button simply lands where Download All was, with no
+                 conditional layout code. -->
+            <div class="hero-actions-stack">
+                <span id="heroAudioSlot">
+                    <button class="audio-player" id="audioPlayer" onclick="toggleMontage()">
+                        <svg id="audioIconPlay" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+                        <svg id="audioIconPause" viewBox="0 0 24 24" fill="currentColor" style="display:none"><path d="M6 5h4v14H6zM14 5h4v14h-4z"/></svg>
+                        <span class="audio-btn-label" id="audioBtnText"></span>
+                    </button>
+                </span>
+                <a class="download-all-btn" id="downloadAllBtn" href="#">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M12 4v12m0 0l-4-4m4 4l4-4M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                    <span id="downloadAllText"></span>
+                </a>
+            </div>
         </div>
     </section>
 
@@ -2032,6 +2119,7 @@
                 galleries: 'galleries', gallery: 'gallery', photos: 'photos', photo: 'photo',
                 browse: 'Browse', copyLink: 'Copy Link', copied: 'Copied!',
                 playMontage: 'Play the montage', pauseMontage: 'Pause the montage',
+                audioBtnPlay: 'Play the audio', audioBtnPause: 'Pause the audio',
                 slideshow: 'Slideshow',
                 slideshowHint: 'Start fullscreen slideshow — Space pauses, Esc exits',
                 slideshowPlay: 'Play', slideshowPause: 'Pause',
@@ -2069,6 +2157,7 @@
                 galleries: 'galerias', gallery: 'galeria', photos: 'fotos', photo: 'foto',
                 browse: 'Ver fotos', copyLink: 'Copiar link', copied: 'Copiado!',
                 playMontage: 'Ouvir a montagem', pauseMontage: 'Pausar',
+                audioBtnPlay: 'Ouvir o áudio', audioBtnPause: 'Pausar',
                 slideshow: 'Apresentação',
                 slideshowHint: 'Iniciar a apresentação em tela cheia — Espaço pausa, Esc sai',
                 slideshowPlay: 'Reproduzir', slideshowPause: 'Pausar',
@@ -2106,6 +2195,7 @@
                 galleries: 'galerías', gallery: 'galería', photos: 'fotos', photo: 'foto',
                 browse: 'Ver fotos', copyLink: 'Copiar enlace', copied: '¡Copiado!',
                 playMontage: 'Escuchar el montaje', pauseMontage: 'Pausar',
+                audioBtnPlay: 'Escuchar el audio', audioBtnPause: 'Pausar',
                 slideshow: 'Diapositivas',
                 slideshowHint: 'Iniciar el pase a pantalla completa — Espacio pausa, Esc sale',
                 slideshowPlay: 'Reproducir', slideshowPause: 'Pausar',
@@ -2143,6 +2233,7 @@
                 galleries: 'gallerie', gallery: 'galleria', photos: 'foto', photo: 'foto',
                 browse: 'Sfoglia', copyLink: 'Copia link', copied: 'Copiato!',
                 playMontage: 'Ascolta il montaggio', pauseMontage: 'Metti in pausa',
+                audioBtnPlay: "Ascolta l'audio", audioBtnPause: 'Metti in pausa',
                 slideshow: 'Presentazione',
                 slideshowHint: 'Avvia la presentazione a schermo intero — Spazio mette in pausa, Esc esce',
                 slideshowPlay: 'Riproduci', slideshowPause: 'Pausa',
@@ -2180,6 +2271,7 @@
                 galleries: 'galeries', gallery: 'galerie', photos: 'photos', photo: 'photo',
                 browse: 'Parcourir', copyLink: 'Copier le lien', copied: 'Copié !',
                 playMontage: 'Écouter le montage', pauseMontage: 'Mettre en pause',
+                audioBtnPlay: "Lancer l'audio", audioBtnPause: 'Mettre en pause',
                 slideshow: 'Diaporama',
                 slideshowHint: 'Lancer le diaporama en plein écran — Espace met en pause, Échap quitte',
                 slideshowPlay: 'Lecture', slideshowPause: 'Pause',
@@ -2605,6 +2697,11 @@
             const heroBg = document.getElementById('heroBg');
             heroBg.classList.remove('loaded');
             heroBg.removeAttribute('src');
+            // Clear the parallax offset left by the previous gallery. Written
+            // directly rather than through requestHeroParallax(): this function runs
+            // synchronously at the top of loadGallery(), which the bootstrap calls
+            // before the parallax state further down the script is initialised.
+            heroBg.style.transform = '';
             // A previous gallery with downloads disabled hid these — restore them,
             // the new gallery decides for itself below.
             ['downloadAllBtn', 'lightboxDownload', 'lbMobileDownload'].forEach(id => {
@@ -2642,6 +2739,7 @@
                 document.getElementById('actionsBar').style.display = 'flex';
                 placeAudioButton(); // hero/bar exist now — dock the control into them
                 syncSlideshowButton(); // `photos` is populated, so we know if there are stills
+                requestHeroParallax(); // the hero has a measurable height now
 
                 // Critique mode indicator
                 if (critiqueMode) {
@@ -3827,6 +3925,11 @@
             const btn = document.getElementById('audioPlayer');
             btn.title = playing ? t.pauseMontage : t.playMontage;
             btn.setAttribute('aria-label', btn.title);
+            // Visible label, shown only in the hero and on the collection index (CSS
+            // decides per host). Deliberately shorter keys than the title above, which
+            // is phrased as a tooltip: "Lancer l'audio" vs "Écouter le montage".
+            const label = document.getElementById('audioBtnText');
+            if (label) label.textContent = playing ? t.audioBtnPause : t.audioBtnPlay;
         }
 
         function toggleMontage() {
@@ -3952,6 +4055,50 @@
 
         renderSocialFooter();
 
+        // ── HERO PARALLAX ─────────────────────────────────────────────────
+        // The cover photo drifts down at half the scroll speed, so it reads as
+        // sitting further away than the logo/title/buttons, which scroll normally.
+        //
+        // The transform goes on .hero-bg, NEVER on .hero itself, for two reasons:
+        //  1. audioHostFor() decides the hero -> sticky-bar handoff from
+        //     #actionsBar.getBoundingClientRect().top <= 2, and .actions-bar is the
+        //     hero's next sibling — moving .hero would shift that rect and make the
+        //     audio button jump hosts early or late.
+        //  2. A transform on an ANCESTOR of a position: sticky element breaks its
+        //     containment. .hero and .actions-bar are siblings under <body>, so
+        //     transforming a descendant of .hero is safe — but never wrap the two
+        //     of them in a transformed container.
+        //
+        // No extra height is needed on .hero-bg: shifting it down by D = k * scrollY
+        // with k <= 1 keeps D <= scrollY, and the still-visible slice of the hero
+        // starts at scrollY — so the photo's top edge is always above it and no gap
+        // can open. The overflow at the bottom is clipped by .hero's existing
+        // `overflow: hidden`. Leaving `inset: 0` alone also preserves the
+        // photographer's chosen framing exactly, at rest.
+        const HERO_PARALLAX_FACTOR = 0.5;
+        const _reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+        let _heroParallaxRaf = null;
+
+        function updateHeroParallax() {
+            _heroParallaxRaf = null;
+            const bg = document.getElementById('heroBg');
+            const hero = document.getElementById('heroSection');
+            if (!bg || !hero) return;
+            // `.matches` is live, so re-reading it per frame needs no change listener.
+            if (_reduceMotion.matches) { bg.style.transform = ''; return; }
+            // Capped at the hero's height: past that it is fully off-screen and
+            // clipped, so further writes would paint nothing.
+            const y = Math.min(window.scrollY, hero.offsetHeight);
+            bg.style.transform = `translate3d(0, ${y * HERO_PARALLAX_FACTOR}px, 0)`;
+        }
+
+        // Coalesced into one write per frame. It also moves the write out of the
+        // scroll handler, which reads layout via placeAudioButton() — reads stay in
+        // the handler, the write lands in the rAF, so there is no layout thrash.
+        function requestHeroParallax() {
+            if (_heroParallaxRaf === null) _heroParallaxRaf = requestAnimationFrame(updateHeroParallax);
+        }
+
         // Le footer reste masqué sur le hero plein écran et n'apparaît qu'au scroll.
         function updateFooterVisibility() {
             // #socialFooter sits after this script in the document, so the very
@@ -3962,10 +4109,15 @@
             // The audio button follows the chrome: hero cluster until the sticky bar
             // takes over. placeAudioButton() no-ops unless the host actually changed.
             placeAudioButton();
+            // scrollToGallery() uses behavior: 'smooth', which emits scroll events —
+            // so the click path gets the parallax for free, with no extra code.
+            requestHeroParallax();
         }
         window.addEventListener('scroll', updateFooterVisibility, { passive: true });
         // Desktop <-> mobile swaps the lightbox host, so re-place on resize too.
         window.addEventListener('resize', placeAudioButton);
+        // The hero's height changes with the viewport, and the cap depends on it.
+        window.addEventListener('resize', requestHeroParallax);
         updateFooterVisibility();
     </script>
     <footer class="social-footer" id="socialFooter"></footer>

@@ -716,6 +716,20 @@ function decodeUploadFilename(name) {
     return redecoded.includes('�') ? name : redecoded;
 }
 
+// Flattens a name into a single safe ZIP entry segment. Path separators are the
+// point: archiver treats `/` in an entry name as a folder boundary, so a gallery
+// called "Avant / Après" or a montage saved as "mix/final.mp3" would silently
+// create nested entries instead of one file. Accents, spaces and & are kept —
+// same permissive rule as the on-disk names.
+function zipSafeName(name, fallback) {
+    const cleaned = String(name || '')
+        .replace(/[\\/]+/g, '-')
+        .replace(/[<>:"|?*\x00-\x1f]/g, '')
+        .replace(/^\.+/, '')          // no leading dots: ".." or hidden entries
+        .trim();
+    return cleaned || fallback;
+}
+
 const storage = multer.diskStorage({
     destination: (req, file, cb) => {
         const galleryId = req.galleryId || req.params.galleryId;
@@ -1897,6 +1911,11 @@ app.get('/api/gallery/:galleryId/info', publicReadLimiter, validateGalleryId, (r
         };
     }
 
+    // The montage now ships inside the gallery ZIP, so it has to count towards the
+    // size shown on the download button — otherwise the button under-reports by the
+    // weight of an entire audio track. Read from the row, no extra statSync.
+    if (audio && audio.size) totalSizeBytes += audio.size;
+
     res.json({
         galleryId,
         eventName,
@@ -1921,7 +1940,7 @@ app.get('/api/gallery/:galleryId/download', downloadLimiter, validateGalleryId, 
         return res.status(404).json({ error: 'Gallery not found' });
     }
 
-    const gallery = db.prepare(`SELECT event_name, downloads_enabled, download_count FROM galleries WHERE id = ?`).get(galleryId);
+    const gallery = db.prepare(`SELECT event_name, downloads_enabled, download_count, audio_filename FROM galleries WHERE id = ?`).get(galleryId);
     if (gallery && gallery.downloads_enabled === 0) {
         return res.status(403).json({ error: 'Downloads are disabled for this gallery' });
     }
@@ -1957,6 +1976,20 @@ app.get('/api/gallery/:galleryId/download', downloadLimiter, validateGalleryId, 
     archive.on('error', (err) => { res.status(500).send({ error: err.message }); });
     archive.pipe(res);
     files.forEach(file => archive.file(path.join(galleryPath, file), { name: file }));
+    // This gallery's OWN montage rides along — it lives in AUDIO_DIR, outside
+    // galleryPath, so the readdir above never sees it. Same two-condition guard as
+    // the /info route: the file must be on disk AND recorded in the row. A montage
+    // owned by the containing collection is deliberately NOT included here; it goes
+    // in the collection ZIP instead.
+    if (gallery && gallery.audio_filename) {
+        const audioFile = findAudioFile(`gallery-${galleryId}`);
+        if (audioFile) {
+            const ext = path.extname(audioFile);
+            archive.file(safeResolvePath(AUDIO_DIR, audioFile), {
+                name: zipSafeName(gallery.audio_filename, `montage${ext}`)
+            });
+        }
+    }
     archive.finalize();
 });
 
@@ -2412,12 +2445,16 @@ app.get('/api/collection/:collectionId', publicReadLimiter, validateCollectionId
         };
     }
 
+    // The montage now ships at the root of the collection ZIP, so it counts towards
+    // the size shown on the download button. Read from the row, no extra statSync.
+    if (audio && audio.size) totalSizeBytes += audio.size;
+
     res.json({
         id: collectionId,
         name: collection.name,
         background: collHasBg ? `/api/collection/${collectionId}/background` : null,
         downloadsEnabled: collDownloads,
-        totalSizeBytes, // photos only — the montage is deliberately excluded
+        totalSizeBytes, // photos + the montage, which the ZIP now contains
         galleries: galleriesData,
         audio,
         clientLanguage: resolveCollectionClientLanguage(collectionId)
@@ -2617,7 +2654,7 @@ app.delete('/api/collection/:collectionId/galleries/:galleryId', requireAuth, va
 // Download all photos in a collection as a ZIP (one sub-folder per gallery)
 app.get('/api/collection/:collectionId/download', downloadLimiter, validateCollectionId, (req, res) => {
     const { collectionId } = req.params;
-    const collection = db.prepare(`SELECT name, downloads_enabled FROM collections WHERE id = ?`).get(collectionId);
+    const collection = db.prepare(`SELECT name, downloads_enabled, audio_filename FROM collections WHERE id = ?`).get(collectionId);
     if (!collection) return res.status(404).json({ error: 'Collection not found' });
     if (collection.downloads_enabled === 0) {
         return res.status(403).json({ error: 'Downloads are disabled for this collection' });
@@ -2636,10 +2673,25 @@ app.get('/api/collection/:collectionId/download', downloadLimiter, validateColle
         const gallery = db.prepare(`SELECT event_name FROM galleries WHERE id = ?`).get(galleryId);
         const galleryPath = safeResolvePath(path.join(DATA_DIR, 'uploads'), galleryId);
         if (!fs.existsSync(galleryPath)) continue;
-        const folderName = (gallery ? gallery.event_name : galleryId).substring(0, 80) || galleryId;
+        // zipSafeName, not just a truncation: a `/` in the event name would otherwise
+        // split one gallery into nested folders inside the ZIP.
+        const folderName = zipSafeName((gallery ? gallery.event_name : galleryId).substring(0, 80), galleryId);
         const files = fs.readdirSync(galleryPath).filter(f => !f.startsWith('.'));
         files.forEach(file => entries.push({ diskPath: path.join(galleryPath, file), zipName: `${folderName}/${file}` }));
         if (gallery) includedGalleryIds.push(galleryId);
+    }
+
+    // The collection's montage goes at the ZIP ROOT, beside the gallery folders —
+    // it belongs to the whole event, not to any one gallery. Same two-condition
+    // guard as GET /api/collection/:id (on disk AND recorded in the row).
+    if (collection.audio_filename) {
+        const audioFile = findAudioFile(`collection-${collectionId}`);
+        if (audioFile) {
+            entries.push({
+                diskPath: safeResolvePath(AUDIO_DIR, audioFile),
+                zipName: zipSafeName(collection.audio_filename, `montage${path.extname(audioFile)}`)
+            });
+        }
     }
 
     if (includedGalleryIds.length) {

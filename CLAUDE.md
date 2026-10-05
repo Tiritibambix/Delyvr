@@ -360,14 +360,44 @@ the card.**
 - `GET /api/collection/:id` returns `audio: { url, filename, duration, size }` with an
   **mtime `?v=` token** on the URL (same idea as `bgVersion`) so a replaced track busts the
   24 h cache while an unchanged one stays cached — it matters a lot at this file size.
-  `totalSizeBytes` stays **photos only**; the montage is excluded, as is the ZIP.
+  `totalSizeBytes` **includes the montage**, since the ZIP now contains it — see
+  "ZIP downloads".
 - Deleting a collection removes the file via `deleteAudioFiles()`; deleting a gallery (hard-delete) does the same for its own montage.
 - **Client player** (`preview.html`): `preload="none"` so nothing is fetched until the
-  visitor asks. The UI is a **single small button** — scrubbing, skipping and the title are
-  handed to the OS lock-screen controls via the **Media Session API** instead of costing
-  screen space. Progress is a `conic-gradient` ring driven by a `--audio-progress` custom
-  property, so it occupies no layout. **Playback is never started automatically** (the
-  first play must be a user gesture, which every browser requires anyway).
+  visitor asks. Scrubbing, skipping and the title are handed to the OS lock-screen
+  controls via the **Media Session API** rather than costing screen space, so the in-page
+  control stays a single button. **Playback is never started automatically** (the first
+  play must be a user gesture, which every browser requires anyway).
+- **Two shapes, chosen per host, from one element.** The button used to be a 34 px
+  unlabelled circle everywhere. In the hero that put it between two wide labelled buttons,
+  where it went unnoticed — so the two hosts with room now render it **wide and labelled**,
+  and the cramped ones keep the icon:
+  | Host | Shape |
+  |---|---|
+  | `#heroAudioSlot` (hero cluster), `#collAudioSlot` (collection index) | wide + label, metrics mirroring `.download-all-btn` |
+  | `#barAudioSlot` (sticky bar) | round 34 px — the bar is already dense |
+  | `#lbAudioSlotDesktop`, `.lb-bottom-bar`, `#ssAudioSlot` | icon only — forced: 20 px absolutely positioned over the photo, a right-pinned column of 44 px circles, and a 34 px toolbar |
+
+  This is not a new mechanism: the styling was **already** per host via descendant
+  selectors (`.hero-actions .audio-player`, …), so the wide variant is one more branch of
+  it. Consequences to respect:
+  - The label (`.audio-btn-label`) is `display: none` by default and revealed only by the
+    two wide hosts. Its text comes from the **separate, shorter** keys `audioBtnPlay` /
+    `audioBtnPause` ("Lancer l'audio"), written in `updateMontageButton()` next to the
+    `title`, which keeps the tooltip-phrased `playMontage`/`pauseMontage` ("Écouter le
+    montage"). Don't collapse the two pairs.
+  - **The `conic-gradient` progress ring only works on a circle.** `border-radius: 50%`
+    plus a `radial-gradient(farthest-side, …)` mask turn into an ellipse of uneven
+    thickness on a wide button. The wide hosts therefore disable `::before` and use an
+    `::after` bar — 2 px, `scaleX(calc(var(--audio-progress) / 100))`, origin left, the
+    same idiom as the slideshow's `.ss-progress` — driven by the **same**
+    `--audio-progress` property, so `wireMontageOnce()` is untouched.
+  - In the hero the button is `width: 100%` inside `.hero-actions-stack`, whose
+    `align-items: stretch` makes it exactly as wide as the download button — so it also
+    never resizes between its play and pause labels. **Not** `width: 100%` on the
+    collection index, where `.coll-audio-wrap` is a page-wide centring flex box.
+  - Any new per-host rule **must re-declare** `opacity .14s ease, transform .14s ease` in
+    its `transition`, or it silently drops the cross-fade (see below).
 - **The button is docked into existing chrome, never floating.** As a `position: fixed`
   overlay it collided with the hero title, the photos, the footer and the lightbox's "@"
   widget — and, being a *sibling* of `.lightbox`, it **vanished in fullscreen**, since
@@ -512,6 +542,12 @@ Clients can leave a text comment on individual photos/videos from the lightbox. 
 
 Both gallery and collection ZIPs use `archiver` with `store: true` (no compression — JPEGs are already compressed, so this saves CPU without meaningfully increasing size). Content-Disposition uses RFC 5987 encoding (`filename*=UTF-8''...`) with an ASCII fallback for full Unicode support in filenames containing accents, spaces, or special characters. Content-Length is intentionally NOT set because archiver adds variable ZIP metadata during streaming that makes pre-calculation unreliable.
 
+**The audio montage ships inside the ZIPs**, so a client who downloads the event also gets the soundtrack. Each owner's own track and no other: the **collection** ZIP carries the collection's montage **at the root**, beside the per-gallery folders (it belongs to the whole event, not to one gallery); a **gallery** ZIP carries only that gallery's own montage. A gallery inside a collection that owns the soundtrack therefore gets **no** audio in its own ZIP — matching the client-side precedence rule in "Audio montage". Both sites use the same two-condition guard as the `/info` routes (file on disk **and** `audio_filename` recorded in the row), and the existing `downloads_enabled` 403s already gate them, so no new check was needed. The montage is not in `fs.readdirSync(galleryPath)` — it lives in `AUDIO_DIR` — so it has to be appended explicitly; there is nothing to *exclude* anywhere.
+
+**Every ZIP entry name goes through `zipSafeName(name, fallback)`** (server.js, next to `decodeUploadFilename`). `archiver` treats `/` in an entry name as a folder boundary, and neither `audio_filename` nor a gallery's `event_name` is stripped of path separators — so a gallery called `Avant / Après`, or a montage whose display name is `mix/final.mp3`, silently produced **nested** entries instead of one folder or one file. The helper collapses `/` and `\` to `-`, drops the Windows-illegal set and control characters, strips leading dots (so no `..` or hidden entries), and falls back when the result is empty. Accents, spaces and `&` are kept — same permissive rule as the on-disk names. A name with no separator cannot escape the extraction directory, so this is also what makes an untrusted display name safe to use as an entry name.
+
+**`totalSizeBytes` now includes the montage** in both `GET /api/gallery/:id/info` and `GET /api/collection/:id`, because that number is what the download button shows and the ZIP really does contain the track. It is added from the row's `audio_size` after the `audio` object is built (so it inherits the same guard) — no extra `statSync`. Do not revert it to photos-only without also removing the montage from the ZIPs.
+
 ### Filename sanitisation
 
 Multer's `filename` function strips only truly dangerous filesystem characters (`<>:"/\|?*` and control chars) while preserving accents, spaces, ampersands, and all Unicode. `SAFE_FILENAME_RE` used by `validateFilename` middleware follows the same permissive rule. This applies to new uploads only; existing files keep their stored names.
@@ -655,6 +691,12 @@ Loaded by all client pages via `<script src="/shared.js">` before their inline `
 
 - **Full-screen hero**: `.hero` is `height: 100vh`/`100dvh` (fallback cascade) with the gallery's background photo as an undimmed, full-bleed cover (`object-fit: cover`, no darkening overlay) — the site logo sits top-left, the gallery name bottom-left, and a "Show Gallery" button + the "Download All" button bottom-right. "Show Gallery" (`scrollToGallery()`) smooth-scrolls down to `#galleryContainer`. The outline action-style buttons across the page (`.show-gallery-btn`, `.back-to-collection`, `.slideshow-btn`) share one CSS rule set — same size/border/radius, theme-aware via an `html.light` override — rather than each having its own styling; extend those selectors instead of adding a variant. (`.download-all-btn` is the filled-gold exception.)
 - **Logo legibility over the hero**: the hero cover is undimmed and full-bleed, so `.hero-logo` carries a two-layer `filter: drop-shadow(0 2px 6px rgba(0,0,0,0.55)) drop-shadow(0 0 2px rgba(0,0,0,0.4))` — the first matches the house value on `.hero h1`, the second is a tight un-offset layer that separates thin SVG strokes, which a soft offset shadow alone leaves ambiguous. The collection index's `.logo` gets the same treatment (milder risk there: the cover runs at 30% opacity under `.bg-overlay`). `favorites.html`'s logo is on a plain page background and is deliberately left alone. **Limit:** `drop-shadow()` follows the alpha channel, so on an *opaque* JPEG logo it reads as a rectangular halo rather than hugging the glyph — `/api/logo` serves six formats and never tells the client which, so that cannot be detected client-side.
+- **Hero action buttons**: `.hero-actions` is a bottom-right flex row holding "Show Gallery" and a `.hero-actions-stack` column that holds the **audio button stacked above "Download All"**. The column's `align-items: stretch` is what makes the two the same width, and because a `display: none` flex item consumes no `gap`, the existing code that hides `#downloadAllBtn` when downloads are off leaves the audio button exactly where "Download All" was — **no conditional layout code**. Keep `.hero-actions` named as-is (the per-host audio selectors are descendants of it) and never remove or rename `#heroAudioSlot` (it is a re-parenting target, and `#audioPlayer` is not necessarily inside it at any given moment).
+- **Hero parallax**: the cover photo drifts down at half the scroll speed (`updateHeroParallax()`), so it reads as further away than the logo/title/buttons, which scroll normally. Two hard constraints:
+  - **The transform goes on `.hero-bg`, never on `.hero`.** `audioHostFor()` decides the hero→sticky-bar handoff from `#actionsBar.getBoundingClientRect().top <= 2`, and `.actions-bar` is the hero's *next sibling* — transforming `.hero` would shift that rect and make the audio button change hosts early or late. Separately, a `transform` on an **ancestor** of a `position: sticky` element breaks its containment; `.hero` and `.actions-bar` are siblings under `<body>`, so a descendant of `.hero` is safe, but never wrap the two in a transformed container.
+  - **No extra height is needed, and `inset: 0` must stay.** Shifting down by `D = k · scrollY` with `k ≤ 1` keeps `D ≤ scrollY`, while the still-visible slice of the hero starts at `scrollY` — so the photo's top edge is always above it and no gap can open; the bottom overflow is clipped by `.hero`'s existing `overflow: hidden`. Leaving `inset: 0` alone also preserves the photographer's chosen framing exactly, at rest. `transform` is deliberately **absent** from `.hero-bg`'s `transition` list (opacity only), or every frame would lag behind the scroll.
+
+  It hooks into the file's **single** scroll listener (`updateFooterVisibility`) and coalesces into one `requestAnimationFrame` write — which also keeps the write out of the handler that reads layout via `placeAudioButton()`, so there is no thrash. `scrollToGallery()`'s `behavior: 'smooth'` emits scroll events, so the button path gets the effect for free. This is the **first and only** `prefers-reduced-motion` guard in the file; the smooth scroll, the `fadeUp` title animation and the slideshow remain unguarded.
 - Justified/row-based gallery: photos grouped into `.gallery-row` flex rows built in JS, recomputed on resize.
 - Photos sorted server-side by filename stem (name without extension), extension as tiebreaker — see the preview.html layout section above.
 - Lightbox preloads N-1 and N+1 previews via `new Image()` on each navigation.
