@@ -2940,6 +2940,16 @@
                             ${photo.commentCount}
                         </div>` : '';
 
+                    // Every interpolation below is either a fixed string, a number, or a
+                    // URL whose filename component the server already passed through
+                    // encodeURIComponent (see the /photos route) — which escapes `"`,
+                    // `<`, `>` and `&`, so none of them can break out of an attribute or
+                    // open a tag. The filename itself is NEVER interpolated: `.photo-name`
+                    // is filled via textContent and `data-filename` via `dataset`, both
+                    // just below. Static analysis flags this as js/xss because it does not
+                    // model encodeURIComponent as an HTML-attribute sanitiser; keep the
+                    // filename out of the template and the property assignments as they
+                    // are, and that stays a false positive.
                     card.innerHTML = `
                         <div class="loading"></div>
                         <img data-src="${photo.thumbnailUrl}" alt="">

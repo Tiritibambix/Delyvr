@@ -91,9 +91,29 @@ const AUDIO_MIME_BY_EXT = {
     ogg: 'audio/ogg',   oga: 'audio/ogg',   opus: 'audio/ogg',
     wav: 'audio/wav',   flac: 'audio/flac'
 };
+// Reverse map, used when the uploaded filename carries no usable extension but the
+// MIME type does. ogg/oga/opus all share audio/ogg, so that key resolves to whichever
+// comes last; any of the three plays the same, so it does not matter.
+const EXT_BY_AUDIO_MIME = Object.fromEntries(
+    Object.entries(AUDIO_MIME_BY_EXT).map(([ext, mime]) => [mime, ext])
+);
 function isAudioFile(filename) {
     const ext = path.extname(filename).toLowerCase().slice(1);
     return AUDIO_EXTENSIONS.has(ext);
+}
+
+// Picks the stored extension for a montage. The upload's own extension is only
+// trusted when it is one we recognise: fileFilter accepts anything with an `audio/*`
+// MIME regardless of its name, so this value is otherwise an unvalidated client
+// string that would land directly in a filename. It also fixes a real bug, not just
+// a theoretical one — a file uploaded with no extension used to be stored as
+// `gallery-<uuid>.` and then served as application/octet-stream, which simply does
+// not play.
+function resolveAudioExtension(file) {
+    const fromName = path.extname(file.originalname || '').toLowerCase().slice(1);
+    if (AUDIO_EXTENSIONS.has(fromName)) return fromName;
+    const fromMime = EXT_BY_AUDIO_MIME[String(file.mimetype || '').toLowerCase()];
+    return fromMime || 'mp3';
 }
 
 // Formats that MAY be animated (multi-frame). Used to decide whether it's worth
@@ -804,8 +824,7 @@ const uploadAudio = multer({
             cb(null, AUDIO_DIR);
         },
         filename: (req, file, cb) => {
-            const ext = path.extname(file.originalname).toLowerCase().slice(1);
-            cb(null, `${audioKey(req)}.${ext}`);
+            cb(null, `${audioKey(req)}.${resolveAudioExtension(file)}`);
         }
     }),
     limits: { fileSize: MAX_AUDIO_BYTES },
@@ -820,10 +839,17 @@ const uploadAudio = multer({
 //   collection-{collectionId}.{ext}   gallery-{galleryId}.{ext}
 // audioKey() derives that basename from whichever route param is present, so the
 // one multer instance and the helpers below serve both owners.
+// The returned value becomes part of a filename, so the id is re-validated here
+// instead of trusting that validateGalleryId/validateCollectionId ran first. They do
+// (both sit before uploadAudio in every audio route's middleware chain), but that is
+// an ordering invariant a future edit could silently break, and this is the one place
+// a route parameter reaches the filesystem by name rather than through
+// safeResolvePath. An impossible state, so it throws rather than guessing.
 function audioKey(req) {
-    return req.params.collectionId
-        ? `collection-${req.params.collectionId}`
-        : `gallery-${req.params.galleryId}`;
+    const isCollection = !!req.params.collectionId;
+    const id = isCollection ? req.params.collectionId : req.params.galleryId;
+    if (!UUID_V4_REGEX.test(id)) throw new Error('Invalid owner id for an audio key');
+    return isCollection ? `collection-${id}` : `gallery-${id}`;
 }
 
 // Finds a stored montage regardless of its extension. `key` is an audioKey value.
@@ -843,15 +869,80 @@ function deleteAudioFiles(key) {
     }
 }
 
+// Rate limiter for the login endpoint — 10 attempts per 15 minutes per IP
+const authLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 10,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { error: 'Too many login attempts, please try again in 15 minutes' }
+});
+
+// Rate limiter for public image-generation endpoints — 600 requests per minute per IP
+// Prevents abuse of CPU-intensive sharp processing on unauthenticated routes
+const imageLimiter = rateLimit({
+    windowMs: 60 * 1000,
+    max: 600,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { error: 'Too many image requests, please slow down' }
+});
+
+// Rate limiter for admin routes that perform filesystem operations — 300 per minute per IP.
+// These routes are already behind requireAuth (+ optional IP allowlist), so the abuse
+// surface is low; the cap only exists to bound runaway filesystem work. It also covers the
+// list routes (/api/galleries, /api/collections) that the dashboard re-fetches after every
+// action, so it must be high enough for legitimate bulk work (e.g. resetting favorites/views/
+// comments across many galleries in a row) not to trip its limit. Note that background/cover
+// images are NOT under this limiter — they use publicReadLimiter (see below).
+const adminLimiter = rateLimit({
+    windowMs: 60 * 1000,
+    max: 300,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { error: 'Too many admin requests, please slow down' }
+});
+
+// Rate limiter for general public GET endpoints — 300 requests per minute per IP.
+// Also covers background/cover image serving (`/api/gallery/:id/background`,
+// `/api/collection/:id/background`), which the admin dashboard requests once per card.
+// Messages are deliberately distinct per limiter: they used to be identical, which made
+// it impossible to tell which limiter had tripped when debugging a report.
+const publicReadLimiter = rateLimit({
+    windowMs: 60 * 1000,
+    max: 300,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { error: 'Too many read requests, please slow down' }
+});
+
+// Rate limiter for public write endpoints (favorites toggle) — 120 per minute per IP
+const publicWriteLimiter = rateLimit({
+    windowMs: 60 * 1000,
+    max: 120,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { error: 'Too many write requests, please slow down' }
+});
+
+// Rate limiter for ZIP downloads — 10 per minute per IP (CPU + bandwidth intensive)
+const downloadLimiter = rateLimit({
+    windowMs: 60 * 1000,
+    max: 10,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { error: 'Too many download requests, please slow down' }
+});
+
 // ── SETTINGS ────────────────────────────────────────────────────────────────
 
 // GET /api/settings — public (used by customer/collection/preview for theme + socials)
-app.get('/api/settings', (req, res) => {
+app.get('/api/settings', publicReadLimiter, (req, res) => {
     res.json(getSettings());
 });
 
 // POST /api/settings — admin only
-app.post('/api/settings', requireAuth, (req, res) => {
+app.post('/api/settings', adminLimiter, requireAuth, (req, res) => {
     const { theme, website, socials, adminLanguage, clientLanguage, dateFormat,
             slideshowInterval, slideshowTransition } = req.body;
     const patch = {};
@@ -877,7 +968,7 @@ app.post('/api/settings', requireAuth, (req, res) => {
 });
 
 // PATCH /api/settings/theme — alias used by admin theme toggle
-app.patch('/api/settings/theme', requireAuth, (req, res) => {
+app.patch('/api/settings/theme', adminLimiter, requireAuth, (req, res) => {
     const { theme } = req.body;
     if (theme === 'light' || theme === 'dark') {
         updateSettings({ theme });
@@ -1009,71 +1100,6 @@ function requireAuth(req, res, next) {
     res.status(401).json({ error: 'Unauthorized' });
 }
 
-// Rate limiter for the login endpoint — 10 attempts per 15 minutes per IP
-const authLimiter = rateLimit({
-    windowMs: 15 * 60 * 1000,
-    max: 10,
-    standardHeaders: true,
-    legacyHeaders: false,
-    message: { error: 'Too many login attempts, please try again in 15 minutes' }
-});
-
-// Rate limiter for public image-generation endpoints — 600 requests per minute per IP
-// Prevents abuse of CPU-intensive sharp processing on unauthenticated routes
-const imageLimiter = rateLimit({
-    windowMs: 60 * 1000,
-    max: 600,
-    standardHeaders: true,
-    legacyHeaders: false,
-    message: { error: 'Too many image requests, please slow down' }
-});
-
-// Rate limiter for admin routes that perform filesystem operations — 300 per minute per IP.
-// These routes are already behind requireAuth (+ optional IP allowlist), so the abuse
-// surface is low; the cap only exists to bound runaway filesystem work. It also covers the
-// list routes (/api/galleries, /api/collections) that the dashboard re-fetches after every
-// action, so it must be high enough for legitimate bulk work (e.g. resetting favorites/views/
-// comments across many galleries in a row) not to trip its limit. Note that background/cover
-// images are NOT under this limiter — they use publicReadLimiter (see below).
-const adminLimiter = rateLimit({
-    windowMs: 60 * 1000,
-    max: 300,
-    standardHeaders: true,
-    legacyHeaders: false,
-    message: { error: 'Too many admin requests, please slow down' }
-});
-
-// Rate limiter for general public GET endpoints — 300 requests per minute per IP.
-// Also covers background/cover image serving (`/api/gallery/:id/background`,
-// `/api/collection/:id/background`), which the admin dashboard requests once per card.
-// Messages are deliberately distinct per limiter: they used to be identical, which made
-// it impossible to tell which limiter had tripped when debugging a report.
-const publicReadLimiter = rateLimit({
-    windowMs: 60 * 1000,
-    max: 300,
-    standardHeaders: true,
-    legacyHeaders: false,
-    message: { error: 'Too many read requests, please slow down' }
-});
-
-// Rate limiter for public write endpoints (favorites toggle) — 120 per minute per IP
-const publicWriteLimiter = rateLimit({
-    windowMs: 60 * 1000,
-    max: 120,
-    standardHeaders: true,
-    legacyHeaders: false,
-    message: { error: 'Too many write requests, please slow down' }
-});
-
-// Rate limiter for ZIP downloads — 10 per minute per IP (CPU + bandwidth intensive)
-const downloadLimiter = rateLimit({
-    windowMs: 60 * 1000,
-    max: 10,
-    standardHeaders: true,
-    legacyHeaders: false,
-    message: { error: 'Too many download requests, please slow down' }
-});
-
 // --- Routes ---
 
 // Verify password endpoint
@@ -1102,7 +1128,7 @@ app.post('/api/auth/verify', authLimiter, requireAllowedIP, (req, res) => {
 });
 
 // Check if the current session cookie is still valid
-app.get('/api/auth/session', (req, res) => {
+app.get('/api/auth/session', publicReadLimiter, (req, res) => {
     const cookies = parseCookies(req.headers.cookie);
     const token = cookies['delyvr_session'];
     if (token) {
@@ -1116,7 +1142,7 @@ app.get('/api/auth/session', (req, res) => {
 });
 
 // Logout — clear session token and cookie
-app.post('/api/auth/logout', (req, res) => {
+app.post('/api/auth/logout', publicWriteLimiter, (req, res) => {
     const cookies = parseCookies(req.headers.cookie);
     const token = cookies['delyvr_session'];
     if (token) sessions.delete(token);
@@ -1194,7 +1220,7 @@ function generateGalleryId(req, res, next) {
 }
 
 // Create new gallery and upload photos
-app.post('/api/gallery/create', requireAuth, generateGalleryId, upload.array('photos', 500), (req, res) => {
+app.post('/api/gallery/create', adminLimiter, requireAuth, generateGalleryId, upload.array('photos', 500), (req, res) => {
     const galleryId = req.galleryId;
 
     // If multer processed no files, there is nothing to create — no DB row
@@ -1240,7 +1266,7 @@ app.post('/api/gallery/create', requireAuth, generateGalleryId, upload.array('ph
 });
 
 // Add more photos to existing gallery
-app.post('/api/gallery/:galleryId/upload', requireAuth, validateGalleryId, upload.array('photos', 500), (req, res) => {
+app.post('/api/gallery/:galleryId/upload', adminLimiter, requireAuth, validateGalleryId, upload.array('photos', 500), (req, res) => {
     const { galleryId } = req.params;
     const galleryRow = db.prepare(`SELECT event_name FROM galleries WHERE id = ?`).get(galleryId);
 
@@ -1431,7 +1457,7 @@ app.get('/api/gallery/:galleryId/audio', imageLimiter, validateGalleryId, (req, 
 });
 
 // Toggle downloads on/off for a gallery
-app.patch('/api/gallery/:galleryId/downloads', requireAuth, validateGalleryId, (req, res) => {
+app.patch('/api/gallery/:galleryId/downloads', adminLimiter, requireAuth, validateGalleryId, (req, res) => {
     const { galleryId } = req.params;
     const galleryExists = db.prepare(`SELECT 1 FROM galleries WHERE id = ?`).get(galleryId);
 
@@ -1450,7 +1476,7 @@ app.patch('/api/gallery/:galleryId/downloads', requireAuth, validateGalleryId, (
 });
 
 // Toggle comments on/off for a gallery
-app.patch('/api/gallery/:galleryId/comments-enabled', requireAuth, validateGalleryId, (req, res) => {
+app.patch('/api/gallery/:galleryId/comments-enabled', adminLimiter, requireAuth, validateGalleryId, (req, res) => {
     const { galleryId } = req.params;
     const galleryExists = db.prepare(`SELECT 1 FROM galleries WHERE id = ?`).get(galleryId);
 
@@ -1469,7 +1495,7 @@ app.patch('/api/gallery/:galleryId/comments-enabled', requireAuth, validateGalle
 });
 
 // Set the client-facing language override for a gallery ('auto' clears the override)
-app.patch('/api/gallery/:galleryId/client-language', requireAuth, validateGalleryId, (req, res) => {
+app.patch('/api/gallery/:galleryId/client-language', adminLimiter, requireAuth, validateGalleryId, (req, res) => {
     const { galleryId } = req.params;
     const galleryExists = db.prepare(`SELECT 1 FROM galleries WHERE id = ?`).get(galleryId);
 
@@ -1489,7 +1515,7 @@ app.patch('/api/gallery/:galleryId/client-language', requireAuth, validateGaller
 });
 
 // Rename a gallery
-app.post('/api/gallery/:galleryId/rename', requireAuth, validateGalleryId, (req, res) => {
+app.post('/api/gallery/:galleryId/rename', adminLimiter, requireAuth, validateGalleryId, (req, res) => {
     const { galleryId } = req.params;
     const row = db.prepare(`SELECT event_name FROM galleries WHERE id = ?`).get(galleryId);
 
@@ -2114,7 +2140,7 @@ app.get('/api/gallery/:galleryId/favorites-ranked', publicReadLimiter, validateG
 });
 
 // Get favorites for a gallery (admin only) — sorted by vote count desc
-app.get('/api/gallery/:galleryId/favorites', requireAuth, validateGalleryId, (req, res) => {
+app.get('/api/gallery/:galleryId/favorites', adminLimiter, requireAuth, validateGalleryId, (req, res) => {
     const { galleryId } = req.params;
     const galleryExists = db.prepare(`SELECT 1 FROM galleries WHERE id = ?`).get(galleryId);
     if (!galleryExists) {
@@ -2139,7 +2165,7 @@ app.delete('/api/gallery/:galleryId/views', adminLimiter, requireAuth, validateG
     res.json({ success: true });
 });
 
-app.delete('/api/gallery/:galleryId/favorites', requireAuth, validateGalleryId, (req, res) => {
+app.delete('/api/gallery/:galleryId/favorites', adminLimiter, requireAuth, validateGalleryId, (req, res) => {
     const { galleryId } = req.params;
     const row = db.prepare(`SELECT event_name FROM galleries WHERE id = ?`).get(galleryId);
     if (!row) {
@@ -2281,7 +2307,7 @@ app.get('/api/gallery/:galleryId/comments-public', publicReadLimiter, validateGa
 });
 
 // Get all comments for a gallery (admin only) — flattened across photos, newest first
-app.get('/api/gallery/:galleryId/comments', requireAuth, validateGalleryId, (req, res) => {
+app.get('/api/gallery/:galleryId/comments', adminLimiter, requireAuth, validateGalleryId, (req, res) => {
     const { galleryId } = req.params;
     const galleryExists = db.prepare(`SELECT 1 FROM galleries WHERE id = ?`).get(galleryId);
     if (!galleryExists) {
@@ -2300,7 +2326,7 @@ app.get('/api/gallery/:galleryId/comments', requireAuth, validateGalleryId, (req
 });
 
 // Delete a single comment (admin only) — spam removal
-app.delete('/api/gallery/:galleryId/comments/:filename/:commentId', requireAuth, validateGalleryId, validateFilename, (req, res) => {
+app.delete('/api/gallery/:galleryId/comments/:filename/:commentId', adminLimiter, requireAuth, validateGalleryId, validateFilename, (req, res) => {
     const { galleryId, filename, commentId } = req.params;
     const galleryExists = db.prepare(`SELECT 1 FROM galleries WHERE id = ?`).get(galleryId);
     if (!galleryExists) {
@@ -2316,7 +2342,7 @@ app.delete('/api/gallery/:galleryId/comments/:filename/:commentId', requireAuth,
 });
 
 // Clear all comments for a gallery (admin only)
-app.delete('/api/gallery/:galleryId/comments', requireAuth, validateGalleryId, (req, res) => {
+app.delete('/api/gallery/:galleryId/comments', adminLimiter, requireAuth, validateGalleryId, (req, res) => {
     const { galleryId } = req.params;
     const row = db.prepare(`SELECT event_name FROM galleries WHERE id = ?`).get(galleryId);
     if (!row) {
@@ -2337,7 +2363,7 @@ function validateCollectionId(req, res, next) {
 }
 
 // Create a new collection (admin only)
-app.post('/api/collection/create', requireAuth, (req, res) => {
+app.post('/api/collection/create', adminLimiter, requireAuth, (req, res) => {
     const rawName = req.body.name;
     if (typeof rawName !== 'string' && rawName !== undefined) {
         return res.status(400).json({ error: 'name must be a string' });
@@ -2462,7 +2488,7 @@ app.get('/api/collection/:collectionId', publicReadLimiter, validateCollectionId
 });
 
 // Rename a collection (admin only)
-app.post('/api/collection/:collectionId/rename', requireAuth, validateCollectionId, (req, res) => {
+app.post('/api/collection/:collectionId/rename', adminLimiter, requireAuth, validateCollectionId, (req, res) => {
     const { collectionId } = req.params;
     const row = db.prepare(`SELECT name FROM collections WHERE id = ?`).get(collectionId);
     if (!row) return res.status(404).json({ error: 'Collection not found' });
@@ -2601,7 +2627,7 @@ app.get('/api/collection/:collectionId/audio', imageLimiter, validateCollectionI
 });
 
 // Add a gallery to a collection (admin only)
-app.post('/api/collection/:collectionId/galleries', requireAuth, validateCollectionId, (req, res) => {
+app.post('/api/collection/:collectionId/galleries', adminLimiter, requireAuth, validateCollectionId, (req, res) => {
     const { collectionId } = req.params;
     const { galleryId } = req.body;
 
@@ -2618,7 +2644,7 @@ app.post('/api/collection/:collectionId/galleries', requireAuth, validateCollect
 });
 
 // Reorder galleries within a collection (admin only)
-app.patch('/api/collection/:collectionId/galleries/reorder', requireAuth, validateCollectionId, (req, res) => {
+app.patch('/api/collection/:collectionId/galleries/reorder', adminLimiter, requireAuth, validateCollectionId, (req, res) => {
     const { collectionId } = req.params;
     const { galleryIds } = req.body;
     const collectionExists = db.prepare(`SELECT 1 FROM collections WHERE id = ?`).get(collectionId);
@@ -2641,7 +2667,7 @@ app.patch('/api/collection/:collectionId/galleries/reorder', requireAuth, valida
 });
 
 // Remove a gallery from a collection (admin only)
-app.delete('/api/collection/:collectionId/galleries/:galleryId', requireAuth, validateCollectionId, validateGalleryId, (req, res) => {
+app.delete('/api/collection/:collectionId/galleries/:galleryId', adminLimiter, requireAuth, validateCollectionId, validateGalleryId, (req, res) => {
     const { collectionId, galleryId } = req.params;
     const collectionExists = db.prepare(`SELECT 1 FROM collections WHERE id = ?`).get(collectionId);
     if (!collectionExists) return res.status(404).json({ error: 'Collection not found' });

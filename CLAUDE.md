@@ -206,6 +206,27 @@ CIDR matching is implemented with BigInt bitwise arithmetic using the Node built
 
 All filesystem paths incorporating user-controlled values go through `safeResolvePath(base, ...segments)`. This resolves the final path and throws if it would escape the base directory. This includes `data/backgrounds/` and `data/audio/` — a filename discovered via `fs.readdirSync(...).find(f => f.startsWith(id))` is still resolved through `safeResolvePath(dir, filename)` before being opened, deleted, or stat'd, not just `path.join`'d directly. There is no exception left anywhere in `server.js`.
 
+**The one place a request value becomes a filename by construction rather than by
+lookup** is the audio montage upload: multer's `filename` callback builds
+`${audioKey(req)}.${resolveAudioExtension(file)}`, and multer then `path.join`s that onto
+`AUDIO_DIR` itself, so `safeResolvePath` never sees it. Both halves are therefore
+constrained at the source:
+- **`audioKey(req)`** re-tests the id against `UUID_V4_REGEX` and **throws** on a miss.
+  `validateGalleryId`/`validateCollectionId` already run earlier in every audio route's
+  chain, but that is an ordering invariant a later edit could quietly break, and the guard
+  costs nothing on an impossible state.
+- **`resolveAudioExtension(file)`** trusts the upload's extension only when it is in
+  `AUDIO_EXTENSIONS`, else derives one from the MIME type via `EXT_BY_AUDIO_MIME`, else
+  falls back to `mp3`. `fileFilter` admits anything with an `audio/*` MIME *regardless of
+  its name*, so the raw extension is an unvalidated client string. It also fixed a real
+  bug: an upload with no extension used to be stored as `gallery-<uuid>.` and served as
+  `application/octet-stream`, which does not play. The returned value can never contain
+  `/`, `\` or `.`.
+
+A CodeQL `js/path-injection` alert on the two `…/audio` route lines is a **false positive**
+for traversal (the ids are UUID-validated before multer runs), but it correctly pointed at
+the only unvalidated component, which is the extension above.
+
 ### Rate limiting
 
 | Limiter | Limit | Applied to |
@@ -215,7 +236,27 @@ All filesystem paths incorporating user-controlled values go through `safeResolv
 | `publicReadLimiter` | 300 / min | All public GET routes |
 | `publicWriteLimiter` | 120 / min | `POST /favorites`, `POST /comments` |
 | `downloadLimiter` | 10 / min | ZIP downloads |
-| `adminLimiter` | 300 / min | Admin routes with filesystem access |
+| `adminLimiter` | 300 / min | **Every** route behind `requireAuth` |
+
+**Every route in `server.js` carries a limiter, with no exceptions.** This is a security
+property, not tidiness: `requireAuth` accepts an `X-Admin-Password` header on *every*
+admin route, while `authLimiter` (10 per 15 min) guards only `POST /api/auth/verify`. An
+admin route with no limiter is therefore an **unthrottled password-guessing oracle that
+bypasses `authLimiter` entirely**. 18 of them were, which a CodeQL `js/missing-rate-limiting`
+sweep surfaced (its own "performs a database access" wording badly undersells the issue:
+the DB load is irrelevant, the brute-force bypass is the point). The password is
+human-chosen and therefore guessable, unlike the session token, which is a CSPRNG
+`uuidv4()` of 122 bits, so `GET /api/auth/session` being unlimited was hygiene rather than
+a hole, and it is limited now too. When adding a route, give it a limiter; the convention
+is `adminLimiter` **first**, before `requireAuth`, so failed credentials are throttled too.
+
+**The limiter declarations deliberately sit above the first route.** They used to be
+declared after the `SETTINGS` section, which is why those routes had none: `adminLimiter`
+is a `const`, and a route registration referencing it from above would throw a
+temporal-dead-zone `ReferenceError` at startup and the server would not boot. The block
+is self-contained (plain `rateLimit({ … })` calls, no `keyGenerator`, nothing defined
+later), so it belongs before every consumer. Do not move it back down, and do not add a
+route above it.
 
 **Each limiter has a distinct message.** `adminLimiter` and `publicReadLimiter` used to share the exact same text (`Too many requests, please slow down`), which made a real report impossible to diagnose — the wrong limiter got raised. They are now `Too many admin requests…`, `Too many read requests…`, `Too many write requests…`, etc. Keep them distinct.
 
@@ -548,6 +589,8 @@ Clients can leave a text comment on individual photos/videos from the lightbox. 
 - **Admin moderation is a full page**, not a modal: route `#/gallery/:id/comments` (view `view-gallery-comments`). Delyvr is also used for **peer critique**, so the photo must be readable *beside* its thread — the old 700px modal with 48px cropped thumbnails and every thread in one scroll made that impossible. `loadGalleryCommentsPage()` fetches `GET .../comments` (the threads) and `GET .../photos` (gallery order) in parallel and joins them by `filename`; the photo's index supplies the **critique number**, matching `preview.html`'s numbering. Layout is a left rail of commented photos (uncropped thumbnails, `#N`, count) plus a right pane showing the selected photo large with its full thread. Comments whose photo was since deleted are still listed so they remain removable. `deleteComment()` mutates the local state and **re-renders** rather than doing DOM surgery, and `viewComments(galleryId)` on the gallery card simply sets the hash.
 - **UI**: a speech-bubble button (with an unread-style count badge) sits next to the favorite/download buttons in both the desktop cluster and the mobile bottom bar, opening a drawer — a fixed side panel on desktop, a bottom sheet on mobile — with the thread, an optional name field, and a textarea (Enter to send, Shift+Enter for newline). Posting is optimistic, matching `toggleFavorite()`'s update/revert-on-error shape, with a toast reusing the `#favToast` element (`showToast()` was generalized from `showFavToast()`).
 - **XSS safety**: `preview.html` has no `escapeHtml()` helper and intentionally doesn't need one for this feature — comment rows are built via `document.createElement` + `textContent` only, never `innerHTML`, since comment text is long-form and free-form. `admin.html` already has `escapeHtml()` (used for `eventName`/filenames elsewhere) and reuses it for the moderation modal's `innerHTML` rows.
+
+  **The photo grid's `card.innerHTML` in `preview.html` is safe for the same reason, and a CodeQL `js/xss` alert on it is a false positive.** Every interpolation in that template is a fixed string, a number (`commentCount`, `index`, a ffprobe duration), or a URL whose filename component the `/photos` route already passed through `encodeURIComponent`, which escapes `"`, `<`, `>` and `&`. The filename itself is never interpolated: `.photo-name` is filled through `textContent` and `data-filename` through `dataset`, both immediately after the assignment. The scanner flags it because it does not model `encodeURIComponent` as an HTML-attribute sanitiser. Keep the filename out of the template and those two property assignments where they are, and it stays a false positive; a comment at the site says so.
 - The comment drawer is a child of `.lightbox`, so its own touch/click/keydown handling must opt out of the lightbox's swipe-to-navigate, pinch-zoom, and tap-to-toggle-bars listeners (guarded via `e.target.closest('#commentDrawer')`) and the capture-phase arrow-key navigation listener, otherwise scrolling the comment list or typing would trigger photo navigation.
 - **The drawer stays open across photos on desktop** (critique reading): `updateLightbox()` reloads the new photo's thread instead of closing it. On mobile it still closes on navigation — deliberately unchanged, a phone can't show both usefully. `isDrawerMobile()` gates this on the existing breakpoints.
 - **The photo is never resized when the drawer opens.** Reserving space (`padding`, or capping `max-width`) would shrink it — on a 1920×1080 screen a 3:2 landscape already has only ~140px of slack, since `.lightbox-content` is capped at `100vw - 160px` for the arrows. Instead `updateDrawerShift()` applies a `transform: translateX(-N)` to `.lightbox-content`: a transform doesn't affect layout, so the computed size is untouched. `N` is 150px (half the 300px drawer, which re-centres the content in the space left over) **clamped to the free margin actually measured on the left**, so a very wide photo can never be pushed off-screen. A `ResizeObserver` on `.lightbox-content` recomputes it on async preview load, photo change and window resize. The backdrop is applied on mobile only — on desktop it would dim the very photo being kept visible — and `.lightbox-next` moves to `right: 320px` so it stays clickable.
