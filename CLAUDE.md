@@ -370,13 +370,27 @@ the card.**
   play must be a user gesture, which every browser requires anyway).
 - **Two shapes, chosen per host, from one element.** The button used to be a 34 px
   unlabelled circle everywhere. In the hero that put it between two wide labelled buttons,
-  where it went unnoticed — so the two hosts with room now render it **wide and labelled**,
-  and the cramped ones keep the icon:
+  where it went unnoticed — so **all three page-chrome hosts** now render it **wide and
+  labelled**, and only the hosts that physically cannot keep the icon:
   | Host | Shape |
   |---|---|
-  | `#heroAudioSlot` (hero cluster), `#collAudioSlot` (collection index) | wide + label, metrics mirroring `.download-all-btn` |
-  | `#barAudioSlot` (sticky bar) | round 34 px — the bar is already dense |
+  | `#heroAudioSlot` (hero), `#barAudioSlot` (sticky bar), `#collAudioSlot` (collection index) | wide + label, metrics mirroring `.download-all-btn` |
   | `#lbAudioSlotDesktop`, `.lb-bottom-bar`, `#ssAudioSlot` | icon only — forced: 20 px absolutely positioned over the photo, a right-pinned column of 44 px circles, and a 34 px toolbar |
+
+  **The sticky bar deliberately shares the wide form rather than the compact one.** It was
+  compact at first on the grounds that the bar is dense, but the bar is what *takes over
+  from the hero on scroll* — so shrinking there made the control visibly morph mid-page,
+  which reads as a glitch rather than as responsive design. The same button throughout is
+  worth the width. Two consequences that come with it:
+  - On `max-width: 768px` the bar's copy drops to `padding: 9px 12px; font-size: 11px`,
+    the metrics `.back-to-collection` already uses there, so the back link, the montage
+    button and the slideshow button still fit (verified with no overflow at 360 px). The
+    **label is not dropped** at any width: losing it on scroll is the exact morph this
+    variant exists to prevent, which is also why it does not copy `.slideshow-btn`'s
+    label-drop at 480 px.
+  - `.back-to-collection span` gained `overflow: hidden; text-overflow: ellipsis` on
+    mobile. The wider montage button leaves it less room, and it is `white-space: nowrap`,
+    so without this it spilled past its box instead of truncating.
 
   This is not a new mechanism: the styling was **already** per host via descendant
   selectors (`.hero-actions .audio-player`, …), so the wide variant is one more branch of

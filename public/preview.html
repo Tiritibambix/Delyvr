@@ -1753,29 +1753,17 @@
         .coll-audio-wrap { display: flex; justify-content: center; position: relative; z-index: 10; }
         .coll-audio-wrap .audio-player { margin-top: 20px; }
 
-        /* Sticky actions bar: a bordered round icon, sized like the buttons it sits
-           next to. The bar is already dense (back link, critique chip, slideshow
-           button), so it keeps the compact form the hero no longer uses. */
-        .actions-bar .audio-player {
-            width: 34px; height: 34px; border-radius: 50%;
-            border: 1px solid rgba(255,255,255,0.35);
-            color: #fff; background: rgba(0,0,0,0.25);
-            backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
-            /* opacity/transform kept here too, otherwise this rule would drop the
-               cross-fade declared on the base .audio-player selector. */
-            transition: background 0.2s, border-color 0.2s, opacity 0.14s ease, transform 0.14s ease;
-        }
-        .actions-bar .audio-player:hover { background: rgba(0,0,0,0.45); border-color: #fff; }
-        .actions-bar .audio-player svg { width: 14px; height: 14px; }
-
-        /* ── Wide labelled variant: hero cluster + collection index ──────────
+        /* ── Wide labelled variant: hero, sticky bar, collection index ───────
            A 34px unlabelled circle between two wide labelled buttons went unnoticed,
-           and the montage is the feature most worth noticing. These two hosts have the
-           room for a real button; the sticky bar above keeps the compact form, and the
-           lightbox / slideshow hosts below have no choice (20px over the photo, a
-           column of 44px circles, a 34px toolbar).
-           Metrics mirror .download-all-btn so the two stack as one unit. */
+           and the montage is the feature most worth noticing. All three page-chrome
+           hosts share this form, deliberately: the sticky bar takes over from the hero
+           on scroll, and letting the button shrink into a circle at that handoff made
+           it visibly morph mid-page. It stays the same control throughout.
+           Only the lightbox / slideshow hosts below keep an icon, and there they have
+           no choice (20px over the photo, a column of 44px circles, a 34px toolbar).
+           Metrics mirror .download-all-btn so the hero pair stacks as one unit. */
         .hero-actions .audio-player,
+        .actions-bar .audio-player,
         .coll-audio-wrap .audio-player {
             gap: 8px;
             padding: 10px 18px;
@@ -1792,19 +1780,22 @@
             transition: background 0.2s, border-color 0.2s, opacity 0.14s ease, transform 0.14s ease;
         }
         .hero-actions .audio-player:hover,
+        .actions-bar .audio-player:hover,
         .coll-audio-wrap .audio-player:hover { background: rgba(0,0,0,0.45); border-color: #fff; }
-        /* "un tout petit peu plus gros" — 16px instead of the 14px the compact hosts use. */
+        /* "un tout petit peu plus gros" — 16px instead of the 14px the icon hosts use. */
         .hero-actions .audio-player svg,
+        .actions-bar .audio-player svg,
         .coll-audio-wrap .audio-player svg { width: 16px; height: 16px; }
         /* Full width ONLY in the hero stack, where it has to match the download button.
            On the collection index .coll-audio-wrap is a page-wide centring flex box, so
            100% there would stretch the button across the whole page. */
         .hero-actions .audio-player { width: 100%; }
 
-        /* The label only exists in these two hosts; everywhere else the button is
-           icon-only and the name lives in its title/aria-label. */
+        /* The label exists in the three page-chrome hosts; in the lightbox and the
+           slideshow the button is icon-only and the name lives in its title/aria-label. */
         .audio-player .audio-btn-label { display: none; }
         .hero-actions .audio-player .audio-btn-label,
+        .actions-bar .audio-player .audio-btn-label,
         .coll-audio-wrap .audio-player .audio-btn-label { display: inline; }
 
         /* The circular ::before ring cannot survive a wide button: border-radius: 50%
@@ -1813,8 +1804,10 @@
            --audio-progress property — the idiom .ss-progress already uses for the
            slideshow (2px, scaleX, origin left). */
         .hero-actions .audio-player::before,
+        .actions-bar .audio-player::before,
         .coll-audio-wrap .audio-player::before { display: none; }
         .hero-actions .audio-player::after,
+        .actions-bar .audio-player::after,
         .coll-audio-wrap .audio-player::after {
             content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: 2px;
             background: var(--accent);
@@ -1822,10 +1815,29 @@
             transform-origin: left center;
             pointer-events: none;
         }
+        /* The sticky bar is the one host that follows the site theme (the hero and the
+           collection index always sit on a photo). text-shadow has to go with it: the
+           wide variant carries one for legibility over a photo, and dark text on a light
+           bar with a dark glow reads as smudged — same treatment as .slideshow-btn. */
         html.light .actions-bar .audio-player {
             border-color: var(--border); color: var(--text); background: transparent;
+            text-shadow: none;
         }
         html.light .actions-bar .audio-player:hover { background: var(--bg2); border-color: var(--muted); }
+
+        /* On a phone the bar can hold the back link, the montage button and the
+           slideshow button at once, so the montage button adopts the same reduced
+           metrics .back-to-collection already uses there. Keeping the 13px/18px desktop
+           size would have squeezed the back link until its text overflowed. The label
+           itself is NOT dropped: losing it on scroll is exactly the morph this variant
+           exists to avoid. */
+        @media (max-width: 768px) {
+            .actions-bar .audio-player { padding: 9px 12px; font-size: 11px; }
+            .actions-bar .audio-player svg { width: 14px; height: 14px; }
+            /* Consequence of the wider montage button: the back link now has less room,
+               so let it ellipsise instead of spilling past its box (it is nowrap). */
+            .back-to-collection span { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+        }
 
         /* Lightbox desktop: bare 20px icon continuing the right-hand control stack. */
         .lightbox .audio-player {
