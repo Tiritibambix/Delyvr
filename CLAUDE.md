@@ -781,8 +781,53 @@ Loaded by all client pages via `<script src="/shared.js">` before their inline `
 - Gallery cards support: inline rename (double-click), cover image drag/drop, downloads toggle, comments toggle, **client-language `<select>`** (`setGalleryClientLanguage`), favorites view/reset, manage photos modal, critique link copy, OG regenerate, soft-delete, drag reorder (manual mode), bulk selection. Collection cards have the same downloads/comments toggles plus their own client-language `<select>` (`setCollectionClientLanguage`).
 - **Filename-safe delete handlers:** the photo-delete button (photos modal), the comment-delete button and the comments-page rail do **not** embed the filename in an inline `onclick`. `escapeAttr` escapes `'`→`&#39;`, but the browser HTML-decodes that back to `'` before parsing the handler, so a filename with an apostrophe (common in French, e.g. `l'été.jpg`) would break the call. Instead: the photo button gets its handler via a `card.querySelector('.photo-delete-btn').onclick = …` closure capturing the raw filename; the comment button carries `data-filename`/`data-comment-id` and a delegated `list.onclick` reads `btn.dataset.*`. Both avoid the nested HTML-attribute → JS-string escaping trap.
 - **Cover thumbnails use a stable `bgVersion`, never `Date.now()`.** `/api/galleries` and `/api/collections` return `bgVersion` — the cover file's `mtimeMs` — and the cards render `…/background?thumb=1&v=${bgVersion}` with `loading="lazy"`. The token is **stable across re-renders** so the browser cache (the routes already send `Cache-Control: public, max-age=86400`) actually works, and it changes by itself when a cover is replaced, so the card still updates immediately after an upload (both upload handlers call `loadGalleries()`/`loadCollections()`, which refetch the new mtime). **Do not reintroduce `?t=${Date.now()}` here:** it is re-evaluated on every render, and since `filterGalleries()` re-renders every card on each search keystroke, sort change and collection toggle, it refetched every thumbnail each time — with ~40 galleries an 8-character search fired ~320 image requests in seconds and tripped `publicReadLimiter`, producing a "Too many requests" error that blocked the dashboard.
-- **Bulk selection mode:** toggled via "Select" button in gallery section header. `_selectionMode` + `_selectedGalleries` Set. `#bulkActionBar` slides up from bottom. Actions: enable/disable downloads, add to collection, delete. Escape exits.
-- **Trash modal:** opened via trash icon button (with count badge) in gallery section header. Shows trashed galleries with daysLeft, Restore and "Delete now" buttons, Empty trash button.
+- **Bulk selection mode:** toggled via "Select" button in gallery section header.
+  `_selectionMode` + `_selectedGalleries` Set. `#bulkActionBar` slides up from bottom.
+  Escape exits. Actions: downloads on/off, comments on/off, **move to** a collection,
+  remove from collection, delete.
+  - **Every action goes through `runBulk(ids, step, opts)`, and `step` must return truthy
+    only on real success.** The three original actions each did
+    `try { await fetch(…) } catch (_) {}` with **no `res.ok` check**, so a refused request
+    was indistinguishable from an applied one: the bar closed, the list reloaded, and
+    nothing had changed with nothing said. That is what made the selection look as though
+    no action were wired to it at all. `runBulk` reports through the progress toast
+    (see below): `t.bulkWorking(done, n)` per item, then `t.bulkDone(n)` or, on any
+    failure, `t.bulkPartial(ok, failed)` in the error style. `opts.doneLabel` overrides the
+    success wording, which is how a delete says `t.bulkDeleted` ("moved to trash") instead
+    of "updated".
+  - **The loop is sequential on purpose.** These are admin writes behind `adminLimiter`
+    (300/min), each followed by a list refetch; firing a 40-gallery selection in parallel
+    is how the limiter gets tripped, not how time is saved.
+  - **It is `bulkMoveToCollection`, not "add to".** `collection_galleries` has
+    `UNIQUE(gallery_id)`, so `POST /api/collection/:id/galleries` is refused with **409
+    `already_in_another_collection`** for any gallery already filed. The old "Add to
+    collection" therefore failed on every gallery that had one, which in practice is most
+    of them. Moving means `DELETE`ing the current membership first, and the step returns
+    false if that leave fails, so a failed move never orphans the gallery.
+    `currentCollectionOf(id)` reads `collectionId` from the `_galleriesData` cache, which
+    `/api/galleries` fills for exactly this decision.
+  - "Remove from collection" is an `__remove__` **option inside the collection `<select>`**,
+    not a seventh button; `handleBulkCollectionChange()` dispatches on the value and resets
+    the control to its placeholder, since a `<select>` used as an action menu fires no
+    `change` event when the same entry is picked twice.
+  - **Downloads and comments are each ONE control** (`.bulk-seg`): the noun as a label,
+    then an enable/disable pill whose two halves share a border (`.bulk-seg-ctrl`) so it
+    reads as a single switch, not two buttons. **A single stateful toggle is deliberately
+    not used**: a selection can mix enabled and disabled galleries, so there is no one
+    state to show and no reliable `change` event for the equal-state case; both sides stay
+    as explicit commands inside the one pill. The verb on each half is the first word of
+    the full enable/disable label (`t.enableDownloads.split(' ')[0]`, the same derivation
+    the file already used), so no new i18n key is needed. This replaced two wide buttons
+    per attribute ("Enable downloads" / "Disable downloads") that read as two controls and
+    repeated the noun; the comments pair was added at the same time. The old
+    `.bulk-label-long` span (which hid a verbose noun under 600px) is gone.
+  - **The bar is deliberately conspicuous.** It was a 1px `var(--border)` top edge on
+    `var(--bg2)` and got missed entirely, which is what made the selection look as though
+    no action were attached to it (the actions worked; the bar was not seen). It now has a
+    2px `var(--accent)` top edge and a `0 -6px 24px` lift shadow, so it registers as it
+    slides up without drawing the eye the rest of the time.
+- **Trash modal:** opened via trash icon button (with count badge) in gallery section header. Shows trashed galleries with daysLeft, Restore and "Delete now" buttons, Empty trash button. **`emptyTrash()` drives the progress toast**: `DELETE /api/galleries/trash` loops server-side, deleting each gallery's uploads, thumbnails, previews, cover, OG cache and audio from disk, so a full trash takes a long while with nothing on screen and reads as frozen. There is no per-item progress to report without streaming the response, so it shows a spinner (`t.emptyingTrash`) and then the route's own `purged` count (`t.trashEmptied(n)`).
+- **Progress toast helpers** (`showProgressToast` / `updateProgressToast` / `finishProgressToast`), next to `showError()`: the shared driver for any multi-step admin action, reusing the single `#uploadToast` element and its `#toastSpinner`/`#toastSuccess`/`#toastError`/`#toastMessage` children. `finishProgressToast(msg, isError)` swaps the icon, applies `.success`/`.error` for the border colour and auto-dismisses (3s / 5s for an error) through the shared `_errorToastTimer`. Used by `runBulk()` and `emptyTrash()`; `deleteSelectedPhotos()` predates them and still drives the same element inline.
 - **Photo management modal:** `openPhotosModal(galleryId)` loads photos via `GET /api/gallery/:id/photos` and renders a justified row layout (`_buildPhotoRows`/`_renderPhotosRows`, recomputed via a `ResizeObserver`). Per-photo delete button visible on hover (desktop) or always (mobile). Selection mode allows multi-delete via `deleteSelectedPhotos()`, which deletes sequentially and drives a **progress toast** (reuses `#uploadToast`: `t.deletingPhotosProgress(i, n)` updates each iteration, then `t.photosDeletedDone(n)` / `t.photosCouldNotBeDeleted(errors)`) so bulk deletes of many photos give visible feedback instead of just dimming cards.
 - **Gallery picker (for collections):** multi-select. Toggling a gallery adds/removes it from `_pickerSelected` Set. Confirm button shows count and adds all at once.
 - Collection pills: drag to reorder (desktop) or ◀ ▶ buttons (visible on mobile via `@media (hover: none)`).
@@ -801,8 +846,32 @@ Loaded by all client pages via `<script src="/shared.js">` before their inline `
 
 ### `public/preview.html`
 
-- **Full-screen hero**: `.hero` is `height: 100vh`/`100dvh` (fallback cascade) with the gallery's background photo as an undimmed, full-bleed cover (`object-fit: cover`, no darkening overlay) — the site logo sits top-left, the gallery name bottom-left, and a "Show Gallery" button + the "Download All" button bottom-right. "Show Gallery" (`scrollToGallery()`) smooth-scrolls down to `#galleryContainer`. The outline action-style buttons across the page (`.show-gallery-btn`, `.back-to-collection`, `.slideshow-btn`) share one CSS rule set — same size/border/radius, theme-aware via an `html.light` override — rather than each having its own styling; extend those selectors instead of adding a variant. (`.download-all-btn` is the filled-gold exception.)
-- **Logo legibility over the hero**: the hero cover is undimmed and full-bleed, so `.hero-logo` carries a two-layer `filter: drop-shadow(0 2px 6px rgba(0,0,0,0.55)) drop-shadow(0 0 2px rgba(0,0,0,0.4))` — the first matches the house value on `.hero h1`, the second is a tight un-offset layer that separates thin SVG strokes, which a soft offset shadow alone leaves ambiguous. The collection index's `.logo` gets the same treatment (milder risk there: the cover runs at 30% opacity under `.bg-overlay`). `favorites.html`'s logo is on a plain page background and is deliberately left alone. **Limit:** `drop-shadow()` follows the alpha channel, so on an *opaque* JPEG logo it reads as a rectangular halo rather than hugging the glyph — `/api/logo` serves six formats and never tells the client which, so that cannot be detected client-side.
+- **Full-screen hero**: `.hero` is `height: 100vh`/`100dvh` (fallback cascade) with the gallery's background photo as a full-bleed cover (`object-fit: cover`, undimmed apart from the short top scrim described below) — the site logo sits top-left, the gallery name bottom-left, and a "Show Gallery" button + the "Download All" button bottom-right. "Show Gallery" (`scrollToGallery()`) smooth-scrolls down to `#galleryContainer`. The outline action-style buttons across the page (`.show-gallery-btn`, `.back-to-collection`, `.slideshow-btn`) share one CSS rule set — same size/border/radius, theme-aware via an `html.light` override — rather than each having its own styling; extend those selectors instead of adding a variant. (`.download-all-btn` is the filled-gold exception.)
+- **Logo legibility over the hero: a scrim does the work, not the shadow.** `.hero::before`
+  is a **top-only** 170px gradient (`rgba(0,0,0,0.50)` → `0.22` at 45% → transparent),
+  `z-index: 1`, `pointer-events: none`, sitting above `.hero-bg` and below the logo/title/
+  buttons at `z-index: 2`. It is pinned to the hero box, so the parallax slides the photo
+  underneath it. Its strength is a single number, the first stop's alpha.
+
+  **A drop-shadow alone cannot solve this, and that was established by rendering rather
+  than reasoned about.** `drop-shadow()` follows the alpha channel, so it can only outline
+  a glyph; a pale logo on a bright sky stays a pale smudge however hard the shadow is
+  pushed. The real logo was rendered at 48px over white, pale sand, bright skin and mid
+  grey at four shadow strengths, and even the heaviest read as a dark halo around nothing.
+  `.hero-logo` therefore keeps only a **moderate** two-layer
+  `drop-shadow(0 1px 3px rgba(0,0,0,0.7)) drop-shadow(0 0 8px rgba(0,0,0,0.45))`: pushed
+  harder on top of the scrim it reads as a dirty ring rather than as depth.
+
+  The hero is otherwise still undimmed and full-bleed. The scrim is short and only at the
+  top on purpose, so the look the hero was designed around survives: on a dark cover it is
+  barely perceptible, on a bright one it is the whole reason the logo is readable.
+  The collection index's `.logo` carries the **same shadow value, deliberately kept in
+  sync**, but no scrim: its cover already runs at 30% opacity under `.bg-overlay`.
+  `favorites.html`'s logo is on a plain page background and is left alone.
+  **Remaining limit:** on an *opaque* JPEG logo the shadow still traces the image's
+  rectangle rather than the glyph. `/api/logo` serves six formats and never tells the
+  client which, so that cannot be detected client-side; the scrim is what carries those
+  cases.
 - **Hero action buttons**: `.hero-actions` is a bottom-right flex row holding "Show Gallery" and a `.hero-actions-stack` column that holds the **audio button stacked above "Download All"**. The column's `align-items: stretch` is what makes the two the same width, and because a `display: none` flex item consumes no `gap`, the existing code that hides `#downloadAllBtn` when downloads are off leaves the audio button exactly where "Download All" was — **no conditional layout code**. Keep `.hero-actions` named as-is (the per-host audio selectors are descendants of it) and never remove or rename `#heroAudioSlot` (it is a re-parenting target, and `#audioPlayer` is not necessarily inside it at any given moment).
 - **Hero parallax**: the cover photo drifts down at half the scroll speed (`updateHeroParallax()`), so it reads as further away than the logo/title/buttons, which scroll normally. Two hard constraints:
   - **The transform goes on `.hero-bg`, never on `.hero`.** `audioHostFor()` decides the hero→sticky-bar handoff from `#actionsBar.getBoundingClientRect().top <= 2`, and `.actions-bar` is the hero's *next sibling* — transforming `.hero` would shift that rect and make the audio button change hosts early or late. Separately, a `transform` on an **ancestor** of a `position: sticky` element breaks its containment; `.hero` and `.actions-bar` are siblings under `<body>`, so a descendant of `.hero` is safe, but never wrap the two in a transformed container.
@@ -888,6 +957,7 @@ resolved from `data.clientLanguage` via `resolveClientLocale()`, gallery covers 
 - **ZIP downloads use `store: true`** (no compression). Content-Length is intentionally omitted — archiver adds variable per-file data descriptors during streaming that make pre-calculation unreliable and cause "unexpected end of archive" errors.
 - **Filename sanitisation allows Unicode.** Only truly dangerous filesystem characters are stripped (`<>:"/\|?*` and control chars). Accents, spaces, ampersands, and **apostrophes** are preserved. `SAFE_FILENAME_RE` reflects this.
 - **Drop zones: the class is `drag-over`, hyphenated.** Every drop handler in `admin.html` adds `drag-over`; `admin.css` once styled `.drop-zone.dragover` instead, so the rule never matched and the main photo zone plus all three `.drop-zone-small` cover zones gave **no** visual feedback while a file hovered — they simply looked dead. If you add a drop zone, add the matching `.drag-over` rule and check the spelling on both sides.
+- **A cover drop zone must say it is for the cover.** All three (`#bgDropZoneText` on the gallery form, `#colBgDropZoneText` and `#inlineColBgDropZoneText` on the collection ones) read only "Drop an image or click to browse", which does not tell you *what* image is being asked for while the photo drop zone sits right beside it. They now use `t.dropGalleryCover` / `t.dropCollectionCover` ("Gallery cover: …" / "Collection cover: …"), in the markup fallback and in `applyAdminTranslations()`. The old shared `dropImage` key is gone; a new cover zone takes whichever of the two names its owner.
 - **A drop zone needs three things, not one:** the `ondragover`/`ondragleave`/`ondrop` handlers, a client-side size guard, *and* a checked response. The collection cover vignette had only `onclick` while its tooltip promised drop; `handleColBgFile`/`handleInlineColBgFile` skipped the `MAX_BG_MB` guard that `handleBgFile` applies; and the create-flow cover `POST` discarded its result, so a 413 produced a collection with no cover and no message. When a cover upload fails *after* its collection was created, report it **without throwing** — the enclosing `catch` would otherwise claim the collection itself failed.
 - **Never embed a filename in an inline `onclick` string in admin.html.** Filenames can contain apostrophes (`l'été.jpg`). `escapeAttr` turns `'` into `&#39;`, which the browser HTML-decodes back to `'` *before* the JS in `onclick=` is parsed, breaking the handler. Attach handlers via a closure (`el.onclick = …`) or `data-*` attributes + a delegated listener reading `dataset` instead. The uuid `commentId` is safe, but the filename is not.
 - **`?card=1` on background routes** generates an 800px JPEG (fit: inside, quality 82) for use in collection gallery cards. `?thumb=1` stays at 200x200 for admin thumbnails.

@@ -75,6 +75,30 @@
             opacity: 1;
         }
 
+        /* A drop-shadow alone cannot make a pale logo readable on a pale photo: it can
+           only outline the glyph, so a white mark on a white sky stays a smudge however
+           hard the shadow is pushed. Verified by rendering the real logo at 48px over
+           white, pale sand and skin tones with four shadow strengths; even the heaviest
+           read as a dark halo around nothing.
+           This scrim is the part that actually works. It is deliberately TOP-ONLY and
+           short, so the hero keeps the undimmed full-bleed look it was designed around:
+           on a dark cover it is barely perceptible, on a bright one it is what makes the
+           logo legible. Strength is one number, the first stop's alpha. z-index 1 puts it
+           above .hero-bg (which has none) and below the logo/title/buttons at z-index 2,
+           and it is pinned to the hero box so the parallax slides the photo underneath. */
+        .hero::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; right: 0;
+            height: 170px;
+            z-index: 1;
+            pointer-events: none;
+            background: linear-gradient(to bottom,
+                rgba(0,0,0,0.50) 0%,
+                rgba(0,0,0,0.22) 45%,
+                transparent 100%);
+        }
+
         .hero-logo {
             position: absolute;
             top: 24px;
@@ -89,8 +113,10 @@
                Note: drop-shadow() follows the alpha channel, so on an opaque JPEG logo
                this reads as a rectangular halo rather than hugging the glyph. /api/logo
                serves six formats and never tells the client which, so that case cannot be
-               detected here — and the halo still separates the logo from the photo. */
-            filter: drop-shadow(0 2px 6px rgba(0,0,0,0.55)) drop-shadow(0 0 2px rgba(0,0,0,0.4));
+               detected here, and the halo still separates the logo from the photo.
+               The scrim above now does the heavy lifting, so this stays moderate: pushed
+               harder it reads as a dirty ring rather than as depth. */
+            filter: drop-shadow(0 1px 3px rgba(0,0,0,0.7)) drop-shadow(0 0 8px rgba(0,0,0,0.45));
         }
 
         .hero h1 {
@@ -1623,9 +1649,10 @@
         .logo {
             display: inline-block; height: auto; max-height: 96px;
             max-width: min(380px, 75vw); width: auto; object-fit: contain;
-            /* Same treatment as .hero-logo: this sits over .bg-image too. Milder risk
-               here (the cover runs at 30% opacity under .bg-overlay) but the same fix. */
-            filter: drop-shadow(0 2px 6px rgba(0,0,0,0.55)) drop-shadow(0 0 2px rgba(0,0,0,0.4));
+            /* Same value as .hero-logo, kept in sync deliberately. This sits over
+               .bg-image too, at milder risk (the cover runs at 30% opacity under
+               .bg-overlay), so no scrim is needed here, only the shadow. */
+            filter: drop-shadow(0 1px 3px rgba(0,0,0,0.7)) drop-shadow(0 0 8px rgba(0,0,0,0.45));
         }
         .collection-title {
             font-family: 'Fraunces', serif;

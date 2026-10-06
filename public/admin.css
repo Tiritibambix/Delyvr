@@ -1127,7 +1127,11 @@ body { display: flex; flex-direction: column; height: 100%; }
 /* ── BULK ACTION BAR ── */
 #bulkActionBar {
     position: fixed; bottom: 0; left: 0; right: 0; z-index: 800;
-    background: var(--bg2); border-top: 1px solid var(--border);
+    /* Was a 1px border on var(--bg2), which sat almost invisibly against the page and got
+       missed entirely (the whole reason the selection looked dead). An accent top edge and
+       a lift shadow make it register as it slides up, without stealing the eye otherwise. */
+    background: var(--bg2); border-top: 2px solid var(--accent);
+    box-shadow: 0 -6px 24px rgba(0, 0, 0, 0.28);
     display: flex; align-items: center; justify-content: space-between;
     gap: 12px; padding: 10px 24px;
     transform: translateY(100%); transition: transform 0.22s ease;
@@ -1143,6 +1147,21 @@ body { display: flex; flex-direction: column; height: 100%; }
     font-family: inherit; cursor: pointer; border: 1px solid var(--border2);
     background: var(--bg3); color: var(--text); white-space: nowrap;
 }
+/* One control per attribute: a noun label plus a joined enable/disable pill. The two
+   halves share one border and read as a single control, not two buttons, which is what
+   makes "downloads" and "comments" each a single switch while staying honest about a
+   mixed selection (no single state to show, so both sides are explicit commands). */
+.bulk-seg { display: inline-flex; align-items: center; gap: 8px; }
+.bulk-seg-label { font-size: 11px; color: var(--muted); white-space: nowrap; }
+.bulk-seg-ctrl { display: inline-flex; border: 1px solid var(--border2); border-radius: 5px; overflow: hidden; }
+.bulk-seg-btn {
+    padding: 6px 12px; font-size: 12px; font-weight: 500; font-family: inherit;
+    cursor: pointer; border: none; background: var(--bg3); color: var(--text); white-space: nowrap;
+}
+.bulk-seg-btn + .bulk-seg-btn { border-left: 1px solid var(--border2); }
+.bulk-seg-on:hover:not(:disabled)  { background: var(--success); color: #fff; }
+.bulk-seg-off:hover:not(:disabled) { background: var(--muted); color: #fff; }
+.bulk-seg-btn:disabled { opacity: 0.4; cursor: default; }
 .bulk-btn:hover { border-color: var(--muted); }
 .bulk-btn:disabled { opacity: 0.4; cursor: default; }
 .bulk-btn-danger { border-color: var(--error); color: var(--error); }
@@ -1164,9 +1183,11 @@ body { display: flex; flex-direction: column; height: 100%; }
     }
     .bulk-left { gap: 8px; }
     .bulk-right { flex-wrap: wrap; gap: 6px; justify-content: flex-end; }
-    .bulk-btn, .bulk-col-select { font-size: 11px; padding: 5px 9px; }
+    .bulk-btn, .bulk-seg-btn, .bulk-col-select { font-size: 11px; padding: 5px 9px; }
     #bulkCount { min-width: 0; font-size: 12px; }
-    .bulk-label-long { display: none; } /* hide verbose words on mobile */
+    /* The bar's buttons keep their full label here and wrap onto several rows instead of
+       shedding their noun. There are now two Enable/Disable pairs (downloads and
+       comments), so the noun is the only thing telling them apart. */
 }
 .gallery-move-btn {
     background: none; border: none; cursor: pointer;

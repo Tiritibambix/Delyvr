@@ -377,7 +377,7 @@
                 <div class="file-list" id="fileList"></div>
                 <div class="drop-zone-small" id="bgDropZone">
                     <img class="bg-preview-small" id="bgPreview">
-                    <p id="bgDropZoneText">Drop image or click to browse</p>
+                    <p id="bgDropZoneText">Gallery cover: drop an image or click</p>
                 </div>
                 <input type="file" id="bgInput" accept="image/*" style="display:none">
                 <div class="multi-gallery-panel" id="multiGalleryPanel" style="display:none">
@@ -393,7 +393,7 @@
                     <input type="text" class="form-input" id="inlineNewCollectionName" placeholder="Collection name" maxlength="200" oninput="updateCollectionLink()">
                     <div class="drop-zone-small" id="inlineColBgDropZone">
                         <img class="bg-preview-small" id="inlineColBgPreview">
-                        <p id="inlineColBgDropZoneText">Drop image or click to browse</p>
+                        <p id="inlineColBgDropZoneText">Collection cover: drop an image or click</p>
                     </div>
                     <input type="file" id="inlineColBgInput" accept="image/*" style="display:none">
                 </div>
@@ -421,7 +421,7 @@
                 <input type="text" class="form-input" id="newCollectionName" placeholder="Collection name" maxlength="200">
                 <div class="drop-zone-small" id="colBgDropZone">
                     <img class="bg-preview-small" id="colBgPreview">
-                    <p id="colBgDropZoneText">Drop image or click to browse</p>
+                    <p id="colBgDropZoneText">Collection cover: drop an image or click</p>
                 </div>
                 <input type="file" id="colBgInput" accept="image/*" style="display:none">
                 <button class="btn-secondary" id="createCollectionBtn" onclick="createCollection()">Create collection</button>
@@ -536,7 +536,7 @@
             const eventNameInput = document.getElementById('eventName');
             if (eventNameInput) eventNameInput.placeholder = t.eventNamePlaceholder;
             byId('dropZonePhotosText', t.dropPhotosOrFolders);
-            byId('bgDropZoneText', t.dropImage);
+            byId('bgDropZoneText', t.dropGalleryCover);
             byId('collectionSelectPlaceholder', t.addToExistingCollection);
             const createBtn = document.getElementById('createBtn');
             if (createBtn) createBtn.textContent = t.createAndCopyLink;
@@ -544,10 +544,10 @@
             byId('progressText', t.uploadingDots);
             const colNameInput = document.getElementById('newCollectionName');
             if (colNameInput) colNameInput.placeholder = t.collectionNamePlaceholder;
-            byId('colBgDropZoneText', t.dropImage);
+            byId('colBgDropZoneText', t.dropCollectionCover);
             const inlineColName = document.getElementById('inlineNewCollectionName');
             if (inlineColName) inlineColName.placeholder = t.collectionNamePlaceholder;
-            byId('inlineColBgDropZoneText', t.dropImage);
+            byId('inlineColBgDropZoneText', t.dropCollectionCover);
             byId('createCollectionBtn', t.createCollection);
 
             byId('resultTitle', t.galleryCreated);
@@ -645,12 +645,24 @@
             byId('bulkCount', t.gallerySelectedCount(0, t.galleryPlural));
             byId('bulkSelectAllBtn', t.selectAll);
             byId('bulkDeselectAllBtn', t.deselectAll);
-            const bulkEnableBtn = document.getElementById('bulkEnableBtn');
-            if (bulkEnableBtn) bulkEnableBtn.innerHTML = `${t.enableDownloads.split(' ')[0]}<span class="bulk-label-long"> ${t.downloads.toLowerCase()}</span>`;
-            const bulkDisableBtn = document.getElementById('bulkDisableBtn');
-            if (bulkDisableBtn) bulkDisableBtn.innerHTML = `${t.disableDownloads.split(' ')[0]}<span class="bulk-label-long"> ${t.downloads.toLowerCase()}</span>`;
+            // Downloads and comments are each ONE control: the noun as a label, then a
+            // joined enable/disable pill (see `.bulk-seg` in admin.css). Two separate wide
+            // buttons per attribute ("Enable downloads" / "Disable downloads") read as two
+            // controls and repeated the noun; a single stateful toggle can't be used
+            // instead, because a selection can mix enabled and disabled galleries and has
+            // no one state to show, so both sides stay as explicit commands inside the one
+            // pill. The verb is the first word of the full enable/disable label, the same
+            // derivation used before, so no new i18n key is needed.
+            byId('bulkDownloadsLabel', t.downloads);
+            byId('bulkCommentsLabel', t.comments);
+            byId('bulkEnableBtn', t.enableDownloads.split(' ')[0]);
+            byId('bulkDisableBtn', t.disableDownloads.split(' ')[0]);
+            byId('bulkCommentsOnBtn', t.enableComments.split(' ')[0]);
+            byId('bulkCommentsOffBtn', t.disableComments.split(' ')[0]);
             const bulkColOpt = document.querySelector('#bulkCollectionSelect option[value=""]');
-            if (bulkColOpt) bulkColOpt.textContent = t.addToCollectionPlaceholder;
+            if (bulkColOpt) bulkColOpt.textContent = t.moveToCollectionPlaceholder;
+            const bulkColRemoveOpt = document.querySelector('#bulkCollectionSelect option[value="__remove__"]');
+            if (bulkColRemoveOpt) bulkColRemoveOpt.textContent = t.removeFromCollection;
             byId('bulkDeleteBtn', t.delete);
             byId('bulkCancelBtn', t.cancel);
 
@@ -1706,6 +1718,49 @@
             _errorToastTimer = setTimeout(() => toast.classList.remove('visible', 'error'), 4500);
         }
 
+        // ── Progress toast ──────────────────────────────────────────────────
+        // #uploadToast is the one toast element in the page, and every caller used to
+        // poke at its five children by hand. These three wrap that so a long operation
+        // can say "working", tick along and then report, without the operation's own
+        // code being half toast plumbing. Use them for anything that loops over a list
+        // or waits on a request that can take seconds: with no feedback at all the
+        // dashboard simply looks frozen, which is what made emptying a full trash feel
+        // broken.
+        function _toastParts() {
+            return {
+                toast: document.getElementById('uploadToast'),
+                spinner: document.getElementById('toastSpinner'),
+                ok: document.getElementById('toastSuccess'),
+                err: document.getElementById('toastError'),
+                msg: document.getElementById('toastMessage')
+            };
+        }
+        function showProgressToast(message) {
+            const p = _toastParts();
+            clearTimeout(_errorToastTimer);
+            p.spinner.style.display = 'block';
+            p.ok.style.display = 'none';
+            p.err.style.display = 'none';
+            p.msg.textContent = message;
+            p.toast.className = 'upload-toast visible';
+        }
+        function updateProgressToast(message) {
+            _toastParts().msg.textContent = message;
+        }
+        function finishProgressToast(message, isError) {
+            const p = _toastParts();
+            p.spinner.style.display = 'none';
+            p.ok.style.display = isError ? 'none' : 'block';
+            p.err.style.display = isError ? 'block' : 'none';
+            p.msg.textContent = message;
+            p.toast.className = 'upload-toast visible ' + (isError ? 'error' : 'success');
+            clearTimeout(_errorToastTimer);
+            _errorToastTimer = setTimeout(
+                () => p.toast.classList.remove('visible', 'error', 'success'),
+                isError ? 5000 : 3000
+            );
+        }
+
         async function logout() {
             await fetch('/api/auth/logout', { method: 'POST' }).catch(() => {});
             location.reload();
@@ -2239,69 +2294,124 @@
             const n = _selectedGalleries.size;
             document.getElementById('bulkCount').textContent = t.gallerySelectedCount(n, n === 1 ? t.gallerySingular : t.galleryPlural);
             const hasSelection = n > 0;
-            document.getElementById('bulkEnableBtn').disabled = !hasSelection;
-            document.getElementById('bulkDisableBtn').disabled = !hasSelection;
-            document.getElementById('bulkDeleteBtn').disabled = !hasSelection;
-            const sel = document.getElementById('bulkCollectionSelect');
-            sel.disabled = !hasSelection || sel.options.length <= 1;
+            ['bulkEnableBtn', 'bulkDisableBtn', 'bulkCommentsOnBtn', 'bulkCommentsOffBtn', 'bulkDeleteBtn']
+                .forEach(id => { document.getElementById(id).disabled = !hasSelection; });
+            // The select used to also require at least one collection to exist. It now
+            // carries "Remove from collection" as well, which is meaningful on its own, so
+            // the selection is the only thing that gates it.
+            document.getElementById('bulkCollectionSelect').disabled = !hasSelection;
         }
 
         function populateBulkCollectionSelect() {
             const sel = document.getElementById('bulkCollectionSelect');
-            sel.innerHTML = `<option value="">${t.addToCollectionPlaceholder}</option>`;
+            sel.innerHTML = `<option value="">${t.moveToCollectionPlaceholder}</option>`
+                + `<option value="__remove__">${t.removeFromCollection}</option>`;
             (_collectionsData || []).forEach(c => {
                 const opt = document.createElement('option');
                 opt.value = c.id;
                 opt.textContent = c.name || 'Untitled Collection';
                 sel.appendChild(opt);
             });
-            sel.disabled = (_collectionsData || []).length === 0;
+        }
+
+        // The select is an action menu, not a stored value, so it is reset to the
+        // placeholder immediately; otherwise picking the same collection twice in a row
+        // fires no `change` event the second time and the click looks ignored.
+        function handleBulkCollectionChange(sel) {
+            const value = sel.value;
+            sel.value = '';
+            if (!value) return;
+            if (value === '__remove__') bulkRemoveFromCollection();
+            else bulkMoveToCollection(value);
+        }
+
+        // Every bulk action runs through here, and `step` must return a truthy value ONLY
+        // on real success. Each of the three original actions did
+        // `try { await fetch(...) } catch (_) {}` with no `res.ok` check, so a rejected
+        // request was indistinguishable from an applied one: the bar closed, the list
+        // reloaded, and nothing had changed with nothing said. That is what made the
+        // selection look as though no action were wired to it at all.
+        // The loop stays sequential on purpose. These are admin writes behind
+        // `adminLimiter` (300/min) and each one is followed by a list refetch, so firing a
+        // selection of 40 in parallel is how you trip the limiter instead of saving time.
+        async function runBulk(ids, step, { reloadCollections = false, reloadTrash = false, doneLabel = null } = {}) {
+            const n = ids.length;
+            if (!n) return;
+            let done = 0, failed = 0;
+            showProgressToast(t.bulkWorking(0, n));
+            for (const id of ids) {
+                try { if (!(await step(id))) failed++; } catch (_) { failed++; }
+                updateProgressToast(t.bulkWorking(++done, n));
+            }
+            exitSelectionMode();
+            // `doneLabel` exists so that a delete does not report galleries as "updated".
+            if (failed) finishProgressToast(t.bulkPartial(n - failed, failed), true);
+            else finishProgressToast((doneLabel || t.bulkDone)(n), false);
+            loadGalleries();
+            if (reloadCollections) loadCollections();
+            if (reloadTrash) loadTrash();
+        }
+
+        // Reads the gallery's current collection from the `_galleriesData` cache, which
+        // `/api/galleries` fills with `collectionId` for exactly this kind of decision.
+        function currentCollectionOf(galleryId) {
+            const g = (_galleriesData || []).find(x => x.id === galleryId);
+            return (g && g.collectionId) || null;
         }
 
         async function bulkDelete() {
             const ids = [..._selectedGalleries];
             const n = ids.length;
+            if (!n) return;
             if (!(await confirmDialog(t.confirmBulkDelete(n, n === 1 ? t.gallerySingular : t.galleryPlural)))) return;
-            for (const id of ids) {
-                try {
-                    await fetch(`/api/gallery/${id}`, { method: 'DELETE' });
-                } catch (_) {}
-            }
-            exitSelectionMode();
-            loadGalleries();
-            loadCollections();
-            loadTrash();
+            await runBulk(ids, async id => (await fetch(`/api/gallery/${id}`, { method: 'DELETE' })).ok,
+                { reloadCollections: true, reloadTrash: true, doneLabel: t.bulkDeleted });
         }
 
         async function bulkSetDownloads(enabled) {
-            const ids = [..._selectedGalleries];
-            for (const id of ids) {
-                try {
-                    await fetch(`/api/gallery/${id}/downloads`, {
-                        method: 'PATCH',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ enabled })
-                    });
-                } catch (_) {}
-            }
-            exitSelectionMode();
-            loadGalleries();
+            await runBulk([..._selectedGalleries], async id => (await fetch(`/api/gallery/${id}/downloads`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ enabled })
+            })).ok);
         }
 
-        async function bulkAddToCollection(collectionId) {
-            const ids = [..._selectedGalleries];
-            for (const id of ids) {
-                try {
-                    await fetch(`/api/collection/${collectionId}/galleries`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ galleryId: id })
-                    });
-                } catch (_) {}
-            }
-            exitSelectionMode();
-            loadCollections();
-            loadGalleries();
+        async function bulkSetComments(enabled) {
+            await runBulk([..._selectedGalleries], async id => (await fetch(`/api/gallery/${id}/comments-enabled`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ enabled })
+            })).ok);
+        }
+
+        // MOVE, not add. `collection_galleries` has `UNIQUE(gallery_id)` (a gallery
+        // belongs to at most one collection), so POSTing one that is already filed is
+        // refused with 409 `already_in_another_collection`. The old "Add to collection"
+        // therefore failed on every gallery that already had one, which in practice is
+        // most of them, and said nothing about it. Moving means leaving the current
+        // collection first, and only then joining the target.
+        async function bulkMoveToCollection(collectionId) {
+            await runBulk([..._selectedGalleries], async id => {
+                const current = currentCollectionOf(id);
+                if (current === collectionId) return true;   // already there, nothing to do
+                if (current) {
+                    const left = await fetch(`/api/collection/${current}/galleries/${id}`, { method: 'DELETE' });
+                    if (!left.ok) return false;              // don't orphan it on a failed move
+                }
+                return (await fetch(`/api/collection/${collectionId}/galleries`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ galleryId: id })
+                })).ok;
+            }, { reloadCollections: true });
+        }
+
+        async function bulkRemoveFromCollection() {
+            await runBulk([..._selectedGalleries], async id => {
+                const current = currentCollectionOf(id);
+                if (!current) return true;                   // already in no collection
+                return (await fetch(`/api/collection/${current}/galleries/${id}`, { method: 'DELETE' })).ok;
+            }, { reloadCollections: true });
         }
 
         // Escape to exit selection mode
@@ -4160,12 +4270,21 @@
 
         async function emptyTrash() {
             if (!(await confirmDialog(t.confirmEmptyTrash))) return;
+            // One request that loops server-side, deleting each gallery's uploads,
+            // thumbnails, previews, cover, OG cache and audio from disk, so a full trash
+            // can take a long while with nothing on screen. There is no per-item
+            // progress to report from here without streaming the response, but a spinner
+            // is what separates "working" from "frozen", which is the actual complaint.
+            showProgressToast(t.emptyingTrash);
             try {
                 const res = await fetch('/api/galleries/trash', { method: 'DELETE' });
                 if (!res.ok) throw new Error('Failed');
+                const data = await res.json().catch(() => ({}));
+                finishProgressToast(t.trashEmptied(data.purged ?? 0), false);
                 loadTrash();
+                loadGalleries();
             } catch (err) {
-                showError(t.couldNotEmptyTrash);
+                finishProgressToast(t.couldNotEmptyTrash, true);
             }
         }
 
@@ -4310,10 +4429,23 @@
             <button class="bulk-select-all" id="bulkDeselectAllBtn" onclick="deselectAllGalleries()">Deselect all</button>
         </div>
         <div class="bulk-right">
-            <button class="bulk-btn" id="bulkEnableBtn" onclick="bulkSetDownloads(true)" disabled>Enable<span class="bulk-label-long"> downloads</span></button>
-            <button class="bulk-btn" id="bulkDisableBtn" onclick="bulkSetDownloads(false)" disabled>Disable<span class="bulk-label-long"> downloads</span></button>
-            <select class="bulk-col-select" id="bulkCollectionSelect" onchange="if(this.value){bulkAddToCollection(this.value);this.value=''}" disabled>
-                <option value="">Add to collection…</option>
+            <span class="bulk-seg">
+                <span class="bulk-seg-label" id="bulkDownloadsLabel">Downloads</span>
+                <span class="bulk-seg-ctrl">
+                    <button class="bulk-seg-btn bulk-seg-on" id="bulkEnableBtn" onclick="bulkSetDownloads(true)" disabled>Enable</button>
+                    <button class="bulk-seg-btn bulk-seg-off" id="bulkDisableBtn" onclick="bulkSetDownloads(false)" disabled>Disable</button>
+                </span>
+            </span>
+            <span class="bulk-seg">
+                <span class="bulk-seg-label" id="bulkCommentsLabel">Comments</span>
+                <span class="bulk-seg-ctrl">
+                    <button class="bulk-seg-btn bulk-seg-on" id="bulkCommentsOnBtn" onclick="bulkSetComments(true)" disabled>Enable</button>
+                    <button class="bulk-seg-btn bulk-seg-off" id="bulkCommentsOffBtn" onclick="bulkSetComments(false)" disabled>Disable</button>
+                </span>
+            </span>
+            <select class="bulk-col-select" id="bulkCollectionSelect" onchange="handleBulkCollectionChange(this)" disabled>
+                <option value="">Move to collection…</option>
+                <option value="__remove__">Remove from collection</option>
             </select>
             <button class="bulk-btn bulk-btn-danger" id="bulkDeleteBtn" onclick="bulkDelete()" disabled>Delete</button>
             <button class="bulk-btn bulk-btn-cancel" id="bulkCancelBtn" onclick="exitSelectionMode()">Cancel</button>
