@@ -475,6 +475,12 @@ the card.**
   - Under **480 px the back link keeps only its arrow**. The bar cannot hold three labels,
     and a back arrow is unambiguous, which the two identical play triangles were not; the
     width is spent where the ambiguity actually hurt. Above 480 px the text returns.
+  - **`.back-to-collection` keeps `margin-right: auto` at every width.** That single
+    declaration is what pins it to the left while `.actions-bar` is `justify-content:
+    flex-end`; reset it, or give the link `flex: 0 0 auto` without it, and the entire bar
+    bunches to the right. The mobile block used to also set `flex: 1`, which only made
+    sense while the bar was overflowing and the link had to absorb the excess. Now that
+    the labels fit, growing it would stretch a lone arrow across the bar, so it is gone.
   - The **critique chip** loses its word under 480 px and disappears entirely under 360 px.
     It is a passive indicator, every photo already carries its number, and it was the
     single most expensive item in the bar at 101 px measured (34 px once reduced).
@@ -497,12 +503,30 @@ the card.**
   mobile, where it inherits the bars' auto-hide. It is called from `openLightbox`,
   `closeLightbox`, `renderRoute`, `loadGallery`, the existing `scroll` listener and
   `resize`, and **no-ops unless the host actually changed** (it runs on every scroll).
-  The move is a **cross-fade**, not a teleport: the button fades out (`.audio-moving`,
-  `AUDIO_FADE_MS`), is re-parented, then fades back in — re-parenting alone made it pop
-  out of the hero and snap into the sticky bar. The pending timer is cleared on each call
-  and the target host is **re-read after the fade** (the visitor may have kept scrolling),
-  and `audioHostFor()` uses a 2 px margin on the sticky-bar test as hysteresis, so a scroll
-  resting exactly on the boundary cannot flip hosts back and forth and flicker.
+  **The re-parent is synchronous, and must stay that way.** It moves the button first and
+  fades it in at the destination (`.audio-moving` applied, forced reflow, removed), with
+  the duration living only in the CSS transition. It used to do the opposite: set
+  `.audio-moving`, wait on a timer, then move. Because this function runs on **every**
+  scroll event, each call cleared and restarted that timer while re-applying the
+  opacity-0 class, so a phone's momentum scroll (which emits events for far longer than
+  the 140 ms delay) meant the timer never fired at all: the button stayed in the hero,
+  by then scrolled off-screen, latched invisible, and only appeared once the finger had
+  been still. Deferring the move also made it reach the sticky bar 140 ms after the bar
+  reached the top, which reads as lag. Only the fade-in is kept, because the host being
+  left is scrolling out of view anyway.
+
+  **`audioHostFor()`'s sticky-bar test needs two thresholds, and that is not optional
+  now.** It enters `#barAudioSlot` at `top <= 0.5` and leaves it only at `top >= 8`; the
+  8 px dead band between them is what absorbs jitter. It used to be a single `top <= 2`
+  test described as hysteresis, which it is not: one shifted threshold still flips on the
+  sub-pixel scroll noise a trackpad produces when the pointer rests near the handoff.
+  That was invisible only because the deferred move debounced the flipping by accident,
+  so removing the timer exposed it. Measured before the fix: 8 sub-pixel jitters across
+  the boundary caused 8 re-parents, each restarting the fade. The current parent supplies
+  the state, which keeps the function a pure query; the test is deliberately `inHero`
+  rather than `inBar`, so a button arriving from a lightbox or slideshow slot uses the
+  bar's threshold and is not sent back to a hero that has scrolled away.
+
   The lightbox host test uses `matchMedia('(max-width: 768px)')`, **not** `_isMobileLB()`:
   the latter also matches `(max-height: 500px)`, but `.lb-mobile-overlay` only renders
   under `max-width: 768px`, so a landscape phone would park the button in a hidden bar.
