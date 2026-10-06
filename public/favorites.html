@@ -312,6 +312,18 @@
         async function loadFavorites() {
             try {
                 const res = await fetch(`/api/gallery/${galleryId}/favorites-ranked`);
+                // Plain, untranslated text, matching this page's existing no-i18n
+                // posture (see CLAUDE.md) — unlike preview.html, there is no form
+                // here to actually unlock a protected gallery, so a password-gated
+                // gallery just explains that and points back at the photographer.
+                if (res.status === 401) {
+                    document.getElementById('stateMsg').textContent = 'This gallery is password-protected. Open the gallery link first to unlock it.';
+                    return;
+                }
+                if (res.status === 410) {
+                    document.getElementById('stateMsg').textContent = 'This gallery link is no longer available.';
+                    return;
+                }
                 if (!res.ok) throw new Error('Not found');
                 const data = await res.json();
 

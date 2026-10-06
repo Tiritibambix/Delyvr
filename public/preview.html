@@ -509,6 +509,10 @@
             cursor: pointer;
             transition: transform 0.3s ease, box-shadow 0.3s ease;
             flex-shrink: 0;
+            /* Per-gallery setting (galleries.corner_style, default 'square'),
+               applied by applyGalleryAppearance(). Unset here is 0px, the exact
+               shape every gallery already had before this setting existed. */
+            border-radius: var(--photo-radius, 0px);
         }
 
         .photo-card:hover {
@@ -1410,6 +1414,67 @@
             color: var(--text-secondary);
         }
 
+        /* Password gate — same container rhythm as .not-found, plus a form.
+           Shown when GET /info comes back 401 (gallery has a password and no
+           valid unlock cookie yet). */
+        .password-gate {
+            display: none;
+            text-align: center;
+            padding: 100px 24px;
+        }
+        .password-gate.active { display: block; }
+        .password-gate h1 {
+            font-family: 'Fraunces', serif;
+            font-size: 2rem;
+            margin-bottom: 12px;
+        }
+        .password-gate p {
+            color: var(--text-secondary);
+            margin-bottom: 20px;
+        }
+        .password-gate-form {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            max-width: 280px;
+            margin: 0 auto;
+        }
+        .password-gate-input {
+            box-sizing: border-box;
+            padding: 10px 12px;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            background: var(--bg-tertiary);
+            color: var(--text-primary);
+            font-family: inherit;
+            font-size: 14px;
+            text-align: center;
+        }
+        .password-gate-input.error { border-color: #d9534f; }
+        .password-gate-submit {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            padding: 10px 18px;
+            background: #c9a962;
+            color: #0a0a0b;
+            border: none;
+            border-radius: 3px;
+            font-size: 13px;
+            font-weight: 500;
+            font-family: inherit;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        .password-gate-submit:hover { background: #dfc07a; }
+        .password-gate-error {
+            display: none;
+            color: #d9534f;
+            font-size: 12.5px;
+        }
+        .password-gate-error.visible { display: block; }
+
         /* Loading State */
         .loading-state {
             text-align: center;
@@ -2143,6 +2208,18 @@
         <p id="notFoundText"></p>
     </div>
 
+    <!-- Password gate — shown on a 401 from /info. A form, so it can't reuse
+         #notFound's markup even though it shares the same container rhythm. -->
+    <div class="password-gate" id="passwordGate">
+        <h1 id="passwordGateTitle"></h1>
+        <p id="passwordGateText"></p>
+        <form class="password-gate-form" id="passwordGateForm" onsubmit="return submitGalleryPassword(event)">
+            <input type="password" class="password-gate-input" id="passwordGateInput" autocomplete="current-password">
+            <p class="password-gate-error" id="passwordGateError"></p>
+            <button type="submit" class="password-gate-submit" id="passwordGateSubmitBtn"></button>
+        </form>
+    </div>
+
     <!-- Collection index — shown when this document is served at /collection/:id
          and no #/gallery/:id is selected. Its cards navigate by hash, so the
          montage below keeps playing across galleries. -->
@@ -2186,6 +2263,13 @@
                 loadingGallery: 'Loading gallery...',
                 notFoundTitle: 'Gallery Not Found',
                 notFoundText: 'This gallery may have been removed or the link is incorrect.',
+                galleryExpiredTitle: 'Gallery Expired',
+                galleryExpiredText: 'This gallery link is no longer available. Contact the photographer.',
+                passwordGateTitle: 'Protected Gallery',
+                passwordGateText: 'This gallery is protected by a password.',
+                passwordGatePlaceholder: 'Password',
+                passwordGateSubmitBtn: 'Unlock',
+                passwordGateWrongPassword: 'Incorrect password.',
                 backToCollection: 'Back to collection',
                 favAdded: '♥ Saved to favorites',
                 favRemoved: 'Removed from favorites',
@@ -2224,6 +2308,13 @@
                 loadingGallery: 'Carregando galeria...',
                 notFoundTitle: 'Galeria Não Encontrada',
                 notFoundText: 'Esta galeria pode ter sido removida ou o link está incorreto.',
+                galleryExpiredTitle: 'Galeria expirada',
+                galleryExpiredText: 'O link desta galeria já não está disponível. Contacte o fotógrafo.',
+                passwordGateTitle: 'Galeria protegida',
+                passwordGateText: 'Esta galeria está protegida por palavra-passe.',
+                passwordGatePlaceholder: 'Palavra-passe',
+                passwordGateSubmitBtn: 'Desbloquear',
+                passwordGateWrongPassword: 'Palavra-passe incorreta.',
                 backToCollection: 'Voltar à coleção',
                 favAdded: '♥ Salvo nos favoritos',
                 favRemoved: 'Removido dos favoritos',
@@ -2262,6 +2353,13 @@
                 loadingGallery: 'Cargando galería...',
                 notFoundTitle: 'Galería No Encontrada',
                 notFoundText: 'Esta galería puede haber sido eliminada o el enlace es incorrecto.',
+                galleryExpiredTitle: 'Galería caducada',
+                galleryExpiredText: 'El enlace de esta galería ya no está disponible. Contacta con el fotógrafo.',
+                passwordGateTitle: 'Galería protegida',
+                passwordGateText: 'Esta galería está protegida con una contraseña.',
+                passwordGatePlaceholder: 'Contraseña',
+                passwordGateSubmitBtn: 'Desbloquear',
+                passwordGateWrongPassword: 'Contraseña incorrecta.',
                 backToCollection: 'Volver a la colección',
                 favAdded: '♥ Guardado en favoritos',
                 favRemoved: 'Eliminado de favoritos',
@@ -2300,6 +2398,13 @@
                 loadingGallery: 'Caricamento galleria...',
                 notFoundTitle: 'Galleria Non Trovata',
                 notFoundText: 'Questa galleria potrebbe essere stata rimossa o il link non è corretto.',
+                galleryExpiredTitle: 'Galleria scaduta',
+                galleryExpiredText: 'Il link di questa galleria non è più disponibile. Contatta il fotografo.',
+                passwordGateTitle: 'Galleria protetta',
+                passwordGateText: 'Questa galleria è protetta da una password.',
+                passwordGatePlaceholder: 'Password',
+                passwordGateSubmitBtn: 'Sblocca',
+                passwordGateWrongPassword: 'Password errata.',
                 backToCollection: 'Torna alla collezione',
                 favAdded: '♥ Salvato nei preferiti',
                 favRemoved: 'Rimosso dai preferiti',
@@ -2338,6 +2443,13 @@
                 loadingGallery: 'Chargement de la galerie...',
                 notFoundTitle: 'Galerie Introuvable',
                 notFoundText: 'Cette galerie a peut-être été supprimée ou le lien est incorrect.',
+                galleryExpiredTitle: 'Galerie expirée',
+                galleryExpiredText: 'Le lien de cette galerie n\'est plus disponible. Contactez le photographe.',
+                passwordGateTitle: 'Galerie protégée',
+                passwordGateText: 'Cette galerie est protégée par un mot de passe.',
+                passwordGatePlaceholder: 'Mot de passe',
+                passwordGateSubmitBtn: 'Déverrouiller',
+                passwordGateWrongPassword: 'Mot de passe incorrect.',
                 backToCollection: 'Retour à la collection',
                 favAdded: '♥ Ajouté aux favoris',
                 favRemoved: 'Retiré des favoris',
@@ -2781,6 +2893,7 @@
             resetZoom();
             closeCommentDrawer();
             document.getElementById('notFound').classList.remove('active');
+            document.getElementById('passwordGate').classList.remove('active');
             document.getElementById('loadingState').style.display = '';
             document.getElementById('galleryGrid').innerHTML = '';
             const heroBg = document.getElementById('heroBg');
@@ -2805,8 +2918,11 @@
             try {
                 // Get gallery info
                 const infoRes = await fetch(`/api/gallery/${galleryId}/info`);
+                if (infoRes.status === 401) return showPasswordGate();
+                if (infoRes.status === 410) return showExpiredState();
                 if (!infoRes.ok) throw new Error('Not found');
                 const info = await infoRes.json();
+                applyGalleryAppearance(info); // before renderGallery() reads getTargetRowHeight()/getRowGap()
 
                 // Finalize locale from the gallery's resolved client language
                 locale = resolveClientLocale(info.clientLanguage);
@@ -2903,6 +3019,63 @@
             }
         }
 
+        // Expired galleries reuse #notFound — same container, two new keys — since
+        // there is no form involved, unlike the password gate below.
+        function showExpiredState() {
+            document.getElementById('loadingState').style.display = 'none';
+            document.getElementById('notFoundTitle').textContent = t.galleryExpiredTitle;
+            document.getElementById('notFoundText').textContent = t.galleryExpiredText;
+            document.getElementById('notFound').classList.add('active');
+        }
+
+        // Shown on a 401 from /info. `t` is still the English default here — the
+        // server refused before handing over anything, including the gallery's own
+        // clientLanguage, so there is nothing to resolve a locale from yet.
+        function showPasswordGate() {
+            document.getElementById('loadingState').style.display = 'none';
+            document.getElementById('passwordGateTitle').textContent = t.passwordGateTitle;
+            document.getElementById('passwordGateText').textContent = t.passwordGateText;
+            document.getElementById('passwordGateInput').placeholder = t.passwordGatePlaceholder;
+            document.getElementById('passwordGateSubmitBtn').textContent = t.passwordGateSubmitBtn;
+            document.getElementById('passwordGateError').classList.remove('visible');
+            document.getElementById('passwordGateInput').classList.remove('error');
+            document.getElementById('passwordGate').classList.add('active');
+            document.getElementById('passwordGateInput').focus();
+        }
+
+        async function submitGalleryPassword(event) {
+            event.preventDefault();
+            const input = document.getElementById('passwordGateInput');
+            const errorEl = document.getElementById('passwordGateError');
+            const submitBtn = document.getElementById('passwordGateSubmitBtn');
+            submitBtn.disabled = true;
+            try {
+                const res = await fetch(`/api/gallery/${galleryId}/unlock`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ password: input.value })
+                });
+                if (res.ok) {
+                    document.getElementById('passwordGate').classList.remove('active');
+                    input.value = '';
+                    // The unlock cookie is now set — every request this reload makes,
+                    // including <img>/<video> tags, authenticates transparently.
+                    await loadGallery();
+                    return;
+                }
+                errorEl.textContent = t.passwordGateWrongPassword;
+                errorEl.classList.add('visible');
+                input.classList.add('error');
+                input.focus();
+                input.select();
+            } catch (e) {
+                errorEl.textContent = t.passwordGateWrongPassword;
+                errorEl.classList.add('visible');
+            } finally {
+                submitBtn.disabled = false;
+            }
+        }
+
         // Track downloadsEnabled for resize re-renders
         let _lastDownloadsEnabled = true;
 
@@ -2914,19 +3087,35 @@
             return 1;
         }
 
+        // Per-gallery lightbox appearance (galleries.lightbox_size/grid_spacing/
+        // corner_style, from GET /info). 'medium'/'square' are exact no-ops —
+        // the multipliers below are 1 and --photo-radius is left unset — so every
+        // gallery that predates this setting looks pixel-identical to before.
+        const GALLERY_SIZE_MULTIPLIER = { small: 0.75, medium: 1, large: 1.3 };
+        const GALLERY_GAP_MULTIPLIER = { small: 0.5, medium: 1, large: 1.5 };
+        let _gallerySizeMultiplier = 1;
+        let _galleryGapMultiplier = 1;
+
+        function applyGalleryAppearance(info) {
+            _gallerySizeMultiplier = GALLERY_SIZE_MULTIPLIER[info.lightboxSize] ?? 1;
+            _galleryGapMultiplier = GALLERY_GAP_MULTIPLIER[info.gridSpacing] ?? 1;
+            document.documentElement.style.setProperty('--photo-radius', info.cornerStyle === 'rounded' ? '8px' : '0px');
+        }
+
         function getTargetRowHeight() {
             const w = window.innerWidth;
-            if (w <= 480) return 140;
-            if (w <= 900) return 180;
-            if (w <= 1400) return 240;
-            return 280;
+            let base;
+            if (w <= 480) base = 140;
+            else if (w <= 900) base = 180;
+            else if (w <= 1400) base = 240;
+            else base = 280;
+            return Math.round(base * _gallerySizeMultiplier);
         }
 
         function getRowGap() {
             const w = window.innerWidth;
-            if (w <= 480) return 2;
-            if (w <= 900) return 4;
-            return 10;
+            const base = w <= 480 ? 2 : (w <= 900 ? 4 : 10);
+            return Math.round(base * _galleryGapMultiplier);
         }
 
         // Build rows: greedily add photos until summed aspect ratio exceeds
@@ -4136,6 +4325,7 @@
                     if (el) el.style.display = 'none';
                 });
                 document.getElementById('notFound').classList.remove('active');
+                document.getElementById('passwordGate').classList.remove('active');
                 closeLightbox();
                 closeSlideshow();   // `photos` is about to stop describing what is on screen
                 galleryId = null;   // force a reload if the same gallery is reopened

@@ -56,50 +56,86 @@
     </div>
 
     <!-- Favorites Modal -->
-    <!-- Photos Modal -->
-    <div class="photos-modal" id="photosModal" onclick="if(event.target===this) closePhotosModal()">
-        <div class="photos-modal-card">
-            <div class="photos-modal-header">
-                <h3 id="photosModalTitle">Manage Photos</h3>
-                <div class="photos-modal-header-right">
-                    <button class="section-select-btn" id="photosSelectBtn" onclick="togglePhotoSelection()">Select</button>
-                    <button class="photos-modal-close" onclick="closePhotosModal()">×</button>
-                </div>
+    <!-- The old Photos Modal overlay was retired: its content (same element ids)
+         now lives in the routed #view-gallery-detail section — see "VIEW: a
+         single gallery's own page" further down this file. -->
+
+    <!-- Gallery Settings Modal — reached from the gallery detail page's header
+         button. Same .profile-* classes/layout as the global Settings modal
+         (#profileModal) for visual consistency; downloads/comments/language
+         controls here call the SAME toggleDownloads/toggleComments/
+         setGalleryClientLanguage functions already used on the gallery card —
+         they are relocated here, not reimplemented. -->
+    <div class="profile-modal" id="gallerySettingsModal" onclick="if(event.target===this) closeGallerySettingsPanel()">
+        <div class="profile-modal-card">
+            <div class="profile-modal-header">
+                <h3 id="gallerySettingsTitle">Gallery settings</h3>
+                <button class="profile-modal-close" onclick="closeGallerySettingsPanel()">&#x2715;</button>
             </div>
 
-            <!-- Bulk delete bar (selection mode) -->
-            <div class="photos-bulk-bar" id="photosBulkBar" style="display:none">
-                <span id="photosSelectedCount">0 selected</span>
-                <button class="bulk-select-all" id="photosSelectAllBtn" onclick="selectAllPhotos()">Select all</button>
-                <button class="bulk-btn bulk-btn-cancel" id="photosCancelSelectBtn" onclick="togglePhotoSelection()">Cancel</button>
-                <button class="bulk-btn bulk-btn-danger" id="photosDeleteSelectedBtn" onclick="deleteSelectedPhotos()" disabled>Delete selected</button>
+            <div class="profile-section-label" id="gsAccessLabel">Access</div>
+            <label class="downloads-toggle" id="gsDownloadsRow">
+                <span class="toggle-switch">
+                    <input type="checkbox" id="gsDownloadsCheckbox" onchange="toggleDownloads(_galleryDetailId, this.checked, this)">
+                    <span class="toggle-track"></span>
+                </span>
+                <span id="gsDownloadsLabel">Allow downloads</span>
+            </label>
+            <label class="downloads-toggle" id="gsCommentsRow">
+                <span class="toggle-switch">
+                    <input type="checkbox" id="gsCommentsCheckbox" onchange="toggleComments(_galleryDetailId, this.checked, this)">
+                    <span class="toggle-track"></span>
+                </span>
+                <span id="gsCommentsLabel">Allow comments</span>
+            </label>
+            <div class="profile-field">
+                <span class="profile-field-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg></span>
+                <select id="gsClientLanguage" onchange="setGalleryClientLanguage(_galleryDetailId, this.value)">
+                    <option value="auto" id="gsLangAutoOpt">Auto</option>
+                    <option value="en">English</option>
+                    <option value="fr">Français</option>
+                    <option value="es">Español</option>
+                    <option value="pt">Português</option>
+                    <option value="it">Italiano</option>
+                </select>
             </div>
 
-            <!-- Normal meta -->
-            <div class="photos-modal-meta" id="photosModalMeta"></div>
-
-            <!-- Drop zone -->
-            <div class="photos-add-zone" id="photosAddZone" onclick="document.getElementById('photosAddInput').click()">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="16" height="16" style="vertical-align:middle;margin-right:6px"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-                <span id="photosDropText">Drop photos here or</span> <button class="zone-browse" id="photosBrowseBtn" onclick="event.stopPropagation(); document.getElementById('photosAddInput').click()">browse</button>
+            <div class="profile-section-label" id="gsSecurityLabel">Password &amp; expiration</div>
+            <div class="profile-field">
+                <span class="profile-field-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></span>
+                <input type="password" id="gsPasswordInput" placeholder="Leave blank for no password" autocomplete="new-password">
+                <button class="btn-nav" id="gsPasswordClearBtn" onclick="clearGalleryPassword()" style="display:none">
+                    <span id="gsPasswordClearBtnText">Clear</span>
+                </button>
             </div>
-            <input type="file" id="photosAddInput" multiple accept="image/*,video/mp4,video/quicktime,video/webm,video/x-m4v" style="display:none" onchange="handlePhotosAddInput(event)">
+            <p class="logo-hint-sub" id="gsPasswordStatus"></p>
+            <button class="btn-primary" id="gsPasswordSaveBtn" onclick="saveGalleryPassword()" style="margin-bottom:8px">Save password</button>
 
-            <!-- Upload queue (files selected, not yet uploaded) -->
-            <div id="photosQueueWrap" style="display:none">
-                <div class="file-count" id="photosQueueCount"></div>
-                <div class="file-pills" id="photosQueuePills"></div>
-                <button class="btn-primary" id="photosUploadBtn" onclick="uploadQueuedPhotos()" style="margin-top:8px;width:100%">Upload</button>
-            </div>
-
-            <!-- Upload progress -->
-            <div id="photosUploadWrap" style="display:none">
-                <div class="photos-upload-bar"><div class="photos-upload-fill" id="photosUploadFill"></div></div>
-                <div class="photos-upload-text" id="photosUploadText"></div>
+            <div class="profile-field">
+                <span class="profile-field-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg></span>
+                <input type="date" id="gsExpirationInput" onchange="saveGalleryExpiration(this.value)">
+                <button class="btn-nav" id="gsExpirationClearBtn" onclick="saveGalleryExpiration(null)" style="display:none">
+                    <span id="gsExpirationClearBtnText">Clear</span>
+                </button>
             </div>
 
-            <!-- Photos grid -->
-            <div class="photos-grid" id="photosGrid"></div>
+            <div class="profile-section-label" id="gsAppearanceLabel">Lightbox appearance</div>
+            <div class="profile-field">
+                <select id="gsLightboxSize" onchange="saveGalleryAppearance()">
+                    <option value="small" id="gsSizeSmallOpt">Small</option>
+                    <option value="medium" id="gsSizeMediumOpt">Medium</option>
+                    <option value="large" id="gsSizeLargeOpt">Large</option>
+                </select>
+                <select id="gsGridSpacing" onchange="saveGalleryAppearance()">
+                    <option value="small" id="gsSpacingSmallOpt">Small</option>
+                    <option value="medium" id="gsSpacingMediumOpt">Medium</option>
+                    <option value="large" id="gsSpacingLargeOpt">Large</option>
+                </select>
+                <select id="gsCornerStyle" onchange="saveGalleryAppearance()">
+                    <option value="square" id="gsCornerSquareOpt">Square</option>
+                    <option value="rounded" id="gsCornerRoundedOpt">Rounded</option>
+                </select>
+            </div>
         </div>
     </div>
 
@@ -462,6 +498,9 @@
                         <button class="section-select-btn" id="toggleDetailsBtn" onclick="toggleGalleryDetailsVisibility()" title="Hide gallery stats">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14" style="vertical-align:middle"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8Z"/><circle cx="12" cy="12" r="3"/></svg>
                         </button>
+                        <button class="section-select-btn" id="galleryViewModeBtn" onclick="toggleGalleryViewMode()" title="List view">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14" style="vertical-align:middle" id="galleryViewModeIcon"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+                        </button>
                         <button class="section-select-btn" id="filterNoCollectionBtn" onclick="toggleGalleryFilter('noCollection', this)">No collection</button>
                         <button class="section-select-btn" id="filterDownloadsOffBtn" onclick="toggleGalleryFilter('downloadsOff', this)">Downloads off</button>
                         <button class="section-select-btn" id="collapseAllGroupsBtn" onclick="collapseAllGroups()">Collapse all</button>
@@ -489,6 +528,100 @@
                 <div class="comments-page">
                     <div class="comments-rail" id="commentsRail"></div>
                     <div class="comments-detail" id="commentsDetail"></div>
+                </div>
+            </section>
+
+            <!-- VIEW: a single gallery's own page. Replaces the old #photosModal
+                 overlay — reached by clicking a gallery row/card instead of its
+                 "manage photos" button, which now just navigates here too. Every
+                 id inside .gallery-detail-main below is reused verbatim from that
+                 former modal (openPhotosModal/_renderPhotosRows/deleteSelectedPhotos/
+                 etc. all still work unmodified against them); only the modal's own
+                 overlay chrome (header with a × close, the backdrop) is gone. -->
+            <section class="view" id="view-gallery-detail">
+                <div class="view-header">
+                    <a class="client-btn accent" href="#/galleries" id="galleryDetailBackBtn">Back to galleries</a>
+                    <h1 class="view-title" id="galleryDetailTitle"></h1>
+                    <button class="client-btn view-header-action" id="galleryDetailSettingsBtn" onclick="openGallerySettingsPanel()">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+                        <span id="galleryDetailSettingsBtnText">Settings</span>
+                    </button>
+                </div>
+                <div class="gallery-detail-layout">
+                    <aside class="gallery-detail-actions">
+                        <a class="client-btn gallery-detail-action" id="galleryDetailPreviewBtn" target="_blank" rel="noopener">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8Z"/><circle cx="12" cy="12" r="3"/></svg>
+                            <span id="galleryDetailPreviewText">Preview</span>
+                        </a>
+                        <button class="client-btn gallery-detail-action" id="galleryDetailCopyLinkBtn" onclick="copyGalleryDetailLink(this)">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                            <span id="galleryDetailCopyLinkText">Copy link</span>
+                        </button>
+                        <button class="client-btn gallery-detail-action" onclick="document.getElementById('photosAddInput').click()">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                            <span id="galleryDetailAddFilesText">Add files</span>
+                        </button>
+                        <a class="client-btn gallery-detail-action" id="galleryDetailDownloadBtn" href="#">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                            <span id="galleryDetailDownloadText">Download ZIP</span>
+                        </a>
+                        <button class="section-select-btn gallery-detail-action" id="photosSelectBtn" onclick="togglePhotoSelection()">Select</button>
+                    </aside>
+                    <div class="gallery-detail-main">
+                        <!-- Bulk delete bar (selection mode) — same ids/behavior as the old modal's. -->
+                        <div class="photos-bulk-bar" id="photosBulkBar" style="display:none">
+                            <span id="photosSelectedCount">0 selected</span>
+                            <button class="bulk-select-all" id="photosSelectAllBtn" onclick="selectAllPhotos()">Select all</button>
+                            <button class="bulk-btn bulk-btn-cancel" id="photosCancelSelectBtn" onclick="togglePhotoSelection()">Cancel</button>
+                            <button class="bulk-btn bulk-btn-danger" id="photosDeleteSelectedBtn" onclick="deleteSelectedPhotos()" disabled>Delete selected</button>
+                        </div>
+
+                        <!-- Proofing filters: flag colors (admin-only marks), favorited
+                             (any visitor), has comments. AND'd together; each flag chip
+                             toggles independently (a photo matches if its flag is in the
+                             active set, or the set is empty). -->
+                        <div class="gallery-detail-filters" id="galleryDetailFilters">
+                            <button class="flag-filter-chip flag-filter-red" data-flag="red" onclick="togglePhotoFlagFilter('red')" title="Red"></button>
+                            <button class="flag-filter-chip flag-filter-orange" data-flag="orange" onclick="togglePhotoFlagFilter('orange')" title="Orange"></button>
+                            <button class="flag-filter-chip flag-filter-green" data-flag="green" onclick="togglePhotoFlagFilter('green')" title="Green"></button>
+                            <button class="flag-filter-chip flag-filter-white" data-flag="white" onclick="togglePhotoFlagFilter('white')" title="White"></button>
+                            <span class="gallery-detail-filter-sep"></span>
+                            <button class="filter-chip" id="filterFavoritedBtn" onclick="togglePhotoFavoritedFilter()">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78Z"/></svg>
+                                <span id="filterFavoritedText">Favorited</span>
+                            </button>
+                            <button class="filter-chip" id="filterCommentsBtn" onclick="togglePhotoCommentsFilter()">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                                <span id="filterCommentsText">Has comments</span>
+                            </button>
+                        </div>
+
+                        <!-- Normal meta -->
+                        <div class="photos-modal-meta" id="photosModalMeta"></div>
+
+                        <!-- Drop zone -->
+                        <div class="photos-add-zone" id="photosAddZone" onclick="document.getElementById('photosAddInput').click()">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="16" height="16" style="vertical-align:middle;margin-right:6px"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                            <span id="photosDropText">Drop photos here or</span> <button class="zone-browse" id="photosBrowseBtn" onclick="event.stopPropagation(); document.getElementById('photosAddInput').click()">browse</button>
+                        </div>
+                        <input type="file" id="photosAddInput" multiple accept="image/*,video/mp4,video/quicktime,video/webm,video/x-m4v" style="display:none" onchange="handlePhotosAddInput(event)">
+
+                        <!-- Upload queue (files selected, not yet uploaded) -->
+                        <div id="photosQueueWrap" style="display:none">
+                            <div class="file-count" id="photosQueueCount"></div>
+                            <div class="file-pills" id="photosQueuePills"></div>
+                            <button class="btn-primary" id="photosUploadBtn" onclick="uploadQueuedPhotos()" style="margin-top:8px;width:100%">Upload</button>
+                        </div>
+
+                        <!-- Upload progress -->
+                        <div id="photosUploadWrap" style="display:none">
+                            <div class="photos-upload-bar"><div class="photos-upload-fill" id="photosUploadFill"></div></div>
+                            <div class="photos-upload-text" id="photosUploadText"></div>
+                        </div>
+
+                        <!-- Photos grid -->
+                        <div class="photos-grid" id="photosGrid"></div>
+                    </div>
                 </div>
             </section>
 
@@ -581,11 +714,11 @@
                 const hidden = document.getElementById('galleryList').classList.contains('details-hidden');
                 toggleDetailsBtn.title = hidden ? t.showGalleryStats : t.hideGalleryStats;
             }
+            syncGalleryViewModeBtn();
             byId('selectionModeBtn', t.select);
             const trashOpenBtn = document.getElementById('trashOpenBtn');
             if (trashOpenBtn) trashOpenBtn.title = t.trash;
 
-            byId('photosModalTitle', t.managePhotosTitle);
             byId('photosSelectBtn', t.select);
             byId('photosSelectAllBtn', t.selectAll);
             byId('photosCancelSelectBtn', t.cancel);
@@ -600,6 +733,53 @@
             byId('favDownloadPlaceholderOption', t.downloadPhotos);
             byId('commentsBackBtn', t.backToGalleries);
             byId('commentsPageClearBtn', t.clearAll);
+
+            // galleryDetailBackBtn's text is rewritten to the owning collection's
+            // name by loadGalleryDetailPage() when the gallery has one — this sets
+            // only the fallback shown before that, or for a gallery with none.
+            byId('galleryDetailBackBtn', t.backToGalleries);
+            byId('galleryDetailSettingsBtnText', t.headerProfile);
+            byId('galleryDetailPreviewText', t.galleryDetailPreview);
+            byId('galleryDetailCopyLinkText', t.copyClientLink);
+            byId('galleryDetailAddFilesText', t.galleryDetailAddFiles);
+            byId('galleryDetailDownloadText', t.galleryDetailDownloadZip);
+            byId('filterFavoritedText', t.filterFavorited);
+            byId('filterCommentsText', t.filterHasComments);
+            ['red', 'orange', 'green', 'white'].forEach(color => {
+                const chip = document.querySelector(`.flag-filter-chip[data-flag="${color}"]`);
+                if (chip) chip.title = t['filterFlag' + color[0].toUpperCase() + color.slice(1)];
+            });
+
+            byId('gallerySettingsTitle', t.gallerySettingsTitle);
+            byId('gsAccessLabel', t.gsAccessLabel);
+            byId('gsDownloadsLabel', t.allowDownloads);
+            byId('gsCommentsLabel', t.allowComments);
+            byId('gsLangAutoOpt', t.autoLanguage);
+            byId('gsSecurityLabel', t.gsSecurityLabel);
+            byId('gsPasswordClearBtnText', t.clearPassword);
+            byId('gsPasswordSaveBtn', t.savePassword);
+            byId('gsExpirationClearBtnText', t.clearExpiration);
+            byId('gsAppearanceLabel', t.gsAppearanceLabel);
+            const gsPwInput = document.getElementById('gsPasswordInput');
+            if (gsPwInput) gsPwInput.placeholder = t.gsPasswordPlaceholder;
+            byId('gsSizeSmallOpt', t.sizeSmall);
+            byId('gsSizeMediumOpt', t.sizeMedium);
+            byId('gsSizeLargeOpt', t.sizeLarge);
+            byId('gsSpacingSmallOpt', t.sizeSmall);
+            byId('gsSpacingMediumOpt', t.sizeMedium);
+            byId('gsSpacingLargeOpt', t.sizeLarge);
+            byId('gsCornerSquareOpt', t.cornerSquare);
+            byId('gsCornerRoundedOpt', t.cornerRounded);
+            // Two <select>s (lightbox size / grid spacing) share the same three
+            // option labels, same reasoning as the slideshow selects above — their
+            // own purpose is carried by a title, since there is no separate heading
+            // per select in this compact three-up row.
+            const gsSizeSel = document.getElementById('gsLightboxSize');
+            if (gsSizeSel) gsSizeSel.title = t.gsLightboxSizeLabel;
+            const gsSpacingSel = document.getElementById('gsGridSpacing');
+            if (gsSpacingSel) gsSpacingSel.title = t.gsGridSpacingLabel;
+            const gsCornerSel = document.getElementById('gsCornerStyle');
+            if (gsCornerSel) gsCornerSel.title = t.gsCornerStyleLabel;
 
             byId('uploadWarningText', t.uploadDontLeave);
             byId('uploadMiniTitle', t.uploadInProgress);
@@ -703,7 +883,8 @@
             'galleries':        'view-galleries',
             'collections':      'view-collections',
             'new':              'view-new',
-            'gallery-comments': 'view-gallery-comments'
+            'gallery-comments': 'view-gallery-comments',
+            'gallery-detail':   'view-gallery-detail'
         };
         // Gallery and collection creation share one view, so the older
         // per-entity URLs still resolve there instead of 404-ing to the list.
@@ -712,6 +893,9 @@
 
         // Returns { route, params }. Parameterised routes are matched on segments:
         // '#/gallery/<id>/comments' -> { route: 'gallery-comments', params: { galleryId } }.
+        // '#/gallery/<id>' (no further segment) -> { route: 'gallery-detail', params: { galleryId } }.
+        // The comments check runs FIRST so the shorter, more general gallery-detail
+        // pattern below never shadows it.
         // Flat routes keep the old behaviour: '#/new/gallery' -> 'new-gallery' -> 'new'.
         function parseHash() {
             const raw = (location.hash || '').replace(/^#\/?/, '').replace(/\/+$/, '');
@@ -719,6 +903,9 @@
             const seg = raw.split('/');
             if (seg[0] === 'gallery' && seg[1] && seg[2] === 'comments') {
                 return { route: 'gallery-comments', params: { galleryId: seg[1] } };
+            }
+            if (seg[0] === 'gallery' && seg[1] && !seg[2]) {
+                return { route: 'gallery-detail', params: { galleryId: seg[1] } };
             }
             const key = seg.join('-');
             const resolved = ROUTE_ALIASES[key] || key;
@@ -740,6 +927,8 @@
             const main = document.querySelector('.admin-main');
             if (main) main.scrollTop = 0;
             if (route === 'gallery-comments') loadGalleryCommentsPage(params.galleryId);
+            if (route === 'gallery-detail') loadGalleryDetailPage(params.galleryId);
+            else teardownGalleryDetailPage();
             syncUploadUI(); // banner on Create / corner panel elsewhere, per current route
         }
 
@@ -747,6 +936,14 @@
             const sb = document.getElementById('sidebar');
             if (sb) sb.classList.toggle('open');
         }
+
+        // Gallery-detail-page state read by teardownGalleryDetailPage(), which
+        // renderRoute() calls on every navigation — same temporal-dead-zone
+        // hazard as _uploadInProgress just below, and the same fix: declare
+        // before the initial renderRoute() call, not down with the rest of the
+        // gallery-detail-page code.
+        let _galleryDetailId = null;
+        let _photosResizeObs = null;
 
         // Upload-activity state. Declared here — before the initial renderRoute() call
         // below — because renderRoute() → syncUploadUI() reads _uploadInProgress; a later
@@ -1051,6 +1248,25 @@
         // 'auto' defers to the browser; the explicit formats also fix the clock
         // (24h, except mdy which is the 12h convention that goes with it).
         let _dateFormat = 'auto';
+
+        // galleries.expires_at is always stored as T23:59:59.999Z of the calendar
+        // date the photographer actually picked (see server.js's PATCH .../expiration
+        // route) — it is a date, not a meaningful instant. formatAdminDate()'s
+        // getDate()/getMonth() are LOCAL-time getters: in any timezone ahead of UTC
+        // (most of Europe, for one), 23:59:59 UTC has already rolled into the next
+        // calendar day locally, so it would display one day late. Pull the UTC
+        // calendar date directly instead — this is the one date field in the admin
+        // where local-time conversion is wrong, not merely redundant.
+        function formatExpirationDate(iso) {
+            const d = new Date(iso);
+            if (isNaN(d.getTime())) return '';
+            const p = n => String(n).padStart(2, '0');
+            const dd = p(d.getUTCDate()), mm = p(d.getUTCMonth() + 1), yyyy = d.getUTCFullYear();
+            if (_dateFormat === 'mdy') return `${mm}/${dd}/${yyyy}`;
+            if (_dateFormat === 'ymd') return `${yyyy}-${mm}-${dd}`;
+            if (_dateFormat === 'dmy') return `${dd}/${mm}/${yyyy}`;
+            return `${yyyy}-${mm}-${dd}`; // 'auto': no locale-aware UTC formatter to lean on, so fall back to the unambiguous form
+        }
 
         function formatAdminDate(iso, withTime) {
             const d = new Date(iso);
@@ -1907,6 +2123,34 @@
         let _gallerySortDir = 'desc';
         let _galleryFilters = new Set();
         let _collapsedGroups = new Set();
+        // Card vs. list. The one piece of admin UI state that survives a reload —
+        // every other toolbar choice here (sort, filters, collapsed groups) is
+        // session-only. A per-viewer display preference like this is exactly what
+        // localStorage is for; this is the first use of it in admin.html (the
+        // admin password itself is deliberately NEVER put there — see CLAUDE.md —
+        // but that is about a secret, not a cosmetic, non-sensitive toggle).
+        let _galleryViewMode = 'cards';
+        try { _galleryViewMode = localStorage.getItem('delyvr_gallery_view_mode') || 'cards'; } catch (_) {}
+
+        function toggleGalleryViewMode() {
+            _galleryViewMode = _galleryViewMode === 'list' ? 'cards' : 'list';
+            try { localStorage.setItem('delyvr_gallery_view_mode', _galleryViewMode); } catch (_) {}
+            syncGalleryViewModeBtn();
+            filterGalleries(document.getElementById('gallerySearch').value);
+        }
+
+        function syncGalleryViewModeBtn() {
+            const btn = document.getElementById('galleryViewModeBtn');
+            const icon = document.getElementById('galleryViewModeIcon');
+            if (!btn || !icon) return;
+            const isList = _galleryViewMode === 'list';
+            btn.title = isList ? t.viewModeCards : t.viewModeList;
+            btn.classList.toggle('active', isList);
+            // Four squares (card view, the default) <-> three stacked bars (list).
+            icon.innerHTML = isList
+                ? '<line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="18" x2="20" y2="18"/>'
+                : '<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>';
+        }
 
         async function loadGalleries() {
             try {
@@ -1990,6 +2234,58 @@
             return { groups };
         }
 
+        // Shared by both the card and list renderers, so they can never drift
+        // apart: adding/removing an action here changes both views at once.
+        // _manual gates the ▲▼ reorder buttons (only meaningful in manual sort).
+        function renderGalleryActionsHtml(g, _manual) {
+            return `
+                ${_manual ? `<button class="gallery-move-btn" onclick="moveGallery('${g.id}', -1)" title="${t.moveUp}">▲</button>
+                <button class="gallery-move-btn" onclick="moveGallery('${g.id}', 1)" title="${t.moveDown}">▼</button>` : ''}
+                <button class="btn-icon" onclick="openCollectionPicker('${g.id}')" title="${t.addToCollectionPlaceholder}">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2 2 7l10 5 10-5-10-5Z"/><path d="m2 17 10 5 10-5"/><path d="m2 12 10 5 10-5"/></svg>
+                </button>
+                ${renderAudioButtons('gallery', g.id, g.audio)}
+                <span class="action-sep"></span>
+                <button class="btn-icon" onclick="copyGalleryLink('${g.id}', 'preview', this)" title="${t.copyClientLink}">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                </button>
+                <button class="btn-icon" onclick="copyCritiqueLink('${g.id}', this)" title="${t.copyCritiqueLink}">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="10" y1="6" x2="21" y2="6"/><line x1="10" y1="12" x2="21" y2="12"/><line x1="10" y1="18" x2="21" y2="18"/><path d="M4 6h1v4M4 10h2M6 18H4c0-1 2-2 2-3s-1-1.5-2-1" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                </button>
+                <button class="btn-icon" onclick="location.hash = '#/gallery/' + '${g.id}'" title="${t.managePhotos}">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
+                </button>
+                <div class="og-tooltip-wrap">
+                    <button class="btn-icon" onclick="regenerateOG('${g.id}')" title="${t.regenerateShare}">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
+                    </button>
+                    <div class="og-tooltip">${t.ogTooltip}</div>
+                </div>
+                <button class="btn-icon btn-icon-danger" onclick="deleteGallery('${g.id}')" title="${t.moveToTrash}">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
+                </button>
+            `;
+        }
+
+        // Three small glyphs: public (always shown, informational), a padlock
+        // (open/closed per g.hasPassword, click jumps to the gallery's own
+        // settings panel), and a clock (only when an expiration is set, styled
+        // as a warning once past it). Shared by both card and list views.
+        function renderGalleryStatusIconsHtml(g) {
+            const lockOpen = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 9.9-1"/></svg>`;
+            const lockClosed = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>`;
+            const clockSvg = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>`;
+            const globeSvg = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>`;
+            const expiryBit = g.expiresAt ? `
+                <span class="gallery-status-icon${g.isExpired ? ' gallery-status-expired' : ''}" title="${g.isExpired ? t.galleryStatusExpired : t.galleryStatusExpires(formatExpirationDate(g.expiresAt))}">${clockSvg}</span>
+            ` : '';
+            return `
+                <span class="gallery-status-icon" title="${t.galleryStatusPublic}">${globeSvg}</span>
+                <span class="gallery-status-icon${g.hasPassword ? ' gallery-status-locked' : ''}" title="${g.hasPassword ? t.galleryStatusLocked : t.galleryStatusUnlocked}" onclick="event.stopPropagation(); location.hash = '#/gallery/' + '${g.id}'">${g.hasPassword ? lockClosed : lockOpen}</span>
+                ${expiryBit}
+            `;
+        }
+
         function renderGalleryItemHtml(g) {
             const _col = g.collectionId ? (_collectionsData || []).find(c => c.id === g.collectionId) : null;
             const _dlBlocked = !!(_col && _col.downloadsEnabled === false);
@@ -2040,6 +2336,7 @@
                             </button>
                         </div>
                         <div class="gallery-meta">${g.fileCount} ${t.photoPlural} · ${formatAdminDate(g.created, false)}</div>
+                        <div class="gallery-status-row gallery-detail-panel">${renderGalleryStatusIconsHtml(g)}</div>
                         <div class="gallery-bottom gallery-detail-panel">
                             <label class="downloads-toggle ${_dlBlocked ? 'blocked-by-collection' : ''}" title="${_dlBlocked ? t.downloadsBlockedByCollection(_col.name) : t.allowDownloads}">
                                 <span class="toggle-switch">
@@ -2086,31 +2383,83 @@
                     </div>
 
                     <div class="gallery-actions">
-                        ${_manual ? `<button class="gallery-move-btn" onclick="moveGallery('${g.id}', -1)" title="${t.moveUp}">▲</button>
-                        <button class="gallery-move-btn" onclick="moveGallery('${g.id}', 1)" title="${t.moveDown}">▼</button>` : ''}
-                        <button class="btn-icon" onclick="openCollectionPicker('${g.id}')" title="${t.addToCollectionPlaceholder}">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2 2 7l10 5 10-5-10-5Z"/><path d="m2 17 10 5 10-5"/><path d="m2 12 10 5 10-5"/></svg>
-                        </button>
-                        ${renderAudioButtons('gallery', g.id, g.audio)}
-                        <span class="action-sep"></span>
-                        <button class="btn-icon" onclick="copyGalleryLink('${g.id}', 'preview', this)" title="${t.copyClientLink}">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
-                        </button>
-                        <button class="btn-icon" onclick="copyCritiqueLink('${g.id}', this)" title="${t.copyCritiqueLink}">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="10" y1="6" x2="21" y2="6"/><line x1="10" y1="12" x2="21" y2="12"/><line x1="10" y1="18" x2="21" y2="18"/><path d="M4 6h1v4M4 10h2M6 18H4c0-1 2-2 2-3s-1-1.5-2-1" stroke-linecap="round" stroke-linejoin="round"/></svg>
-                        </button>
-                        <button class="btn-icon" onclick="openPhotosModal('${g.id}')" title="${t.managePhotos}">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
-                        </button>
-                        <div class="og-tooltip-wrap">
-                            <button class="btn-icon" onclick="regenerateOG('${g.id}')" title="${t.regenerateShare}">
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
-                            </button>
-                            <div class="og-tooltip">${t.ogTooltip}</div>
-                        </div>
-                        <button class="btn-icon btn-icon-danger" onclick="deleteGallery('${g.id}')" title="${t.moveToTrash}">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
-                        </button>
+                        ${renderGalleryActionsHtml(g, _manual)}
+                    </div>
+                </div>
+            `;
+        }
+
+        // Compact alternative to renderGalleryItemHtml, toggled by the
+        // card/list button in the toolbar. Keeps every control the card has
+        // (nothing from the existing UI is dropped) in a denser row: cover,
+        // name/count/created/modified stacked, the status icons, then the
+        // same toggles/language-select/actions as the card — just laid out
+        // horizontally instead of in the "stats grid" block.
+        function renderGalleryItemRowHtml(g) {
+            const _col = g.collectionId ? (_collectionsData || []).find(c => c.id === g.collectionId) : null;
+            const _dlBlocked = !!(_col && _col.downloadsEnabled === false);
+            const _cmBlocked = !!(_col && _col.commentsEnabled === false);
+            const _manual = _gallerySort === 'manual';
+            return `
+                <div class="gallery-item gallery-item-row" draggable="${_manual}"
+                     id="gallery-item-${g.id}"
+                     ondragstart="handleGalleryDragStart(event, '${g.id}')"
+                     ondragend="handleGalleryDragEnd(event)"
+                     ondragover="handleGalleryItemDragOver(event, '${g.id}')"
+                     ondragleave="handleGalleryItemDragLeave('${g.id}')"
+                     ondrop="handleGalleryItemDrop(event, '${g.id}')"
+                     onclick="handleGalleryItemClick(event, '${g.id}')">
+                    <input type="checkbox" class="gallery-cb" id="cb-${g.id}"
+                           onclick="event.stopPropagation(); toggleGallerySelection('${g.id}')">
+
+                    <div class="gallery-row-cover ${g.hasBackground ? 'has-image' : ''}">
+                        ${g.hasBackground ? `<img src="/api/gallery/${g.id}/background?thumb=1&v=${g.bgVersion || 0}" alt="" loading="lazy">` : `
+                        <div class="gallery-cover-placeholder">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
+                        </div>`}
+                    </div>
+
+                    <div class="gallery-row-name-col">
+                        <div class="gallery-name" contenteditable="false" spellcheck="false"
+                             id="gname-${g.id}"
+                             ondblclick="startGalleryRename(event, '${g.id}', this)"
+                             onblur="finishGalleryRename('${g.id}', this)"
+                             onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur();} if(event.key==='Escape'){this.textContent=this.dataset.orig;this.blur();}"
+                             >${escapeHtml(g.eventName)}</div>
+                        <div class="gallery-status-row">${renderGalleryStatusIconsHtml(g)}</div>
+                    </div>
+
+                    <div class="gallery-row-col gallery-row-col-count">${g.fileCount} ${t.photoPlural}</div>
+                    <div class="gallery-row-col">${formatAdminDate(g.created, false)}</div>
+                    <div class="gallery-row-col">${g.lastModified ? formatAdminDate(g.lastModified, false) : '—'}</div>
+
+                    <div class="gallery-row-toggles gallery-detail-panel">
+                        <label class="downloads-toggle ${_dlBlocked ? 'blocked-by-collection' : ''}" title="${_dlBlocked ? t.downloadsBlockedByCollection(_col.name) : t.allowDownloads}">
+                            <span class="toggle-switch">
+                                <input type="checkbox" ${g.downloadsEnabled !== false ? 'checked' : ''}
+                                       onchange="toggleDownloads('${g.id}', this.checked, this)">
+                                <span class="toggle-track"></span>
+                            </span>
+                        </label>
+                        <label class="downloads-toggle ${_cmBlocked ? 'blocked-by-collection' : ''}" title="${_cmBlocked ? t.commentsBlockedByCollection(_col.name) : t.allowComments}">
+                            <span class="toggle-switch">
+                                <input type="checkbox" ${g.commentsEnabled !== false ? 'checked' : ''}
+                                       onchange="toggleComments('${g.id}', this.checked, this)">
+                                <span class="toggle-track"></span>
+                            </span>
+                        </label>
+                        <select class="lang-select" title="${t.clientLanguageTitle}" onchange="setGalleryClientLanguage('${g.id}', this.value)">
+                            <option value="auto" title="${t.autoLanguage}" ${g.clientLanguage === 'auto' ? 'selected' : ''}>🌐</option>
+                            <option value="en" title="English" ${g.clientLanguage === 'en' ? 'selected' : ''}>En</option>
+                            <option value="fr" title="Français" ${g.clientLanguage === 'fr' ? 'selected' : ''}>Fr</option>
+                            <option value="es" title="Español" ${g.clientLanguage === 'es' ? 'selected' : ''}>Es</option>
+                            <option value="pt" title="Português" ${g.clientLanguage === 'pt' ? 'selected' : ''}>Pt</option>
+                            <option value="it" title="Italiano" ${g.clientLanguage === 'it' ? 'selected' : ''}>It</option>
+                        </select>
+                    </div>
+
+                    <div class="gallery-actions gallery-row-actions">
+                        ${renderGalleryActionsHtml(g, _manual)}
                     </div>
                 </div>
             `;
@@ -2140,7 +2489,7 @@
                         <span class="gallery-group-count">${countLabel}</span>
                     </button>
                     <div class="gallery-group-items">
-                        ${group.galleries.map(g => renderGalleryItemHtml(g)).join('')}
+                        ${group.galleries.map(g => _galleryViewMode === 'list' ? renderGalleryItemRowHtml(g) : renderGalleryItemHtml(g)).join('')}
                     </div>
                 </div>`;
             }).join('');
@@ -2247,8 +2596,11 @@
         }
 
         function handleGalleryItemClick(event, galleryId) {
-            if (!_selectionMode) return;
             if (event.target.closest('button, input, [contenteditable], label, select')) return;
+            if (!_selectionMode) {
+                location.hash = '#/gallery/' + galleryId;
+                return;
+            }
             toggleGallerySelection(galleryId);
         }
 
@@ -2709,13 +3061,21 @@
 
         // ---- Photo management ----
 
-        // ── PHOTOS MODAL ─────────────────────────────────────────────────
+        // ── GALLERY DETAIL PAGE (formerly the "photos modal") ──────────────
+        // Every id below (photosGrid, photosModalMeta, photosBulkBar, ...) lives
+        // in #view-gallery-detail now, not an overlay — see that section's markup.
+        // _galleryDetailId/_photosResizeObs themselves are declared further up
+        // the script, before the initial renderRoute() call — see that comment.
 
-        let _photosModalGalleryId = null;
-        let _photosResizeObs = null;
         let _photosSelectionMode = false;
         let _photosSelected = new Set();
         let _pendingUploadFiles = [];
+        // Proofing filters, AND'd together. _photoFlagFilter is a Set of active
+        // colors (empty = no color filter); the other two are plain booleans.
+        let _photoFlagFilter = new Set();
+        let _photoFavoritedFilter = false;
+        let _photoCommentsFilter = false;
+        let _galleryDetailPhotos = []; // last fetched, unfiltered — filters re-render from this without a refetch
 
         // ── In-app confirm dialog (page-level, reusable from anywhere) ────
 
@@ -2734,31 +3094,177 @@
             if (_confirmResolve) { _confirmResolve(result); _confirmResolve = null; }
         }
 
-        // ── Open / close ──────────────────────────────────────────────────
+        // ── Load / teardown ─────────────────────────────────────────────────
 
-        async function openPhotosModal(galleryId) {
-            _photosModalGalleryId = galleryId;
+        // Entered from renderRoute() on '#/gallery/:id'. Replaces openPhotosModal:
+        // same reset-then-fetch shape, but against a page instead of an overlay.
+        async function loadGalleryDetailPage(galleryId) {
+            _galleryDetailId = galleryId;
             _pendingUploadFiles = [];
             _photosSelected = new Set();
             _photosSelectionMode = false;
+            _photoFlagFilter = new Set();
+            _photoFavoritedFilter = false;
+            _photoCommentsFilter = false;
+            document.querySelectorAll('.flag-filter-chip.active').forEach(c => c.classList.remove('active'));
+            document.getElementById('filterFavoritedBtn').classList.remove('active');
+            document.getElementById('filterCommentsBtn').classList.remove('active');
             document.getElementById('photosModalMeta').textContent = '';
             document.getElementById('photosGrid').innerHTML = `<p style="color:var(--muted);font-size:13px">${t.loading}</p>`;
             document.getElementById('photosUploadWrap').style.display = 'none';
             document.getElementById('photosQueueWrap').style.display = 'none';
             document.getElementById('photosBulkBar').style.display = 'none';
-            document.getElementById('photosModal').classList.add('active');
+            document.getElementById('galleryDetailTitle').textContent = '';
+            document.getElementById('galleryDetailPreviewBtn').href = `/preview/${galleryId}`;
+            document.getElementById('galleryDetailDownloadBtn').href = `/api/gallery/${galleryId}/download`;
             setupPhotosDropZone();
+
+            // Full admin-shape object — gives the title, the collection (for the
+            // back-trail) and the fileCount shown while the photo list itself is
+            // still loading.
+            try {
+                const res = await fetch(`/api/gallery/${galleryId}`);
+                if (!res.ok) throw new Error('Gallery not found');
+                const g = await res.json();
+                document.getElementById('galleryDetailTitle').textContent = g.eventName;
+                document.title = `${g.eventName} — Delyvr`;
+                // Most-specific-wins, same precedence as resolveGalleryClientLanguage
+                // server-side: a gallery that belongs to a collection always shows
+                // that collection as its parent, regardless of how this page was
+                // reached — simpler than tracking the click path, and always correct.
+                const backBtn = document.getElementById('galleryDetailBackBtn');
+                if (g.collectionId) {
+                    // Same hardcoded-English fallback already used everywhere else an
+                    // unnamed collection is displayed (e.g. the collection picker).
+                    const collection = (_collectionsData || []).find(c => c.id === g.collectionId);
+                    backBtn.textContent = collection ? `← ${collection.name || 'Untitled Collection'}` : `← ${t.backToGalleries}`;
+                } else {
+                    backBtn.textContent = `← ${t.backToGalleries}`;
+                }
+            } catch (err) {
+                document.getElementById('galleryDetailTitle').textContent = t.couldNotLoadGallery;
+            }
+
             await refreshPhotosGrid(galleryId);
         }
 
-        function closePhotosModal() {
-            document.getElementById('photosModal').classList.remove('active');
-            _photosModalGalleryId = null;
-            _pendingUploadFiles = [];
-            _photosSelected = new Set();
-            _photosSelectionMode = false;
+        // Called from renderRoute() whenever the hash navigates AWAY from
+        // '#/gallery/:id' — disconnects the resize observer (a hidden .view is
+        // still in the DOM, just display:none, so the observer would otherwise
+        // keep firing against a page nobody can see) and refreshes the list so
+        // any change made on the detail page (rename, uploads, deletes) shows up.
+        function teardownGalleryDetailPage() {
             if (_photosResizeObs) { _photosResizeObs.disconnect(); _photosResizeObs = null; }
-            loadGalleries();
+            if (_galleryDetailId) { _galleryDetailId = null; loadGalleries(); }
+        }
+
+        function copyGalleryDetailLink(btn) {
+            copyGalleryLink(_galleryDetailId, 'preview', btn);
+        }
+
+        // ── Gallery settings panel ──────────────────────────────────────────
+        // Downloads/comments/language controls inside it call the SAME
+        // toggleDownloads/toggleComments/setGalleryClientLanguage used on the
+        // gallery card (see the modal's onchange handlers) — relocated, not
+        // reimplemented. Password/expiration/appearance are new here.
+
+        async function openGallerySettingsPanel() {
+            const galleryId = _galleryDetailId;
+            if (!galleryId) return;
+            document.getElementById('gallerySettingsModal').classList.add('active');
+            try {
+                const res = await fetch(`/api/gallery/${galleryId}`);
+                if (!res.ok) throw new Error('Failed');
+                const g = await res.json();
+                document.getElementById('gsDownloadsCheckbox').checked = g.downloadsEnabled;
+                document.getElementById('gsCommentsCheckbox').checked = g.commentsEnabled;
+                document.getElementById('gsClientLanguage').value = g.clientLanguage || 'auto';
+                document.getElementById('gsPasswordStatus').textContent = g.hasPassword ? t.passwordIsSet : t.passwordNotSet;
+                document.getElementById('gsPasswordClearBtn').style.display = g.hasPassword ? '' : 'none';
+                document.getElementById('gsPasswordInput').value = '';
+                document.getElementById('gsExpirationInput').value = g.expiresAt ? g.expiresAt.slice(0, 10) : '';
+                document.getElementById('gsExpirationClearBtn').style.display = g.expiresAt ? '' : 'none';
+                document.getElementById('gsLightboxSize').value = g.lightboxSize;
+                document.getElementById('gsGridSpacing').value = g.gridSpacing;
+                document.getElementById('gsCornerStyle').value = g.cornerStyle;
+            } catch (err) {
+                showError(t.couldNotLoadGallery);
+            }
+        }
+
+        function closeGallerySettingsPanel() {
+            document.getElementById('gallerySettingsModal').classList.remove('active');
+        }
+
+        async function saveGalleryPassword() {
+            const galleryId = _galleryDetailId;
+            const password = document.getElementById('gsPasswordInput').value;
+            if (!password) return; // use the Clear button to remove a password, not an empty Save
+            try {
+                const res = await fetch(`/api/gallery/${galleryId}/password`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ password })
+                });
+                if (!res.ok) throw new Error('Failed');
+                document.getElementById('gsPasswordInput').value = '';
+                document.getElementById('gsPasswordStatus').textContent = t.passwordIsSet;
+                document.getElementById('gsPasswordClearBtn').style.display = '';
+            } catch (err) {
+                showError(t.couldNotUpdatePassword);
+            }
+        }
+
+        async function clearGalleryPassword() {
+            const galleryId = _galleryDetailId;
+            try {
+                const res = await fetch(`/api/gallery/${galleryId}/password`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ password: null })
+                });
+                if (!res.ok) throw new Error('Failed');
+                document.getElementById('gsPasswordInput').value = '';
+                document.getElementById('gsPasswordStatus').textContent = t.passwordNotSet;
+                document.getElementById('gsPasswordClearBtn').style.display = 'none';
+            } catch (err) {
+                showError(t.couldNotUpdatePassword);
+            }
+        }
+
+        async function saveGalleryExpiration(value) {
+            const galleryId = _galleryDetailId;
+            try {
+                const res = await fetch(`/api/gallery/${galleryId}/expiration`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ expiresAt: value || null })
+                });
+                if (!res.ok) throw new Error('Failed');
+                const data = await res.json();
+                document.getElementById('gsExpirationInput').value = data.expiresAt ? data.expiresAt.slice(0, 10) : '';
+                document.getElementById('gsExpirationClearBtn').style.display = data.expiresAt ? '' : 'none';
+            } catch (err) {
+                showError(t.couldNotUpdateExpiration);
+            }
+        }
+
+        async function saveGalleryAppearance() {
+            const galleryId = _galleryDetailId;
+            try {
+                const res = await fetch(`/api/gallery/${galleryId}/appearance`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        lightboxSize: document.getElementById('gsLightboxSize').value,
+                        gridSpacing: document.getElementById('gsGridSpacing').value,
+                        cornerStyle: document.getElementById('gsCornerStyle').value
+                    })
+                });
+                if (!res.ok) throw new Error('Failed');
+            } catch (err) {
+                showError(t.couldNotUpdateAppearance);
+            }
         }
 
         // ── Upload queue (list with × like gallery creation) ──────────────
@@ -2798,7 +3304,7 @@
         }
 
         async function uploadQueuedPhotos() {
-            const galleryId = _photosModalGalleryId;
+            const galleryId = _galleryDetailId;
             const files = [..._pendingUploadFiles];
             if (!files.length || !galleryId) return;
             _pendingUploadFiles = [];
@@ -2906,7 +3412,7 @@
         }
 
         async function deleteSelectedPhotos() {
-            const galleryId = _photosModalGalleryId;
+            const galleryId = _galleryDetailId;
             const filenames = [..._photosSelected];
             const n = filenames.length;
             if (!n) return;
@@ -2988,18 +3494,82 @@
                 const res = await fetch(`/api/gallery/${galleryId}/photos`);
                 if (!res.ok) throw new Error('Failed');
                 const { photos } = await res.json();
-                const n = photos.length;
-                document.getElementById('photosModalMeta').textContent = `${n} ${n !== 1 ? t.photoPlural : t.photoSingular}`;
+                _galleryDetailPhotos = photos; // unfiltered — applyPhotoFilters() re-renders from this
                 const grid = document.getElementById('photosGrid');
-                if (n === 0) { grid.innerHTML = `<p style="color:var(--muted);font-size:13px">${t.noPhotosLeft}</p>`; return; }
-                _renderPhotosRows(galleryId, photos);
+                if (photos.length === 0) {
+                    document.getElementById('photosModalMeta').textContent = `0 ${t.photoPlural}`;
+                    grid.innerHTML = `<p style="color:var(--muted);font-size:13px">${t.noPhotosLeft}</p>`;
+                    return;
+                }
+                applyPhotoFilters();
                 if (_photosResizeObs) { _photosResizeObs.disconnect(); _photosResizeObs = null; }
-                _photosResizeObs = new ResizeObserver(() => {
-                    if (_photosModalGalleryId) _renderPhotosRows(_photosModalGalleryId, photos);
-                });
+                _photosResizeObs = new ResizeObserver(() => applyPhotoFilters());
                 _photosResizeObs.observe(grid);
             } catch (err) {
                 showError(t.couldNotLoadPhotos);
+            }
+        }
+
+        // ── Proofing filters (flag color / favorited / has comments) ───────
+        // AND'd together; re-renders from the already-fetched _galleryDetailPhotos,
+        // no refetch needed. Called on every filter toggle and on resize.
+
+        function applyPhotoFilters() {
+            const filtered = _galleryDetailPhotos.filter(p => {
+                if (_photoFlagFilter.size > 0 && !_photoFlagFilter.has(p.flag)) return false;
+                if (_photoFavoritedFilter && !(p.favoriteCount > 0)) return false;
+                if (_photoCommentsFilter && !(p.commentCount > 0)) return false;
+                return true;
+            });
+            const total = _galleryDetailPhotos.length;
+            const shown = filtered.length;
+            document.getElementById('photosModalMeta').textContent = (shown === total)
+                ? `${total} ${total !== 1 ? t.photoPlural : t.photoSingular}`
+                : t.photosFilteredCount(shown, total);
+            const grid = document.getElementById('photosGrid');
+            if (shown === 0) { grid.innerHTML = `<p style="color:var(--muted);font-size:13px">${t.noPhotosMatchFilters}</p>`; return; }
+            _renderPhotosRows(_galleryDetailId, filtered);
+        }
+
+        function togglePhotoFlagFilter(color) {
+            if (_photoFlagFilter.has(color)) _photoFlagFilter.delete(color);
+            else _photoFlagFilter.add(color);
+            const chip = document.querySelector(`.flag-filter-chip[data-flag="${color}"]`);
+            if (chip) chip.classList.toggle('active', _photoFlagFilter.has(color));
+            applyPhotoFilters();
+        }
+
+        function togglePhotoFavoritedFilter() {
+            _photoFavoritedFilter = !_photoFavoritedFilter;
+            document.getElementById('filterFavoritedBtn').classList.toggle('active', _photoFavoritedFilter);
+            applyPhotoFilters();
+        }
+
+        function togglePhotoCommentsFilter() {
+            _photoCommentsFilter = !_photoCommentsFilter;
+            document.getElementById('filterCommentsBtn').classList.toggle('active', _photoCommentsFilter);
+            applyPhotoFilters();
+        }
+
+        // null -> red -> orange -> green -> white -> null. One click, no popover —
+        // matches the project's general preference for minimal new UI chrome.
+        const PHOTO_FLAG_CYCLE = [null, 'red', 'orange', 'green', 'white'];
+
+        async function cyclePhotoFlag(galleryId, filename, currentFlag, event) {
+            event.stopPropagation();
+            const next = PHOTO_FLAG_CYCLE[(PHOTO_FLAG_CYCLE.indexOf(currentFlag) + 1) % PHOTO_FLAG_CYCLE.length];
+            try {
+                const res = await fetch(`/api/gallery/${galleryId}/photo/${encodeURIComponent(filename)}/flag`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ flag: next })
+                });
+                if (!res.ok) throw new Error('Failed');
+                const p = _galleryDetailPhotos.find(p => p.filename === filename);
+                if (p) p.flag = next;
+                applyPhotoFilters(); // cheap local re-render — no refetch needed
+            } catch (err) {
+                showError(t.couldNotSetFlag);
             }
         }
 
@@ -3027,7 +3597,10 @@
                     const videoBadge = isVideoFilename(photo.filename)
                         ? `<div class="video-badge"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg></div>`
                         : '';
+                    const flagAttr = photo.flag ? ` data-flag="${photo.flag}"` : '';
+                    const flagClass = photo.flag ? '' : ' photo-flag-btn-empty';
                     card.innerHTML = `<img src="${photo.thumbnailUrl}" alt="" loading="lazy">
+                        <button class="photo-flag-btn${flagClass}"${flagAttr} title="${t.cyclePhotoFlag}"></button>
                         ${videoBadge}
                         <div class="photo-overlay-info">
                             <span class="photo-filename">${escapeHtml(photo.filename)}</span>
@@ -3038,6 +3611,9 @@
                     card.querySelector('.photo-delete-btn').onclick = (e) => {
                         e.stopPropagation();
                         deletePhoto(galleryId, photo.filename);
+                    };
+                    card.querySelector('.photo-flag-btn').onclick = (e) => {
+                        cyclePhotoFlag(galleryId, photo.filename, photo.flag, e);
                     };
                     rowEl.appendChild(card);
                 });

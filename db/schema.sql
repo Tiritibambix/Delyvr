@@ -28,6 +28,11 @@ CREATE TABLE IF NOT EXISTS galleries (
     audio_size         INTEGER CHECK (audio_size IS NULL OR audio_size >= 0),
     audio_duration     REAL CHECK (audio_duration IS NULL OR audio_duration >= 0),  -- NULL is legitimate even when audio is present (ffprobe can fail) — deliberately outside the all-or-nothing group below
     audio_uploaded_at  TEXT,
+    password_hash      TEXT,                                  -- NULL = no password (opt-in, default off); "salt_hex:hash_hex" from scryptSync, see server.js
+    expires_at         TEXT,                                  -- NULL = never expires; ISO-8601 instant, always normalised to end-of-day UTC by the route that sets it
+    lightbox_size      TEXT NOT NULL DEFAULT 'medium' CHECK (lightbox_size IN ('small','medium','large')),
+    grid_spacing       TEXT NOT NULL DEFAULT 'medium' CHECK (grid_spacing  IN ('small','medium','large')),
+    corner_style       TEXT NOT NULL DEFAULT 'square'  CHECK (corner_style IN ('rounded','square')),  -- 'medium'/'square' are exact no-ops against pre-existing visual output — see preview.html
     CHECK ( (deleted = 0 AND deleted_at IS NULL) OR (deleted = 1 AND deleted_at IS NOT NULL) ),
     CHECK ( (audio_filename IS NULL AND audio_stored IS NULL AND audio_size IS NULL AND audio_uploaded_at IS NULL)
          OR (audio_filename IS NOT NULL AND audio_stored IS NOT NULL AND audio_size IS NOT NULL AND audio_uploaded_at IS NOT NULL) )
@@ -71,11 +76,10 @@ CREATE INDEX IF NOT EXISTS idx_collection_galleries_position ON collection_galle
 -- gallery.dimensions{} (per-file optional metadata). Deliberately holds no
 -- `type`/`kind` column — the type is always derived from the filename
 -- extension via isVideoFile() at read time, never persisted, so storing one
--- here would be a redundant, driftable duplicate. Deliberately holds no
--- proofing/rating/color/status columns yet either — this table already has
--- the right shape (one row per gallery+filename) for that future work to be a
--- plain ALTER TABLE, without speculatively adding columns nobody has asked
--- for yet.
+-- here would be a redundant, driftable duplicate. The `flag` column below is
+-- the proofing/rating/color/status work this table's shape was always meant
+-- to grow into (one row per gallery+filename) — see the comment on that
+-- column for its scope.
 CREATE TABLE IF NOT EXISTS files (
     gallery_id TEXT NOT NULL REFERENCES galleries(id) ON DELETE CASCADE,
     filename   TEXT NOT NULL,
@@ -83,6 +87,7 @@ CREATE TABLE IF NOT EXISTS files (
     height     INTEGER CHECK (height IS NULL OR height > 0),
     duration   REAL CHECK (duration IS NULL OR duration >= 0),   -- video only
     animated   INTEGER CHECK (animated IS NULL OR animated IN (0,1)),  -- image only
+    flag       TEXT CHECK (flag IS NULL OR flag IN ('red','orange','green','white')),  -- photographer-side proofing mark; NULL = unflagged. Admin-only — never surfaced to clients in preview.html.
     PRIMARY KEY (gallery_id, filename),
     CHECK (duration IS NULL OR animated IS NULL)                 -- never both set on the same row
 );

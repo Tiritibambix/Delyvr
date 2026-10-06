@@ -934,6 +934,18 @@ const downloadLimiter = rateLimit({
     message: { error: 'Too many download requests, please slow down' }
 });
 
+// Rate limiter for gallery password-unlock attempts — 10 per 15 minutes per IP,
+// mirroring authLimiter: a human-chosen gallery password is guessable, same as
+// the admin password, so this route needs its own throttle independent of
+// publicReadLimiter/publicWriteLimiter.
+const galleryUnlockLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 10,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { error: 'Too many unlock attempts, please try again later' }
+});
+
 // ── SETTINGS ────────────────────────────────────────────────────────────────
 
 // GET /api/settings — public (used by customer/collection/preview for theme + socials)
@@ -1011,6 +1023,84 @@ function validateFilename(req, res, next) {
         return res.status(400).json({ error: 'Invalid filename' });
     }
     next();
+}
+
+// ── Per-gallery password protection + link expiration ──────────────────────
+// Both are opt-in, nullable columns (galleries.password_hash / expires_at) —
+// a gallery with neither set behaves exactly as before this feature existed.
+// See CLAUDE.md's "Per-gallery password and expiration" section.
+
+// scryptSync (Node's built-in crypto, no new dependency) rather than a bare
+// hash: this gates something worth a little memory-hardness against offline
+// brute-force if the .sqlite file ever leaked, and the cost is paid only on
+// an explicit password submission — never on a thumbnail/image request.
+function hashGalleryPassword(password) {
+    const salt = crypto.randomBytes(16);
+    const derived = crypto.scryptSync(password, salt, 64);
+    return `${salt.toString('hex')}:${derived.toString('hex')}`;
+}
+
+function verifyGalleryPassword(password, stored) {
+    const [saltHex, hashHex] = (stored || '').split(':');
+    if (!saltHex || !hashHex) return false;
+    const expected = Buffer.from(hashHex, 'hex');
+    const actual = crypto.scryptSync(password, Buffer.from(saltHex, 'hex'), expected.length);
+    return expected.length === actual.length && crypto.timingSafeEqual(expected, actual);
+}
+
+// Stateless unlock token: an HMAC over the gallery id and a short fingerprint
+// of the CURRENT password_hash, signed with a secret generated once per
+// process start (same lifetime as the `sessions` Map above — a restart costs
+// every visitor one re-prompt, same as it already costs the admin). Because
+// the MAC covers the password's own fingerprint, changing or clearing a
+// gallery's password silently invalidates every cookie issued for the old
+// one — nothing to revoke explicitly.
+const GALLERY_UNLOCK_SECRET = crypto.randomBytes(32);
+
+function galleryPasswordFingerprint(passwordHash) {
+    return crypto.createHash('sha256').update(passwordHash).digest('hex').slice(0, 16);
+}
+
+function signGalleryUnlockToken(galleryId, passwordHash) {
+    const fp = galleryPasswordFingerprint(passwordHash);
+    const mac = crypto.createHmac('sha256', GALLERY_UNLOCK_SECRET).update(`${galleryId}.${fp}`).digest('base64url');
+    return `${fp}.${mac}`;
+}
+
+function verifyGalleryUnlockToken(token, galleryId, passwordHash) {
+    if (!token) return false;
+    const parts = token.split('.');
+    if (parts.length !== 2) return false;
+    const [fp, mac] = parts;
+    if (fp !== galleryPasswordFingerprint(passwordHash)) return false;
+    const expected = crypto.createHmac('sha256', GALLERY_UNLOCK_SECRET).update(`${galleryId}.${fp}`).digest('base64url');
+    const a = Buffer.from(mac);
+    const b = Buffer.from(expected);
+    return a.length === b.length && crypto.timingSafeEqual(a, b);
+}
+
+// 410 if expires_at is set and in the past. A missing/deleted gallery falls
+// through untouched so the route's own existence check still produces its
+// usual 404 — this middleware only ever narrows, never widens, what a request
+// can reach.
+function checkGalleryExpiration(req, res, next) {
+    const row = db.prepare(`SELECT expires_at FROM galleries WHERE id = ? AND deleted = 0`).get(req.params.galleryId);
+    if (row && row.expires_at && row.expires_at < new Date().toISOString()) {
+        return res.status(410).json({ error: 'gallery_expired' });
+    }
+    next();
+}
+
+// 401 unless a valid delyvr_unlock_<galleryId> cookie is presented. A gallery
+// with no password_hash is a pure no-op — this is the opt-in guarantee that
+// keeps every existing gallery's public routes behaving exactly as before.
+function requireGalleryUnlock(req, res, next) {
+    const row = db.prepare(`SELECT password_hash FROM galleries WHERE id = ? AND deleted = 0`).get(req.params.galleryId);
+    if (!row || !row.password_hash) return next();
+    const cookies = parseCookies(req.headers.cookie);
+    const token = cookies[`delyvr_unlock_${req.params.galleryId}`];
+    if (verifyGalleryUnlockToken(token, req.params.galleryId, row.password_hash)) return next();
+    res.status(401).json({ error: 'password_required' });
 }
 
 // ── IP allowlist (ADMIN_ALLOWED_IPS) ────────────────────────────────────────
@@ -1348,6 +1438,9 @@ app.post('/api/gallery/:galleryId/background', adminLimiter, requireAuth, valida
 });
 
 // Serve background image (legacy route — kept for backwards compatibility)
+// Deliberately NOT gated by checkGalleryExpiration/requireGalleryUnlock: the
+// cover must stay visible so the password/expired gate page itself can show
+// it. See the matching note on the REST-style route below.
 app.get('/api/background/:galleryId', publicReadLimiter, validateGalleryId, (req, res) => {
     const { galleryId } = req.params;
     const backgroundsDir = path.join(DATA_DIR, 'backgrounds');
@@ -1363,6 +1456,8 @@ app.get('/api/background/:galleryId', publicReadLimiter, validateGalleryId, (req
 });
 
 // Serve background image (REST-style route used by admin.html)
+// Deliberately NOT gated by checkGalleryExpiration/requireGalleryUnlock —
+// see the identical note on the legacy route above.
 app.get('/api/gallery/:galleryId/background', publicReadLimiter, validateGalleryId, (req, res) => {
     const { galleryId } = req.params;
     const backgroundsDir = path.join(DATA_DIR, 'backgrounds');
@@ -1446,7 +1541,7 @@ app.delete('/api/gallery/:galleryId/audio', adminLimiter, requireAuth, validateG
 });
 
 // imageLimiter, not publicReadLimiter — see the collection audio route.
-app.get('/api/gallery/:galleryId/audio', imageLimiter, validateGalleryId, (req, res) => {
+app.get('/api/gallery/:galleryId/audio', imageLimiter, validateGalleryId, checkGalleryExpiration, requireGalleryUnlock, (req, res) => {
     const { galleryId } = req.params;
     const file = findAudioFile(`gallery-${galleryId}`);
     if (!file) return res.status(404).json({ error: 'No audio found' });
@@ -1514,6 +1609,150 @@ app.patch('/api/gallery/:galleryId/client-language', adminLimiter, requireAuth, 
     res.json({ success: true, clientLanguage: clientLanguage || 'auto' });
 });
 
+// Set or clear a gallery's password. The hash is never echoed back — only
+// whether one is now set.
+app.patch('/api/gallery/:galleryId/password', adminLimiter, requireAuth, validateGalleryId, (req, res) => {
+    const { galleryId } = req.params;
+    const galleryExists = db.prepare(`SELECT 1 FROM galleries WHERE id = ?`).get(galleryId);
+    if (!galleryExists) return res.status(404).json({ error: 'Gallery not found' });
+
+    const { password } = req.body;
+    if (password === null || password === '' || password === undefined) {
+        db.prepare(`UPDATE galleries SET password_hash = NULL WHERE id = ?`).run(galleryId);
+        return res.json({ hasPassword: false });
+    }
+    if (typeof password !== 'string') {
+        return res.status(400).json({ error: 'password must be a string or null' });
+    }
+    db.prepare(`UPDATE galleries SET password_hash = ? WHERE id = ?`).run(hashGalleryPassword(password), galleryId);
+    res.json({ hasPassword: true });
+});
+
+// Set or clear a gallery's link expiration date. The incoming 'YYYY-MM-DD' is
+// normalised to the END of that day in UTC before storing — comparing a bare
+// date against an ISO instant would otherwise expire the gallery at midnight
+// UTC on the chosen day, making the day the photographer picked already
+// inaccessible.
+app.patch('/api/gallery/:galleryId/expiration', adminLimiter, requireAuth, validateGalleryId, (req, res) => {
+    const { galleryId } = req.params;
+    const galleryExists = db.prepare(`SELECT 1 FROM galleries WHERE id = ?`).get(galleryId);
+    if (!galleryExists) return res.status(404).json({ error: 'Gallery not found' });
+
+    const { expiresAt } = req.body;
+    if (expiresAt === null || expiresAt === '' || expiresAt === undefined) {
+        db.prepare(`UPDATE galleries SET expires_at = NULL WHERE id = ?`).run(galleryId);
+        return res.json({ expiresAt: null });
+    }
+    if (typeof expiresAt !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(expiresAt)) {
+        return res.status(400).json({ error: 'expiresAt must be a YYYY-MM-DD string or null' });
+    }
+    const normalized = `${expiresAt}T23:59:59.999Z`;
+    if (Number.isNaN(Date.parse(normalized))) {
+        return res.status(400).json({ error: 'expiresAt is not a valid date' });
+    }
+    db.prepare(`UPDATE galleries SET expires_at = ? WHERE id = ?`).run(normalized, galleryId);
+    res.json({ expiresAt: normalized });
+});
+
+// Set a gallery's per-gallery lightbox appearance (preview size, grid
+// spacing, photo corners). Patches only the keys present, same idiom as
+// updateSettings() — route handlers validate each field before it is passed
+// through.
+app.patch('/api/gallery/:galleryId/appearance', adminLimiter, requireAuth, validateGalleryId, (req, res) => {
+    const { galleryId } = req.params;
+    const galleryExists = db.prepare(`SELECT 1 FROM galleries WHERE id = ?`).get(galleryId);
+    if (!galleryExists) return res.status(404).json({ error: 'Gallery not found' });
+
+    const SIZES = ['small', 'medium', 'large'];
+    const CORNERS = ['rounded', 'square'];
+    const { lightboxSize, gridSpacing, cornerStyle } = req.body;
+    // Same "patch only the keys present" idiom as updateSettings() above.
+    const sets = [];
+    const params = { id: galleryId };
+    if (SIZES.includes(lightboxSize)) { sets.push('lightbox_size = @lightbox_size'); params.lightbox_size = lightboxSize; }
+    if (SIZES.includes(gridSpacing)) { sets.push('grid_spacing = @grid_spacing'); params.grid_spacing = gridSpacing; }
+    if (CORNERS.includes(cornerStyle)) { sets.push('corner_style = @corner_style'); params.corner_style = cornerStyle; }
+    if (sets.length > 0) {
+        db.prepare(`UPDATE galleries SET ${sets.join(', ')} WHERE id = @id`).run(params);
+    }
+
+    const row = db.prepare(`SELECT lightbox_size, grid_spacing, corner_style FROM galleries WHERE id = ?`).get(galleryId);
+    res.json({ lightboxSize: row.lightbox_size, gridSpacing: row.grid_spacing, cornerStyle: row.corner_style });
+});
+
+// Full admin-shape single-gallery object — needed so the gallery detail page
+// (admin.html) can be deep-linked/reloaded directly without depending on the
+// dashboard's in-memory _galleriesData cache having already been populated
+// by a prior GET /api/galleries.
+app.get('/api/gallery/:galleryId', adminLimiter, requireAuth, validateGalleryId, (req, res) => {
+    const { galleryId } = req.params;
+    const row = db.prepare(`
+        SELECT id, event_name, created_at, downloads_enabled, comments_enabled, client_language,
+               download_count, view_count, password_hash, expires_at,
+               lightbox_size, grid_spacing, corner_style
+        FROM galleries WHERE id = ? AND deleted = 0
+    `).get(galleryId);
+    if (!row) return res.status(404).json({ error: 'Gallery not found' });
+
+    const nowIso = new Date().toISOString();
+    const collectionRow = db.prepare(`SELECT collection_id FROM collection_galleries WHERE gallery_id = ?`).get(galleryId);
+    const fileCount = db.prepare(`SELECT COUNT(*) AS n FROM files WHERE gallery_id = ?`).get(galleryId).n;
+
+    let lastModified = null;
+    try {
+        const galleryPath = safeResolvePath(path.join(DATA_DIR, 'uploads'), galleryId);
+        lastModified = fs.statSync(galleryPath).mtime.toISOString();
+    } catch (_) {}
+
+    res.json({
+        id: row.id,
+        eventName: row.event_name,
+        created: row.created_at,
+        lastModified,
+        fileCount,
+        collectionId: collectionRow ? collectionRow.collection_id : null,
+        downloadsEnabled: !!row.downloads_enabled,
+        commentsEnabled: !!row.comments_enabled,
+        clientLanguage: row.client_language || 'auto',
+        downloadCount: row.download_count,
+        viewCount: row.view_count,
+        hasPassword: !!row.password_hash,
+        expiresAt: row.expires_at,
+        isExpired: !!(row.expires_at && row.expires_at < nowIso),
+        lightboxSize: row.lightbox_size,
+        gridSpacing: row.grid_spacing,
+        cornerStyle: row.corner_style
+    });
+});
+
+// Verify a gallery password and, on success, set the per-gallery unlock
+// cookie. Deliberately not under requireAuth — this is the public unlock
+// flow a client-facing visitor goes through, gated only by its own limiter.
+app.post('/api/gallery/:galleryId/unlock', galleryUnlockLimiter, validateGalleryId, checkGalleryExpiration, (req, res) => {
+    const { galleryId } = req.params;
+    const row = db.prepare(`SELECT password_hash FROM galleries WHERE id = ? AND deleted = 0`).get(galleryId);
+    if (!row) return res.status(404).json({ error: 'Gallery not found' });
+    if (!row.password_hash) return res.json({ success: true }); // no password set — nothing to unlock
+
+    const { password } = req.body;
+    if (typeof password !== 'string' || !verifyGalleryPassword(password, row.password_hash)) {
+        return res.status(401).json({ error: 'invalid_password' });
+    }
+
+    const token = signGalleryUnlockToken(galleryId, row.password_hash);
+    const isHttps = req.secure || req.headers['x-forwarded-proto'] === 'https';
+    const cookieOpts = [
+        `delyvr_unlock_${galleryId}=${token}`,
+        'HttpOnly',
+        'SameSite=Lax', // deliberately not Strict — see checkGalleryExpiration/requireGalleryUnlock's doc comment
+        'Path=/',
+        `Max-Age=${30 * 24 * 60 * 60}`,
+        ...(isHttps ? ['Secure'] : [])
+    ].join('; ');
+    res.setHeader('Set-Cookie', cookieOpts);
+    res.json({ success: true });
+});
+
 // Rename a gallery
 app.post('/api/gallery/:galleryId/rename', adminLimiter, requireAuth, validateGalleryId, (req, res) => {
     const { galleryId } = req.params;
@@ -1531,7 +1770,7 @@ app.post('/api/gallery/:galleryId/rename', adminLimiter, requireAuth, validateGa
 });
 
 // List photos in a gallery (used by preview.html)
-app.get('/api/gallery/:galleryId/photos', publicReadLimiter, validateGalleryId, async (req, res) => {
+app.get('/api/gallery/:galleryId/photos', publicReadLimiter, validateGalleryId, checkGalleryExpiration, requireGalleryUnlock, async (req, res) => {
     const { galleryId } = req.params;
     const galleryPath = safeResolvePath(path.join(DATA_DIR, 'uploads'), galleryId);
 
@@ -1557,7 +1796,7 @@ app.get('/api/gallery/:galleryId/photos', publicReadLimiter, validateGalleryId, 
     // Fill in missing dimensions for legacy/newly-recovered galleries (one-time
     // cost per photo). Subsequent requests hit the files table directly.
     const existingDims = new Map(
-        db.prepare(`SELECT filename, width, height, duration, animated FROM files WHERE gallery_id = ?`).all(galleryId)
+        db.prepare(`SELECT filename, width, height, duration, animated, flag FROM files WHERE gallery_id = ?`).all(galleryId)
             .map(r => [r.filename, r])
     );
     const missing = files.filter(f => !existingDims.has(f) || existingDims.get(f).width === null);
@@ -1565,11 +1804,15 @@ app.get('/api/gallery/:galleryId/photos', publicReadLimiter, validateGalleryId, 
     if (missing.length > 0 && galleryRow) {
         await Promise.all(missing.map(async filename => {
             const src = safeResolvePath(galleryPath, filename);
+            // A row can already exist here (width NULL from a previously-failed probe)
+            // with a flag already set on it — carry that over so backfilling dimensions
+            // never drops the flag from this one response.
+            const priorFlag = existingDims.has(filename) ? existingDims.get(filename).flag : null;
             if (isVideoFile(filename)) {
                 const meta = await probeVideo(src);
                 if (meta) {
                     setVideoDimensions(galleryId, filename, meta.w, meta.h, meta.duration);
-                    existingDims.set(filename, { filename, width: meta.w, height: meta.h, duration: meta.duration, animated: null });
+                    existingDims.set(filename, { filename, width: meta.w, height: meta.h, duration: meta.duration, animated: null, flag: priorFlag });
                 }
                 generateVideoPoster(galleryId, filename).catch(() => {}); // legacy videos with no poster yet
                 return;
@@ -1577,13 +1820,22 @@ app.get('/api/gallery/:galleryId/photos', publicReadLimiter, validateGalleryId, 
             const dims = await readDimensions(src);
             if (dims) {
                 setPhotoDimensions(galleryId, filename, dims.w, dims.h, dims.animated);
-                existingDims.set(filename, { filename, width: dims.w, height: dims.h, duration: null, animated: dims.animated ? 1 : 0 });
+                existingDims.set(filename, { filename, width: dims.w, height: dims.h, duration: null, animated: dims.animated ? 1 : 0, flag: priorFlag });
             }
         }));
     }
 
     const commentCounts = new Map(
         db.prepare(`SELECT filename, COUNT(*) AS n FROM comments WHERE gallery_id = ? GROUP BY filename`).all(galleryId)
+            .map(r => [r.filename, r.n])
+    );
+
+    // Any-visitor favorite count — NOT tied to the admin's own identity (the
+    // admin has none). Only the admin UI's "favorited" filter chip reads this;
+    // preview.html already has its own per-visitor favorites via a separate
+    // route and ignores this field.
+    const favoriteCounts = new Map(
+        db.prepare(`SELECT filename, COUNT(DISTINCT visitor_id) AS n FROM favorites WHERE gallery_id = ? GROUP BY filename`).all(galleryId)
             .map(r => [r.filename, r.n])
     );
 
@@ -1601,7 +1853,12 @@ app.get('/api/gallery/:galleryId/photos', publicReadLimiter, validateGalleryId, 
             height: dims ? dims.height : null,
             duration: video ? (dims && dims.duration != null ? dims.duration : null) : undefined,
             animated: !video && !!(dims && dims.animated),
-            commentCount: commentCounts.get(filename) || 0
+            commentCount: commentCounts.get(filename) || 0,
+            favoriteCount: favoriteCounts.get(filename) || 0,
+            // Photographer-side proofing mark (red/orange/green/white or null). Technically
+            // public — this route has no requireAuth, same as commentCount above — but holds
+            // no personal data; preview.html never reads or renders it. See CLAUDE.md.
+            flag: dims ? (dims.flag || null) : null
         };
     });
 
@@ -1615,7 +1872,7 @@ app.get('/api/gallery/:galleryId/photos', publicReadLimiter, validateGalleryId, 
 });
 
 // Serve a single photo (original or thumbnail)
-app.get('/api/gallery/:galleryId/photo/:filename', imageLimiter, validateGalleryId, validateFilename, async (req, res) => {
+app.get('/api/gallery/:galleryId/photo/:filename', imageLimiter, validateGalleryId, checkGalleryExpiration, requireGalleryUnlock, validateFilename, async (req, res) => {
     const { galleryId, filename } = req.params;
     const isVideo = isVideoFile(filename);
 
@@ -1700,7 +1957,7 @@ function isGalleryBlockedByCollectionForComments(galleryId) {
 }
 
 // Download a single photo as an attachment
-app.get('/api/gallery/:galleryId/download/:filename', downloadLimiter, validateGalleryId, validateFilename, (req, res) => {
+app.get('/api/gallery/:galleryId/download/:filename', downloadLimiter, validateGalleryId, checkGalleryExpiration, requireGalleryUnlock, validateFilename, (req, res) => {
     const { galleryId, filename } = req.params;
 
     const gallery = db.prepare(`SELECT downloads_enabled FROM galleries WHERE id = ?`).get(galleryId);
@@ -1751,7 +2008,26 @@ app.delete('/api/gallery/:galleryId/photo/:filename', adminLimiter, requireAuth,
     res.json({ success: true, fileCount });
 });
 
+const PHOTO_FLAGS = ['red', 'orange', 'green', 'white'];
+
+// Set or clear a photo's photographer-side proofing flag. Admin-only —
+// revalidated here against the same set the files.flag CHECK enforces
+// (defense in depth, not a substitute for it).
+app.patch('/api/gallery/:galleryId/photo/:filename/flag', adminLimiter, requireAuth, validateGalleryId, validateFilename, (req, res) => {
+    const { galleryId, filename } = req.params;
+    const { flag } = req.body;
+    if (flag !== null && !PHOTO_FLAGS.includes(flag)) {
+        return res.status(400).json({ error: 'flag must be one of red/orange/green/white, or null' });
+    }
+    const result = db.prepare(`UPDATE files SET flag = ? WHERE gallery_id = ? AND filename = ?`).run(flag, galleryId, filename);
+    if (result.changes === 0) return res.status(404).json({ error: 'Photo not found' });
+    res.json({ flag });
+});
+
 // Serve/generate OG image (1200×630 JPEG, cached)
+// Deliberately NOT gated by checkGalleryExpiration/requireGalleryUnlock: a
+// crawler can neither submit a password nor respect a 410, so a locked or
+// expired gallery keeps a normal share-preview card, matching behavior today.
 app.get('/api/gallery/:galleryId/og-image', imageLimiter, validateGalleryId, async (req, res) => {
     const { galleryId } = req.params;
     const cacheFile = safeResolvePath(OG_CACHE_DIR, `${galleryId}.jpg`);
@@ -1880,7 +2156,7 @@ app.get('/preview/:galleryId', publicReadLimiter, validateGalleryId, (req, res) 
 });
 
 // Get gallery info (for customer and preview pages)
-app.get('/api/gallery/:galleryId/info', publicReadLimiter, validateGalleryId, (req, res) => {
+app.get('/api/gallery/:galleryId/info', publicReadLimiter, validateGalleryId, checkGalleryExpiration, requireGalleryUnlock, (req, res) => {
     const { galleryId } = req.params;
     if (!getActiveGallery(galleryId)) return res.status(404).json({ error: 'Gallery not found' });
 
@@ -1958,7 +2234,7 @@ app.get('/api/gallery/:galleryId/info', publicReadLimiter, validateGalleryId, (r
 });
 
 // Download all photos as ZIP
-app.get('/api/gallery/:galleryId/download', downloadLimiter, validateGalleryId, (req, res) => {
+app.get('/api/gallery/:galleryId/download', downloadLimiter, validateGalleryId, checkGalleryExpiration, requireGalleryUnlock, (req, res) => {
     const { galleryId } = req.params;
     const galleryPath = safeResolvePath(path.join(DATA_DIR, 'uploads'), galleryId);
 
@@ -2020,7 +2296,7 @@ app.get('/api/gallery/:galleryId/download', downloadLimiter, validateGalleryId, 
 });
 
 // Toggle favorite for a photo (public, no auth) — per visitor
-app.post('/api/gallery/:galleryId/favorites', publicWriteLimiter, validateGalleryId, (req, res) => {
+app.post('/api/gallery/:galleryId/favorites', publicWriteLimiter, validateGalleryId, checkGalleryExpiration, requireGalleryUnlock, (req, res) => {
     const { galleryId } = req.params;
     const { filename, visitorId } = req.body;
 
@@ -2066,7 +2342,7 @@ app.post('/api/gallery/:galleryId/favorites', publicWriteLimiter, validateGaller
 });
 
 // Get favorites for this visitor (public — used by preview page on load)
-app.get('/api/gallery/:galleryId/favorites-public', publicReadLimiter, validateGalleryId, (req, res) => {
+app.get('/api/gallery/:galleryId/favorites-public', publicReadLimiter, validateGalleryId, checkGalleryExpiration, requireGalleryUnlock, (req, res) => {
     const { galleryId } = req.params;
     // Normalized to a string or null (never `undefined`, which better-sqlite3
     // refuses to bind) — a null visitor_id matches nothing in SQL, same net
@@ -2100,7 +2376,7 @@ app.get('/favorites/:galleryId', publicReadLimiter, validateGalleryId, (req, res
 });
 
 // Public API: favorites sorted by vote count (used by favorites.html)
-app.get('/api/gallery/:galleryId/favorites-ranked', publicReadLimiter, validateGalleryId, (req, res) => {
+app.get('/api/gallery/:galleryId/favorites-ranked', publicReadLimiter, validateGalleryId, checkGalleryExpiration, requireGalleryUnlock, (req, res) => {
     const { galleryId } = req.params;
     const gallery = getActiveGallery(galleryId);
     if (!gallery) return res.status(404).json({ error: 'Gallery not found' });
@@ -2177,7 +2453,7 @@ app.delete('/api/gallery/:galleryId/favorites', adminLimiter, requireAuth, valid
 });
 
 // Export favorites as CSV
-app.get('/api/gallery/:galleryId/favorites/export', publicReadLimiter, validateGalleryId, (req, res) => {
+app.get('/api/gallery/:galleryId/favorites/export', publicReadLimiter, validateGalleryId, checkGalleryExpiration, requireGalleryUnlock, (req, res) => {
     const { galleryId } = req.params;
     const row = db.prepare(`SELECT event_name FROM galleries WHERE id = ?`).get(galleryId);
     if (!row) return res.status(404).json({ error: 'Gallery not found' });
@@ -2228,7 +2504,7 @@ app.get('/api/gallery/:galleryId/favorites/download', downloadLimiter, requireAu
 });
 
 // Add a comment to a photo (public, no auth) — visible to all visitors (guestbook style)
-app.post('/api/gallery/:galleryId/comments', publicWriteLimiter, validateGalleryId, (req, res) => {
+app.post('/api/gallery/:galleryId/comments', publicWriteLimiter, validateGalleryId, checkGalleryExpiration, requireGalleryUnlock, (req, res) => {
     const { galleryId } = req.params;
     const { filename, visitorId, name, text } = req.body;
 
@@ -2286,7 +2562,7 @@ app.post('/api/gallery/:galleryId/comments', publicWriteLimiter, validateGallery
 });
 
 // Get comments for a single photo (public — used by the lightbox comment drawer)
-app.get('/api/gallery/:galleryId/comments-public', publicReadLimiter, validateGalleryId, (req, res) => {
+app.get('/api/gallery/:galleryId/comments-public', publicReadLimiter, validateGalleryId, checkGalleryExpiration, requireGalleryUnlock, (req, res) => {
     const { galleryId } = req.params;
     const { filename } = req.query;
 
@@ -2845,6 +3121,10 @@ app.get('/api/galleries', adminLimiter, requireAuth, (req, res) => {
                 .map(r => [r.gallery_id, r.collection_id])
         );
 
+        // Computed once, outside the loop, so every gallery's isExpired is judged
+        // against the same instant rather than drifting across a long directory scan.
+        const nowIso = new Date().toISOString();
+
         dirs.forEach(galleryId => {
             const galleryPath = path.join(uploadsDir, galleryId);
             const stats = fs.statSync(galleryPath);
@@ -2906,7 +3186,14 @@ app.get('/api/galleries', adminLimiter, requireAuth, (req, res) => {
                     : null,
                 downloadsEnabled: !!gallery.downloads_enabled,
                 commentsEnabled: !!gallery.comments_enabled,
-                clientLanguage: gallery.client_language || 'auto'
+                clientLanguage: gallery.client_language || 'auto',
+                lastModified: stats.mtime.toISOString(),
+                hasPassword: !!gallery.password_hash,
+                expiresAt: gallery.expires_at || null,
+                isExpired: !!(gallery.expires_at && gallery.expires_at < nowIso),
+                lightboxSize: gallery.lightbox_size,
+                gridSpacing: gallery.grid_spacing,
+                cornerStyle: gallery.corner_style
             });
         });
     }

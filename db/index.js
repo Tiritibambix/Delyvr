@@ -45,6 +45,41 @@ function ensureSettingsColumns(db) {
     }
 }
 
+// Same idea as SETTINGS_ADDED_COLUMNS, for columns added to `galleries` after
+// the first installs had already migrated: per-gallery password protection,
+// link expiration, and per-gallery lightbox appearance. Each entry is
+// byte-identical to its definition in schema.sql.
+const GALLERIES_ADDED_COLUMNS = [
+    ['password_hash', `password_hash TEXT`],
+    ['expires_at',    `expires_at TEXT`],
+    ['lightbox_size', `lightbox_size TEXT NOT NULL DEFAULT 'medium' CHECK (lightbox_size IN ('small','medium','large'))`],
+    ['grid_spacing',  `grid_spacing TEXT NOT NULL DEFAULT 'medium' CHECK (grid_spacing  IN ('small','medium','large'))`],
+    ['corner_style',  `corner_style TEXT NOT NULL DEFAULT 'square' CHECK (corner_style IN ('rounded','square'))`]
+];
+
+function ensureGalleriesColumns(db) {
+    const existing = db.pragma('table_info(galleries)').map(c => c.name);
+    if (existing.length === 0) return;
+    for (const [name, ddl] of GALLERIES_ADDED_COLUMNS) {
+        if (!existing.includes(name)) db.exec(`ALTER TABLE galleries ADD COLUMN ${ddl}`);
+    }
+}
+
+// Same idea, for `files`: the photographer-side proofing flag. Nullable, no
+// default — the simplest possible ADD COLUMN, since every existing row's
+// "unflagged" state is already exactly what NULL means.
+const FILES_ADDED_COLUMNS = [
+    ['flag', `flag TEXT CHECK (flag IS NULL OR flag IN ('red','orange','green','white'))`]
+];
+
+function ensureFilesColumns(db) {
+    const existing = db.pragma('table_info(files)').map(c => c.name);
+    if (existing.length === 0) return;
+    for (const [name, ddl] of FILES_ADDED_COLUMNS) {
+        if (!existing.includes(name)) db.exec(`ALTER TABLE files ADD COLUMN ${ddl}`);
+    }
+}
+
 // Applies the schema (every statement is CREATE ... IF NOT EXISTS, so this is
 // safe and cheap to re-run on every connection open — self-healing if a table
 // were ever dropped by hand), then backfills any column added to an existing
@@ -52,6 +87,8 @@ function ensureSettingsColumns(db) {
 function applySchema(db) {
     db.exec(fs.readFileSync(SCHEMA_PATH, 'utf8'));
     ensureSettingsColumns(db);
+    ensureGalleriesColumns(db);
+    ensureFilesColumns(db);
 }
 
 // Opens the server's long-lived connection to an EXISTING database file and
@@ -88,4 +125,4 @@ function openDatabase(dbPath) {
     return db;
 }
 
-module.exports = { openDatabase, applySchema, ensureSettingsColumns, SCHEMA_PATH };
+module.exports = { openDatabase, applySchema, ensureSettingsColumns, ensureGalleriesColumns, ensureFilesColumns, SCHEMA_PATH };

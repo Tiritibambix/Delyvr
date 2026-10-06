@@ -432,6 +432,63 @@ body { display: flex; flex-direction: column; height: 100%; }
 .photos-grid-card .photo-delete-btn:hover { background: var(--error); border-color: var(--error); }
 .photos-grid-card.deleting { opacity: 0.35; pointer-events: none; }
 
+/* Proofing flag swatch on each card. Always visible (not hover-gated like the
+   delete button) — a culling mark needs to be glanceable at rest, the same
+   reasoning that keeps the favorites/comments counts visible on gallery cards
+   rather than behind a hover state. */
+.photo-flag-btn {
+    position: absolute; top: 6px; left: 6px; z-index: 1;
+    width: 16px; height: 16px; border-radius: 50%;
+    border: 2px solid rgba(255,255,255,0.85);
+    cursor: pointer; padding: 0;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.4);
+}
+.photo-flag-btn-empty { background: rgba(0,0,0,0.3); border-color: rgba(255,255,255,0.55); }
+.photo-flag-btn[data-flag="red"]    { background: #d9534f; }
+.photo-flag-btn[data-flag="orange"] { background: #e0923c; }
+.photo-flag-btn[data-flag="green"]  { background: #52a878; }
+.photo-flag-btn[data-flag="white"]  { background: #e8e8ec; }
+
+/* ── GALLERY DETAIL PAGE ── */
+.gallery-detail-layout {
+    display: grid;
+    grid-template-columns: 180px 1fr;
+    gap: 22px;
+    align-items: start;
+}
+@media (max-width: 900px) {
+    .gallery-detail-layout { grid-template-columns: 1fr; }
+}
+.gallery-detail-actions {
+    display: flex; flex-direction: column; gap: 8px;
+}
+.gallery-detail-action { justify-content: flex-start; width: 100%; box-sizing: border-box; }
+.gallery-detail-action.copied { border-color: var(--accent); color: var(--accent); }
+.gallery-detail-action svg { flex-shrink: 0; }
+
+.gallery-detail-filters {
+    display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+    margin-bottom: 10px;
+}
+.gallery-detail-filter-sep { width: 1px; height: 18px; background: var(--border2); }
+.flag-filter-chip {
+    width: 20px; height: 20px; border-radius: 50%;
+    border: 2px solid var(--border2); cursor: pointer; padding: 0;
+    background: var(--bg3);
+}
+.flag-filter-chip.active { border-color: var(--text); box-shadow: 0 0 0 2px var(--bg2), 0 0 0 3px var(--text); }
+.flag-filter-red    { background: #d9534f; border-color: #d9534f; }
+.flag-filter-orange { background: #e0923c; border-color: #e0923c; }
+.flag-filter-green  { background: #52a878; border-color: #52a878; }
+.flag-filter-white  { background: #e8e8ec; border-color: #e8e8ec; }
+.filter-chip {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 5px 10px; border-radius: 4px;
+    border: 1px solid var(--border2); background: var(--bg3); color: var(--muted);
+    font-size: 11.5px; font-family: inherit; cursor: pointer;
+}
+.filter-chip.active { border-color: var(--accent); color: var(--accent); }
+
 @media (max-width: 600px) {
     .photos-modal-card { padding: 14px; width: 95%; gap: 10px; }
     .photos-grid-card .photo-overlay-info { opacity: 1; background: rgba(0,0,0,0.32); }
@@ -1315,6 +1372,60 @@ body { display: flex; flex-direction: column; height: 100%; }
 .btn-fav-action:hover { color: var(--accent); }
 
 .gallery-actions { display: flex; gap: 6px; flex-shrink: 0; align-items: center; }
+
+/* ── GALLERY STATUS ICONS (public / locked / expires) ──
+   Shared by the card (added under the meta line, nothing existing removed)
+   and the list row (next to the name). Small, muted by default; a set
+   password or a past expiration date is the only thing that takes color. */
+.gallery-status-row { display: flex; align-items: center; gap: 6px; margin: 2px 0; }
+.gallery-status-icon {
+    display: inline-flex; width: 14px; height: 14px; color: var(--muted2);
+}
+.gallery-status-icon svg { width: 14px; height: 14px; }
+.gallery-status-icon.gallery-status-locked { color: var(--accent); cursor: pointer; }
+.gallery-status-icon.gallery-status-expired { color: var(--error); }
+a.gallery-status-icon, span.gallery-status-icon[onclick] { cursor: pointer; }
+
+/* ── GALLERY LIST VIEW (compact alternative to the card) ──
+   Same .gallery-item shell/drag/selection behavior, denser inner layout.
+   Every control the card has stays — see renderGalleryItemRowHtml(). */
+#galleryViewModeBtn.active { color: var(--accent); border-color: var(--accent); }
+
+.gallery-item-row {
+    display: flex; align-items: center; gap: 12px;
+    padding: 6px 12px;
+}
+.gallery-row-cover {
+    width: 36px; height: 36px; border-radius: 3px; flex-shrink: 0;
+    background: var(--bg3); border: 1px solid var(--border);
+    overflow: hidden; position: relative;
+    display: flex; align-items: center; justify-content: center;
+}
+.gallery-row-cover img { width: 100%; height: 100%; object-fit: cover; }
+.gallery-row-cover svg { width: 14px; height: 14px; color: var(--muted2); }
+.gallery-row-name-col { flex: 1 1 220px; min-width: 0; }
+.gallery-row-name-col .gallery-name { font-size: 13px; }
+.gallery-row-col {
+    flex: 0 0 auto; width: 110px; font-size: 12px; color: var(--muted);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.gallery-row-col-count { width: 90px; }
+.gallery-row-toggles {
+    display: flex; align-items: center; gap: 8px; width: 150px;
+}
+.gallery-row-toggles .downloads-toggle { gap: 0; }
+.gallery-row-toggles .lang-select { max-width: 56px; }
+.gallery-row-actions { flex-shrink: 0; }
+
+@media (max-width: 900px) {
+    .gallery-row-col { display: none; }
+    .gallery-row-toggles { width: auto; }
+}
+@media (max-width: 600px) {
+    .gallery-item-row { flex-wrap: wrap; }
+    .gallery-row-toggles { order: 3; width: 100%; border-top: 1px solid var(--border); padding-top: 8px; margin-top: 2px; }
+    .gallery-row-actions { order: 4; width: 100%; justify-content: flex-end; }
+}
 
 @media (max-width: 600px) {
     .gallery-item { flex-wrap: wrap; gap: 8px; padding: 8px 10px; }

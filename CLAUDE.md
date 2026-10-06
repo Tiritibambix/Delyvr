@@ -202,6 +202,87 @@ CIDR matching is implemented with BigInt bitwise arithmetic using the Node built
 
 `validateGalleryId` and `validateCollectionId` enforce UUID v4 format before any filesystem operation. `validateFilename` enforces `/^[a-zA-Z0-9._\-]+$/`.
 
+### Per-gallery password and expiration
+
+A gallery may optionally carry a password (`galleries.password_hash`) and/or a link
+expiration date (`galleries.expires_at`), both `NULL` by default. This is **gallery-only**:
+collections do not have this feature in this version, deliberately. `GET /api/
+collection/:collectionId` already exposes every member gallery's name and cover with no
+gate of its own (a known, accepted limitation; the photos themselves stay protected, the
+name/cover do not), and extending password/expiration there would need its own leak audit.
+
+**Hashing**: `hashGalleryPassword`/`verifyGalleryPassword` use Node's built-in `crypto`
+(`scryptSync` with a random 16-byte salt, `timingSafeEqual` for comparison), no new
+dependency, same reasoning as `better-sqlite3` over `node:sqlite` elsewhere in this project.
+Stored as `"<salt_hex>:<hash_hex>"`. `scrypt`'s memory-hardness is deliberate: this is worth
+a little defense against offline brute-force if the `.sqlite` file ever leaked, and the cost
+is only paid on an explicit password submission, never on a thumbnail/image request.
+
+**Unlock cookie**: stateless, not a server-side session Map. A Map (like the admin's own
+`sessions`) would evict every visitor's unlock on each container restart, a real problem for
+a link reopened weeks later. `signGalleryUnlockToken`/`verifyGalleryUnlockToken` produce an
+HMAC (`GALLERY_UNLOCK_SECRET`, generated once per process start) over the gallery id and a
+short fingerprint of the *current* `password_hash`. Because the MAC covers that fingerprint,
+changing or clearing a gallery's password silently invalidates every cookie issued for the
+old one, with nothing to revoke explicitly. One cookie **per gallery**
+(`delyvr_unlock_<galleryId>`), not one shared cookie: a `<img>`/`<video>`/`<a href>` cannot
+attach a custom header, so a plain per-gallery cookie is what lets those requests
+authenticate automatically once unlocked. `SameSite=Lax`, deliberately **not** `Strict` like
+the admin session cookie (`server.js`'s `delyvr_session`): a client reopening an emailed or
+texted link is a fresh top-level cross-site navigation, where a `Strict` cookie would be
+withheld and re-prompt an already-unlocked visitor every time. `Max-Age` ~30 days,
+independent of `expires_at`.
+
+**Two composable middlewares**, next to `validateGalleryId`/`validateFilename`:
+- `checkGalleryExpiration`: 410 `gallery_expired` if `expires_at` is set and in the past.
+- `requireGalleryUnlock`: 401 `password_required` unless a valid unlock cookie is
+  presented. **No-ops instantly when `password_hash` is `NULL`**, which is the opt-in
+  guarantee: a gallery with neither set behaves exactly as before this feature existed.
+
+Chain order everywhere both apply: `<limiter>, validateGalleryId, checkGalleryExpiration,
+requireGalleryUnlock, <validateFilename if present>, <handler>`. Expiration is always
+checked before the password, so an expired *and* protected gallery always reports
+"expired," never "enter password."
+
+**Every content-adjacent public gallery route carries both** (`/info`, `/photos`,
+`/photo/:filename`, `/download`, `/download/:filename`, `/audio`, `/favorites*`,
+`/comments*`). Two **deliberate, commented exceptions**, same spirit as other documented
+exceptions in this file (e.g. the `background` bookkeeping-only column):
+- `GET /api/gallery/:id/background` (+ legacy alias): gated by **neither**. The cover must
+  stay visible so the password/expired gate page itself can render it.
+- `GET /api/gallery/:id/og-image`: gated by **neither**. A crawler can't submit a password
+  or respect a 410; the share-preview card stays exactly as before.
+
+`GET /preview/:id` and `GET /favorites/:id` are **not** server-gated at all: the HTML shell
+and OG tags must always render for crawlers. `preview.html`'s `loadGallery()` branches on
+the `/info` fetch's status instead: `401` → `showPasswordGate()` (a new `#passwordGate`
+block, a form posting to `POST /api/gallery/:id/unlock`), `410` → `showExpiredState()`
+(reuses the existing generic `#notFound` block with two new i18n keys). Both run *before*
+`locale` is resolved from `info.clientLanguage`; there is no `info` yet in this branch, so
+the gate/expired text is unavoidably in the English fallback. `favorites.html` gets the same
+401/410 branching but with plain, untranslated text, consistent with that page's existing
+no-i18n posture (see "Comments" section below).
+
+**Admin-side**: `PATCH /api/gallery/:id/password` (`{password: string|null}`, never echoes
+the hash back, only `{hasPassword}`), `PATCH /api/gallery/:id/expiration`
+(`{expiresAt: 'YYYY-MM-DD'|null}`), both set/managed from the gallery detail page's
+Settings panel (see `public/admin.html` section below).
+
+**The expiration date is a calendar date, not an instant: handle it as one everywhere.**
+`PATCH .../expiration` normalises the incoming `YYYY-MM-DD` to `${date}T23:59:59.999Z`
+before storing, specifically to avoid expiring the gallery at midnight UTC on the chosen day
+(which would make the day the photographer picked already inaccessible). The matching trap
+is on **display**: `admin.html`'s `formatAdminDate()` uses local-time getters
+(`getDate()`/`getMonth()`), so in any timezone ahead of UTC, `23:59:59.999Z` has already
+rolled into the next calendar day locally, and the status-icon tooltip would show one day
+late. `formatExpirationDate()` is the dedicated fix: it reads the UTC calendar date
+(`getUTCDate()`/`getUTCMonth()`) instead, since `expires_at` is always "that UTC day's end,"
+never a meaningful instant. Use it for this one field; `formatAdminDate()` stays correct for
+every other (genuinely instant-valued) date in the admin UI. The gallery-settings panel's
+`<input type="date">` sidesteps the whole issue by reading `expiresAt.slice(0, 10)` directly
+off the ISO string: no `Date` object, no timezone conversion, since an HTML date input's
+value format already *is* `YYYY-MM-DD`.
+
 ### Path safety
 
 All filesystem paths incorporating user-controlled values go through `safeResolvePath(base, ...segments)`. This resolves the final path and throws if it would escape the base directory. This includes `data/backgrounds/` and `data/audio/` — a filename discovered via `fs.readdirSync(...).find(f => f.startsWith(id))` is still resolved through `safeResolvePath(dir, filename)` before being opened, deleted, or stat'd, not just `path.join`'d directly. There is no exception left anywhere in `server.js`.
@@ -650,6 +731,37 @@ Clients can leave a text comment on individual photos/videos from the lightbox. 
 - **The drawer stays open across photos on desktop** (critique reading): `updateLightbox()` reloads the new photo's thread instead of closing it. On mobile it still closes on navigation — deliberately unchanged, a phone can't show both usefully. `isDrawerMobile()` gates this on the existing breakpoints.
 - **The photo is never resized when the drawer opens.** Reserving space (`padding`, or capping `max-width`) would shrink it — on a 1920×1080 screen a 3:2 landscape already has only ~140px of slack, since `.lightbox-content` is capped at `100vw - 160px` for the arrows. Instead `updateDrawerShift()` applies a `transform: translateX(-N)` to `.lightbox-content`: a transform doesn't affect layout, so the computed size is untouched. `N` is 150px (half the 300px drawer, which re-centres the content in the space left over) **clamped to the free margin actually measured on the left**, so a very wide photo can never be pushed off-screen. A `ResizeObserver` on `.lightbox-content` recomputes it on async preview load, photo change and window resize. The backdrop is applied on mobile only — on desktop it would dim the very photo being kept visible — and `.lightbox-next` moves to `right: 320px` so it stays clickable.
 
+### Photographer-side photo flags (proofing)
+
+`files.flag` (`NULL`/`'red'`/`'orange'`/`'green'`/`'white'`) is a **photographer-only**
+culling mark, structurally unrelated to `favorites`/`comments`: those are the *visitor's*
+signal and are public; a flag is the *photographer's* own and has no client-facing
+counterpart anywhere in `preview.html`. The column's addition was pre-planned, not
+improvised: see the `files` table comment in `db/schema.sql` and the "Data persistence"
+section above. The table's `(gallery_id, filename)` shape was deliberately kept exactly
+right for this to be a plain `ALTER TABLE` whenever the work started.
+
+`PATCH /api/gallery/:id/photo/:filename/flag` (`{flag: 'red'|'orange'|'green'|'white'|null}`,
+admin-only, revalidated against the same set the column's `CHECK` enforces) sets or clears
+it. `GET /api/gallery/:id/photos` returns it per photo as `flag`, alongside a new
+`favoriteCount` (any-visitor favorite count, via a `COUNT(DISTINCT visitor_id)` grouped
+query against `favorites`, **not** tied to the admin's own identity, since the admin has
+none; this is what powers the "favorited" filter chip below).
+
+**Both fields are technically public**: `/photos` has no `requireAuth`, the same as the
+pre-existing `commentCount` field. A curious client could see a flag color via devtools even
+though `preview.html` never renders it. Accepted as a low-sensitivity tradeoff (no personal
+data in either field) rather than adding the first conditional-field-by-auth-state plumbing
+anywhere in this codebase for a cosmetic admin-only mark.
+
+**UI lives entirely in the gallery detail page** (see `public/admin.html` section below),
+not the old photos modal it replaced: a small circular swatch (`.photo-flag-btn`, always
+visible top-left on each card, not hover-gated like the delete button, since a proofing
+mark needs to be glanceable at rest) that **cycles** `null → red → orange → green → white →
+null` on click (`cyclePhotoFlag()`), one request per click, no popover/menu. Filter chips
+above the grid (flag colors + favorited + has-comments) combine with AND logic;
+`applyPhotoFilters()` re-renders from the already-fetched photo list with no refetch.
+
 ### ZIP downloads
 
 Both gallery and collection ZIPs use `archiver` with `store: true` (no compression — JPEGs are already compressed, so this saves CPU without meaningfully increasing size). Content-Disposition uses RFC 5987 encoding (`filename*=UTF-8''...`) with an ASCII fallback for full Unicode support in filenames containing accents, spaces, or special characters. Content-Length is intentionally NOT set because archiver adds variable ZIP metadata during streaming that makes pre-calculation unreliable.
@@ -684,7 +796,13 @@ Gallery names use `contenteditable="false"` by default. Double-clicking (or clic
 | `POST` | `/api/gallery/:id/background` | ✓ | Upload/replace background |
 | `POST` | `/api/gallery/:id/rename` | ✓ | Rename |
 | `PATCH` | `/api/gallery/:id/downloads` | ✓ | Toggle downloads |
-| `GET` | `/api/gallery/:id/info` | | Metadata + totalSizeBytes |
+| `GET` | `/api/gallery/:id` | ✓ | Full admin-shape single-gallery object (title, collection, password/expiration/appearance state) |
+| `PATCH` | `/api/gallery/:id/password` | ✓ | Set or clear the gallery's password |
+| `PATCH` | `/api/gallery/:id/expiration` | ✓ | Set or clear the link expiration date |
+| `PATCH` | `/api/gallery/:id/appearance` | ✓ | Set lightbox size / grid spacing / corner style |
+| `POST` | `/api/gallery/:id/unlock` | | Submit a gallery password; sets the per-gallery unlock cookie |
+| `PATCH` | `/api/gallery/:id/photo/:filename/flag` | ✓ | Set or clear a photo's proofing flag |
+| `GET` | `/api/gallery/:id/info` | | Metadata + totalSizeBytes (410 if expired, 401 if password-protected and locked) |
 | `GET` | `/api/gallery/:id/photos` | | Photo list with URLs and dimensions |
 | `GET` | `/api/gallery/:id/photo/:filename` | | Serve photo; `?thumb=1` for 400px thumbnail, `?preview=1` for 1920px preview |
 | `GET` | `/api/gallery/:id/download` | | ZIP download (store mode, RFC 5987) |
@@ -828,7 +946,68 @@ Loaded by all client pages via `<script src="/shared.js">` before their inline `
     slides up without drawing the eye the rest of the time.
 - **Trash modal:** opened via trash icon button (with count badge) in gallery section header. Shows trashed galleries with daysLeft, Restore and "Delete now" buttons, Empty trash button. **`emptyTrash()` drives the progress toast**: `DELETE /api/galleries/trash` loops server-side, deleting each gallery's uploads, thumbnails, previews, cover, OG cache and audio from disk, so a full trash takes a long while with nothing on screen and reads as frozen. There is no per-item progress to report without streaming the response, so it shows a spinner (`t.emptyingTrash`) and then the route's own `purged` count (`t.trashEmptied(n)`).
 - **Progress toast helpers** (`showProgressToast` / `updateProgressToast` / `finishProgressToast`), next to `showError()`: the shared driver for any multi-step admin action, reusing the single `#uploadToast` element and its `#toastSpinner`/`#toastSuccess`/`#toastError`/`#toastMessage` children. `finishProgressToast(msg, isError)` swaps the icon, applies `.success`/`.error` for the border colour and auto-dismisses (3s / 5s for an error) through the shared `_errorToastTimer`. Used by `runBulk()` and `emptyTrash()`; `deleteSelectedPhotos()` predates them and still drives the same element inline.
-- **Photo management modal:** `openPhotosModal(galleryId)` loads photos via `GET /api/gallery/:id/photos` and renders a justified row layout (`_buildPhotoRows`/`_renderPhotosRows`, recomputed via a `ResizeObserver`). Per-photo delete button visible on hover (desktop) or always (mobile). Selection mode allows multi-delete via `deleteSelectedPhotos()`, which deletes sequentially and drives a **progress toast** (reuses `#uploadToast`: `t.deletingPhotosProgress(i, n)` updates each iteration, then `t.photosDeletedDone(n)` / `t.photosCouldNotBeDeleted(errors)`) so bulk deletes of many photos give visible feedback instead of just dimming cards.
+- **Gallery detail page** (`#/gallery/:id`, view `view-gallery-detail`): **replaces the old
+  "photos modal" overlay entirely**; `openPhotosModal`/`closePhotosModal`/`#photosModal` are
+  gone, not kept as a secondary path (this project has no other precedent for two ways to
+  reach the same thing). Every element id the old modal used (`photosGrid`,
+  `photosModalMeta`, `photosBulkBar`, `photosAddZone`, …) now lives directly in this routed
+  section instead of inside an overlay, which is what let almost every internal function
+  (`_buildPhotoRows`/`_renderPhotosRows`/`deleteSelectedPhotos`/the upload drop zone) port
+  over unmodified. Reached by clicking a gallery row/card (`handleGalleryItemClick`'s
+  previously-no-op non-selection-mode branch now does `location.hash = '#/gallery/' + id`)
+  or its "manage photos" icon.
+  - **Router**: `parseHash()` matches `seg[0]==='gallery' && seg[1] && !seg[2]`, checked
+    **after** the existing 3-segment `.../comments` pattern so the shorter pattern can't
+    shadow it. `teardownGalleryDetailPage()` runs on every navigation **away** from this
+    route (disconnects the photo-grid `ResizeObserver`, which would otherwise keep firing
+    against a `display:none` page, and refetches the gallery list so a rename/upload/delete
+    made here is reflected back on `#/galleries`). **`_galleryDetailId`/`_photosResizeObs`
+    must stay declared before the initial `renderRoute()` call**, same temporal-dead-zone
+    hazard as `_uploadInProgress`: `renderRoute()` calls `teardownGalleryDetailPage()`
+    unconditionally on first load, and a `let` declared further down the script (where the
+    rest of this feature's code lives) would throw before ever being reached.
+  - **Back-trail**: a single link, not a breadcrumb bar. Defaults to "← Galleries"; when the
+    gallery belongs to a collection, `loadGalleryDetailPage()` rewrites it to "← `<collection
+    name>`" by reading `collectionId` off the new `GET /api/gallery/:id` response and looking
+    it up in `_collectionsData`, **always**, regardless of which link was actually clicked
+    to arrive here (simpler than tracking the click path, and a gallery's collection is
+    always its most relevant parent). Same "most specific wins" precedence as
+    `resolveGalleryClientLanguage` server-side.
+  - **Left-panel actions**: preview (opens `/preview/:id` in a new tab), copy client link
+    (`copyGalleryDetailLink()` calling the existing `copyGalleryLink()`), add files (triggers
+    the same `#photosAddInput` the drop zone uses), download ZIP (`GET .../download`,
+    existing route), and the relocated Select toggle.
+  - **Settings panel** (`#gallerySettingsModal`, opened via the page header's button): same
+    `.profile-*` markup/classes as the global Settings modal (`#profileModal`) for visual
+    consistency. Downloads/comments/client-language controls call the **same**
+    `toggleDownloads`/`toggleComments`/`setGalleryClientLanguage` already used on the gallery
+    card, relocated here, not reimplemented. Password, expiration and the three lightbox-
+    appearance selects are new (see "Per-gallery password and expiration" above and
+    "Lightbox appearance" in the `preview.html` section below).
+- **Gallery list view: cards or a compact list, toggled per viewer.** `_galleryViewMode`
+  (`'cards'`|`'list'`), persisted in `localStorage['delyvr_gallery_view_mode']`, **the
+  first use of `localStorage` anywhere in `admin.html`**, deliberately scoped to this one
+  key: a non-sensitive display preference, explicitly distinct from "the admin password is
+  never put in persistent storage" (that rule is about a secret, this is cosmetic).
+  `renderGalleryItems()` picks `renderGalleryItemHtml`/`renderGalleryItemRowHtml` per
+  gallery based on the mode. Both renderers share two extracted templates so the two views
+  cannot drift apart and **nothing from the card is missing in the list**:
+  `renderGalleryActionsHtml(g, manual)` (the full `.gallery-actions` icon cluster) and
+  `renderGalleryStatusIconsHtml(g)` (new: a public globe, always shown; a padlock,
+  open/closed per `g.hasPassword`, click-through to the gallery's own settings; a clock,
+  shown only when `g.expiresAt` is set, styled as a warning once past it, using
+  `formatExpirationDate()`, **not** `formatAdminDate()`, see "Per-gallery password and
+  expiration" above for why). The list row additionally shows `lastModified` with **no new
+  column**: `server.js`'s `/api/galleries` already runs `fs.statSync(galleryPath)` per
+  gallery for other reasons, so `stats.mtime` is exposed for free.
+  - **A class collision bit this during development, worth remembering**: the list row's
+    downloads/comments/language cluster (`.gallery-row-toggles`) was first given
+    `class="gallery-row-col gallery-row-toggles …"` to borrow `.gallery-row-col`'s width
+    rule, but `.gallery-row-col { display: none }` under `900px` then hid it too, since CSS
+    has no way to say "this rule, except for elements that also have this other class."
+    Fixed by giving `.gallery-row-toggles` its own width rule instead of sharing one via a
+    second class. If a future column needs to borrow sizing from `.gallery-row-col`, give it
+    its own rule rather than stacking the class: the same trap is still there otherwise.
 - **Gallery picker (for collections):** multi-select. Toggling a gallery adds/removes it from `_pickerSelected` Set. Confirm button shows count and adds all at once.
 - Collection pills: drag to reorder (desktop) or ◀ ▶ buttons (visible on mobile via `@media (hover: none)`).
 - `_galleriesData` cache populated in `loadGalleries()`, used by `renderCollections()` for pill labels and gallery picker.
@@ -878,6 +1057,16 @@ Loaded by all client pages via `<script src="/shared.js">` before their inline `
   - **No extra height is needed, and `inset: 0` must stay.** Shifting down by `D = k · scrollY` with `k ≤ 1` keeps `D ≤ scrollY`, while the still-visible slice of the hero starts at `scrollY` — so the photo's top edge is always above it and no gap can open; the bottom overflow is clipped by `.hero`'s existing `overflow: hidden`. Leaving `inset: 0` alone also preserves the photographer's chosen framing exactly, at rest. `transform` is deliberately **absent** from `.hero-bg`'s `transition` list (opacity only), or every frame would lag behind the scroll.
 
   It hooks into the file's **single** scroll listener (`updateFooterVisibility`) and coalesces into one `requestAnimationFrame` write — which also keeps the write out of the handler that reads layout via `placeAudioButton()`, so there is no thrash. `scrollToGallery()`'s `behavior: 'smooth'` emits scroll events, so the button path gets the effect for free. This is the **first and only** `prefers-reduced-motion` guard in the file; the smooth scroll, the `fadeUp` title animation and the slideshow remain unguarded.
+- **Lightbox appearance is a per-gallery setting** (`galleries.lightbox_size`/
+  `grid_spacing`/`corner_style`, default `'medium'`/`'medium'`/`'square'`, chosen so a
+  default gallery looks pixel-identical to before this setting existed), set from the
+  gallery's Settings panel in `admin.html` and read from `GET /info`.
+  `applyGalleryAppearance(info)` runs right after that fetch, before `renderGallery()`
+  reads layout. Size and spacing are **multipliers** (`{small:0.75, medium:1, large:1.3}`
+  and `{small:0.5, medium:1, large:1.5}`) applied inside `getTargetRowHeight()`/
+  `getRowGap()`, so `'medium'` is an exact no-op against the existing breakpoint tables.
+  Corners are pure CSS: a `--photo-radius` custom property (`8px` or unset/`0px`) consumed
+  by `.photo-card`'s `border-radius`.
 - Justified/row-based gallery: photos grouped into `.gallery-row` flex rows built in JS, recomputed on resize.
 - Photos sorted server-side by filename stem (name without extension), extension as tiebreaker — see the preview.html layout section above.
 - Lightbox preloads N-1 and N+1 previews via `new Image()` on each navigation.
@@ -948,7 +1137,7 @@ resolved from `data.clientLanguage` via `resolveClientLocale()`, gallery covers 
 - **Password never stored in sessionStorage.** Kept in `adminPassword` JS variable only.
 - **`?password` query param removed.** `requireAuth` only checks `X-Admin-Password` header.
 - **Visitor IDs are not authenticated.** Random client-generated strings, not security-sensitive.
-- **Gallery links are public by UUID.** No per-gallery password system.
+- **Gallery links are public by UUID by default.** A gallery may optionally carry its own password and/or expiration date (`galleries.password_hash`/`expires_at`, both `NULL` by default): see "Per-gallery password and expiration" above. Opt-in only: a gallery with neither set behaves exactly as before this feature existed.
 - **Soft-delete only.** `DELETE /api/gallery/:id` never removes files. `hardDeleteGallery(id)` does, via `ops.deleteGalleryRow()` — no separate "save" step needed, the `DELETE` statement (and its `ON DELETE CASCADE`s) commit on their own. Auto-purge runs on startup **and** hourly via `purgeExpiredTrash()` (a `setInterval` — not startup-only, or expired trash never clears on a long-running server).
 - **`getActiveGallery(galleryId)`** returns the mapped gallery object only if it exists and `deleted = 0`. Use it in all public routes to return 404 for trashed galleries.
 - **`db.transaction(fn)` for anything touching more than one table/statement**, even when a single statement would already be atomic on its own — see every multi-table write in `db/operations.js` and `server.js` for the pattern (`db.transaction(() => { ... })()` — called immediately).
