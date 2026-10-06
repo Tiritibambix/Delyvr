@@ -422,16 +422,9 @@ the card.**
   compact at first on the grounds that the bar is dense, but the bar is what *takes over
   from the hero on scroll* — so shrinking there made the control visibly morph mid-page,
   which reads as a glitch rather than as responsive design. The same button throughout is
-  worth the width. Two consequences that come with it:
-  - On `max-width: 768px` the bar's copy drops to `padding: 9px 12px; font-size: 11px`,
-    the metrics `.back-to-collection` already uses there, so the back link, the montage
-    button and the slideshow button still fit (verified with no overflow at 360 px). The
-    **label is not dropped** at any width: losing it on scroll is the exact morph this
-    variant exists to prevent, which is also why it does not copy `.slideshow-btn`'s
-    label-drop at 480 px.
-  - `.back-to-collection span` gained `overflow: hidden; text-overflow: ellipsis` on
-    mobile. The wider montage button leaves it less room, and it is `white-space: nowrap`,
-    so without this it spilled past its box instead of truncating.
+  worth the width. Its **label is not dropped at any width**: losing it on scroll is the
+  exact morph this variant exists to prevent. How the three bar buttons are sized on a
+  phone, and why all three now carry a word, is in "The sticky bar on a phone" below.
 
   This is not a new mechanism: the styling was **already** per host via descendant
   selectors (`.hero-actions .audio-player`, …), so the wide variant is one more branch of
@@ -441,6 +434,21 @@ the card.**
     `audioBtnPause` ("Lancer l'audio"), written in `updateMontageButton()` next to the
     `title`, which keeps the tooltip-phrased `playMontage`/`pauseMontage` ("Écouter le
     montage"). Don't collapse the two pairs.
+  - **The icon is a fixed headphones glyph and does not change with playback state.** It
+    used to swap a play triangle for pause bars, and that triangle was **byte for byte**
+    the slideshow button's icon: in the sticky bar the two sat side by side rendering the
+    same 14 px shape, and in the slideshow toolbar the montage button sat next to the
+    slideshow's *own* play control. The same triangle also marks "this thumbnail is a
+    video", so it carried four unrelated meanings. The glyph now says **what the button
+    is**; the label, the progress bar (the ring, in the icon-only hosts) and the
+    `title`/`aria-label` say what it is **doing**. `updateMontageButton()` therefore no
+    longer toggles any icon, and there is a single `#audioIcon`, not a `Play`/`Pause`
+    pair. The slideshow button became a screen with a triangle inside it, so exactly one
+    triangle remains in the bar and it is enclosed, reading as "plays full screen".
+    Both new icons are **stroked** (`fill="none" stroke="currentColor" stroke-width="2"`,
+    round caps), the house convention for chrome and navigation icons; a solid fill is
+    reserved for genuine transport controls, which is why the video badge and the
+    slideshow's internal play button keep theirs.
   - **The `conic-gradient` progress ring only works on a circle.** `border-radius: 50%`
     plus a `radial-gradient(farthest-side, …)` mask turn into an ellipse of uneven
     thickness on a wide button. The wide hosts therefore disable `::before` and use an
@@ -453,6 +461,29 @@ the card.**
     collection index, where `.coll-audio-wrap` is a page-wide centring flex box.
   - Any new per-host rule **must re-declare** `opacity .14s ease, transform .14s ease` in
     its `transition`, or it silently drops the cross-fade (see below).
+- **The sticky bar on a phone: one block, and its position is load-bearing.** All three bar
+  buttons (back link, montage, slideshow) are sized by a single `@media (max-width: 768px)`
+  block, and that block **must stay after every rule it overrides**: the shared
+  `.show-gallery-btn, .back-to-collection, .slideshow-btn` set, the `.critique-indicator`
+  base rule, and the wide `.actions-bar .audio-player` variant. A media query adds **no**
+  specificity, so at equal specificity only source order decides. This is not hypothetical:
+  the original mobile rule for `.back-to-collection` was written *before* the shared set
+  and was therefore **entirely dead**, rendering the link at 13 px/18 px instead of
+  11 px/12 px and wasting 43 px in a bar that was already overflowing. Moving the block up
+  reverts three of its four rules silently, and it is easy to miss because the fourth keeps
+  working.
+  - Under **480 px the back link keeps only its arrow**. The bar cannot hold three labels,
+    and a back arrow is unambiguous, which the two identical play triangles were not; the
+    width is spent where the ambiguity actually hurt. Above 480 px the text returns.
+  - The **critique chip** loses its word under 480 px and disappears entirely under 360 px.
+    It is a passive indicator, every photo already carries its number, and it was the
+    single most expensive item in the bar at 101 px measured (34 px once reduced).
+  - Measured at 360 px, natural widths, worst-case collection mode: 79 px of slack in
+    French, 59 in Italian, 55 in Spanish (the widest locale, "Escuchar el audio"); 39/19/15
+    with the critique chip, and 39/19/15 again at 320 px where the chip is hidden. Re-run
+    those measurements before changing any metric in that block.
+  - `backToCollection` carries **no literal `←`** in any locale. Four of the five used to,
+    on top of the button's own arrow SVG, so those four rendered two arrows.
 - **The button is docked into existing chrome, never floating.** As a `position: fixed`
   overlay it collided with the hero title, the photos, the footer and the lightbox's "@"
   widget — and, being a *sibling* of `.lightbox`, it **vanished in fullscreen**, since

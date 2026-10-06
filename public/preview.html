@@ -190,19 +190,23 @@
 
         @media (max-width: 768px) {
             .actions-bar {
-                padding: 10px 12px;
-                gap: 8px;
+                /* 10px side padding and a 6px gutter rather than 12/8: the bar carries up
+                   to four items on a phone and every pixel here is one the labels keep. */
+                padding: 10px 10px;
+                gap: 6px;
                 backdrop-filter: none;
                 background: color-mix(in srgb, var(--bg-primary) 97%, transparent);
             }
+            /* Layout only. The padding and font-size that used to live here were DEAD:
+               this media query sits before the shared `.show-gallery-btn, .back-to-collection,
+               .slideshow-btn` rule set, a media query adds no specificity, and at equal
+               specificity the later rule wins. The link therefore rendered at 13px/18px
+               instead of 11px/12px, wasting 43px of a bar that was already overflowing.
+               The real mobile sizing now lives in one block AFTER that rule set. */
             .back-to-collection {
                 flex: 1;
                 justify-content: center;
                 min-width: 0;
-                padding: 9px 12px;
-                font-size: 11px;
-            }
-            .back-to-collection {
                 margin-right: 0;
             }
         }
@@ -258,13 +262,6 @@
             flex-shrink: 0;
         }
 
-        /* The label is the first thing to go on a narrow phone: the actions bar also
-           carries the back link and the montage button, and the play triangle alone
-           still reads as "start". */
-        @media (max-width: 480px) {
-            .slideshow-btn { padding: 9px 11px; }
-            .slideshow-btn span { display: none; }
-        }
 
         .download-all-btn {
             display: inline-flex;
@@ -1825,18 +1822,54 @@
         }
         html.light .actions-bar .audio-player:hover { background: var(--bg2); border-color: var(--muted); }
 
-        /* On a phone the bar can hold the back link, the montage button and the
-           slideshow button at once, so the montage button adopts the same reduced
-           metrics .back-to-collection already uses there. Keeping the 13px/18px desktop
-           size would have squeezed the back link until its text overflowed. The label
-           itself is NOT dropped: losing it on scroll is exactly the morph this variant
-           exists to avoid. */
+        /* ── Sticky bar on a phone ───────────────────────────────────────────
+           POSITION IS LOAD-BEARING. This block must come after every rule it overrides:
+           the shared `.show-gallery-btn, .back-to-collection, .slideshow-btn` set, the
+           `.critique-indicator` base rule, and the wide `.actions-bar .audio-player`
+           variant just above. A media query adds no specificity, so at equal specificity
+           only source order decides. Putting it earlier is exactly the bug this fixes,
+           and putting it earlier again silently reverts three of the four rules below,
+           which is easy to miss because the fourth keeps working.
+
+           It sizes the three bar buttons identically, which they never were
+           (.slideshow-btn had no ≤768px rule at all and stayed at 13px/18px between 481
+           and 768px while its neighbours shrank), and drops the montage button's 16px
+           icon to the 14px its neighbours use.
+
+           The ellipsis workaround that used to live here is gone: the back link drops its
+           label under 480px instead of truncating. The montage button's label is NOT
+           dropped at any width, since losing it on scroll is the morph the wide variant
+           exists to prevent. */
         @media (max-width: 768px) {
-            .actions-bar .audio-player { padding: 9px 12px; font-size: 11px; }
-            .actions-bar .audio-player svg { width: 14px; height: 14px; }
-            /* Consequence of the wider montage button: the back link now has less room,
-               so let it ellipsise instead of spilling past its box (it is nowrap). */
-            .back-to-collection span { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+            .back-to-collection,
+            .actions-bar .audio-player,
+            .slideshow-btn {
+                font-size: 11px;
+                padding: 9px 10px;
+                gap: 6px;
+            }
+            .back-to-collection svg,
+            .actions-bar .audio-player svg,
+            .slideshow-btn svg {
+                width: 14px;
+                height: 14px;
+            }
+        }
+
+        /* Under 480px the bar cannot hold three labels, so one has to go. It is the back
+           link's: a back ARROW is unambiguous, which is exactly what the two play triangles
+           were not. The width is spent where the ambiguity actually hurt. */
+        @media (max-width: 480px) {
+            .back-to-collection span { display: none; }
+            .back-to-collection { flex: 0 0 auto; padding: 9px 11px; }
+            /* The critique chip is a passive indicator, and every photo already carries its
+               number, so its word is the cheapest thing in the bar to drop. It is also the
+               single most expensive item when shown: 101px measured. */
+            .critique-indicator { font-size: 0; padding: 9px 9px; gap: 0; }
+        }
+        /* Below 360px even the chip's icon does not fit alongside three controls. */
+        @media (max-width: 359px) {
+            .critique-indicator { display: none !important; }
         }
 
         /* Lightbox desktop: bare 20px icon continuing the right-hand control stack. */
@@ -1876,9 +1909,15 @@
                  conditional layout code. -->
             <div class="hero-actions-stack">
                 <span id="heroAudioSlot">
+                    <!-- Headphones, and deliberately NOT a play/pause pair. This glyph says
+                         WHAT the button is; the label ("Lancer l'audio" / "Mettre en pause")
+                         and the 2px progress bar say what it is DOING. The old play triangle
+                         was byte-for-byte the slideshow button's icon, and in the slideshow
+                         toolbar it sat right next to the slideshow's own play control. Outline
+                         style matches the back arrow beside it (chrome icons are stroked here;
+                         only real transport controls are filled). -->
                     <button class="audio-player" id="audioPlayer" onclick="toggleMontage()">
-                        <svg id="audioIconPlay" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
-                        <svg id="audioIconPause" viewBox="0 0 24 24" fill="currentColor" style="display:none"><path d="M6 5h4v14H6zM14 5h4v14h-4z"/></svg>
+                        <svg id="audioIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 14h3a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-7a9 9 0 0 1 18 0v7a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3"/></svg>
                         <span class="audio-btn-label" id="audioBtnText"></span>
                     </button>
                 </span>
@@ -1905,8 +1944,12 @@
             Critique
         </span>
         <span id="barAudioSlot"></span>
+        <!-- A screen with a play triangle inside it. The bare triangle this replaces was
+             identical to the audio button's. Keeping a triangle but enclosing it says
+             "plays full screen" rather than just "play", and it is now the only triangle
+             in the bar. Outline frame, filled triangle, legible down to 14px. -->
         <button class="slideshow-btn" id="slideshowBtn" onclick="openSlideshow()" style="display:none;">
-            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M12 17v4M8 21h8"/><path d="M10 8.5l4 2.5-4 2.5z" fill="currentColor" stroke="none"/></svg>
             <span id="slideshowBtnText"></span>
         </button>
     </div>
@@ -2109,7 +2152,7 @@
                 loadingGallery: 'Loading gallery...',
                 notFoundTitle: 'Gallery Not Found',
                 notFoundText: 'This gallery may have been removed or the link is incorrect.',
-                backToCollection: '← Back to collection',
+                backToCollection: 'Back to collection',
                 favAdded: '♥ Saved to favorites',
                 favRemoved: 'Removed from favorites',
                 comments: 'Comments',
@@ -2147,7 +2190,7 @@
                 loadingGallery: 'Carregando galeria...',
                 notFoundTitle: 'Galeria Não Encontrada',
                 notFoundText: 'Esta galeria pode ter sido removida ou o link está incorreto.',
-                backToCollection: '← Voltar à coleção',
+                backToCollection: 'Voltar à coleção',
                 favAdded: '♥ Salvo nos favoritos',
                 favRemoved: 'Removido dos favoritos',
                 comments: 'Comentários',
@@ -2185,7 +2228,7 @@
                 loadingGallery: 'Cargando galería...',
                 notFoundTitle: 'Galería No Encontrada',
                 notFoundText: 'Esta galería puede haber sido eliminada o el enlace es incorrecto.',
-                backToCollection: '← Volver a la colección',
+                backToCollection: 'Volver a la colección',
                 favAdded: '♥ Guardado en favoritos',
                 favRemoved: 'Eliminado de favoritos',
                 comments: 'Comentarios',
@@ -2223,7 +2266,7 @@
                 loadingGallery: 'Caricamento galleria...',
                 notFoundTitle: 'Galleria Non Trovata',
                 notFoundText: 'Questa galleria potrebbe essere stata rimossa o il link non è corretto.',
-                backToCollection: '← Torna alla collezione',
+                backToCollection: 'Torna alla collezione',
                 favAdded: '♥ Salvato nei preferiti',
                 favRemoved: 'Rimosso dai preferiti',
                 comments: 'Commenti',
@@ -3942,8 +3985,9 @@
         function updateMontageButton() {
             const el = document.getElementById('montageAudio');
             const playing = !el.paused && !el.ended;
-            document.getElementById('audioIconPlay').style.display  = playing ? 'none' : 'block';
-            document.getElementById('audioIconPause').style.display = playing ? 'block' : 'none';
+            // No icon swap any more: the glyph is a fixed headphones. Playback state is
+            // carried by the label below, by the progress bar (or the ring, in the icon-only
+            // hosts) and by the title/aria-label. See the markup comment on #audioIcon.
             const btn = document.getElementById('audioPlayer');
             btn.title = playing ? t.pauseMontage : t.playMontage;
             btn.setAttribute('aria-label', btn.title);
