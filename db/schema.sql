@@ -59,7 +59,11 @@ CREATE TABLE IF NOT EXISTS collections (
     grid_layout        TEXT NOT NULL DEFAULT 'justified' CHECK (grid_layout IN ('justified','masonry','square','column')),
     lightbox_size      TEXT NOT NULL DEFAULT 'medium' CHECK (lightbox_size IN ('small','medium','large')),
     grid_spacing       TEXT NOT NULL DEFAULT 'medium' CHECK (grid_spacing  IN ('small','medium','large')),
-    corner_style       TEXT NOT NULL DEFAULT 'square'  CHECK (corner_style IN ('rounded','square'))
+    corner_style       TEXT NOT NULL DEFAULT 'square'  CHECK (corner_style IN ('rounded','square')),
+    -- Collection protection: same format and meaning as galleries.password_hash /
+    -- expires_at, but covering the index AND every member gallery (see server.js).
+    password_hash      TEXT,
+    expires_at         TEXT
     -- Deliberately NO deleted/deleted_at/sort_order columns: collections have no
     -- trash and no manual card ordering today — DELETE /api/collection/:id is a
     -- straight hard delete that never touches member galleries.

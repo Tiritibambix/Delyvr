@@ -140,12 +140,13 @@
                         <p class="settings-row-help" id="gsPasswordHelp"></p>
                         <div class="settings-inline">
                             <input type="password" id="gsPasswordInput" placeholder="New password" autocomplete="new-password"
-                                   onkeydown="if (event.key === 'Enter') saveGalleryPassword()">
-                            <button class="settings-btn" id="gsPasswordSaveBtn" onclick="saveGalleryPassword()">Save</button>
+                                   onkeydown="if (event.key === 'Enter') savePassword('gallery')">
+                            <button class="settings-btn" id="gsPasswordSaveBtn" onclick="savePassword('gallery')">Save</button>
                         </div>
-                        <button class="settings-link-btn" id="gsPasswordClearBtn" onclick="clearGalleryPassword()" style="display:none">
+                        <button class="settings-link-btn" id="gsPasswordClearBtn" onclick="clearPassword('gallery')" style="display:none">
                             <span id="gsPasswordClearBtnText">Remove the password</span>
                         </button>
+                        <p class="settings-row-help is-warning" id="gsPasswordCollectionNote" style="display:none"></p>
                     </div>
                     <div class="settings-block">
                         <div class="settings-block-head">
@@ -160,11 +161,12 @@
                              rejects past and implausibly distant dates as a backstop. -->
                         <div class="settings-inline">
                             <input type="date" id="gsExpirationInput">
-                            <button class="settings-btn" id="gsExpirationSaveBtn" onclick="saveGalleryExpiration(document.getElementById('gsExpirationInput').value)">Save</button>
+                            <button class="settings-btn" id="gsExpirationSaveBtn" onclick="saveExpiration('gallery', document.getElementById('gsExpirationInput').value)">Save</button>
                         </div>
-                        <button class="settings-link-btn" id="gsExpirationClearBtn" onclick="saveGalleryExpiration(null)" style="display:none">
+                        <button class="settings-link-btn" id="gsExpirationClearBtn" onclick="saveExpiration('gallery', null)" style="display:none">
                             <span id="gsExpirationClearBtnText">Remove the date</span>
                         </button>
+                        <p class="settings-row-help is-warning" id="gsExpirationCollectionNote" style="display:none"></p>
                     </div>
                 </section>
 
@@ -301,6 +303,46 @@
                             <option value="pt">Português</option>
                             <option value="it">Italiano</option>
                         </select>
+                    </div>
+                </section>
+                <!-- Protects the collection index AND every gallery in it, wherever the
+                     gallery is opened from: one unlock opens them all (see server.js,
+                     requireGalleryUnlock()). Same controls as the gallery panel's,
+                     driven by the same functions with kind 'collection'. -->
+                <section class="settings-section">
+                    <h4 class="settings-section-title">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="10" width="18" height="12" rx="2"/><path d="M7 10V7a5 5 0 0 1 10 0v3"/><circle cx="12" cy="16" r="1.5"/></svg>
+                        <span id="csSecurityLabel">Protection</span>
+                    </h4>
+                    <div class="settings-block">
+                        <div class="settings-block-head">
+                            <span class="settings-row-label" id="csPasswordLabel">Password</span>
+                            <span class="settings-status" id="csPasswordStatus"></span>
+                        </div>
+                        <p class="settings-row-help" id="csPasswordHelp"></p>
+                        <div class="settings-inline">
+                            <input type="password" id="csPasswordInput" placeholder="New password" autocomplete="new-password"
+                                   onkeydown="if (event.key === 'Enter') savePassword('collection')">
+                            <button class="settings-btn" id="csPasswordSaveBtn" onclick="savePassword('collection')">Save</button>
+                        </div>
+                        <button class="settings-link-btn" id="csPasswordClearBtn" onclick="clearPassword('collection')" style="display:none">
+                            <span id="csPasswordClearBtnText">Remove the password</span>
+                        </button>
+                    </div>
+                    <div class="settings-block">
+                        <div class="settings-block-head">
+                            <span class="settings-row-label" id="csExpirationLabel">Expiration date</span>
+                            <span class="settings-status" id="csExpirationStatus"></span>
+                        </div>
+                        <p class="settings-row-help" id="csExpirationHelp"></p>
+                        <!-- Explicit button only, never on `change`: same reason as the gallery's. -->
+                        <div class="settings-inline">
+                            <input type="date" id="csExpirationInput">
+                            <button class="settings-btn" id="csExpirationSaveBtn" onclick="saveExpiration('collection', document.getElementById('csExpirationInput').value)">Save</button>
+                        </div>
+                        <button class="settings-link-btn" id="csExpirationClearBtn" onclick="saveExpiration('collection', null)" style="display:none">
+                            <span id="csExpirationClearBtnText">Remove the date</span>
+                        </button>
                     </div>
                 </section>
                 <!-- The default client grid of the collection's galleries: every gallery
@@ -1236,6 +1278,18 @@
             byId('gsExpirationSaveBtn', t.save);
             const gsPwInput = document.getElementById('gsPasswordInput');
             if (gsPwInput) gsPwInput.placeholder = t.gsPasswordPlaceholder;
+            // The collection panel's protection: same labels, its own help lines.
+            byId('csSecurityLabel', t.gsSecurityLabel);
+            byId('csPasswordLabel', t.gsPasswordLabel);
+            byId('csPasswordHelp', t.csPasswordHelp);
+            byId('csPasswordClearBtnText', t.clearPassword);
+            byId('csPasswordSaveBtn', t.save);
+            byId('csExpirationLabel', t.gsExpirationLabel);
+            byId('csExpirationHelp', t.csExpirationHelp);
+            byId('csExpirationClearBtnText', t.clearExpiration);
+            byId('csExpirationSaveBtn', t.save);
+            const csPwInput = document.getElementById('csPasswordInput');
+            if (csPwInput) csPwInput.placeholder = t.gsPasswordPlaceholder;
             byId('gsAppearanceLabel', t.gsAppearanceLabel);
             byId('gsAppearanceIntro', t.gsAppearanceIntro);
             byId('gsSizeLabel', t.gsLightboxSizeLabel);
@@ -2839,7 +2893,8 @@
         // a padlock when the gallery has a password, a clock when it has an
         // expiration date (red once past it). A gallery with neither shows
         // nothing, since being reachable by its link is the normal state, not
-        // a status worth an icon on every row.
+        // a status worth an icon on every row. Collection rows and the collection
+        // page use it too (collectionStatusIconsHtml()), with the same fields.
         function renderGalleryStatusIconsHtml(g) {
             const lockSvg = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>`;
             const clockSvg = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>`;
@@ -2851,6 +2906,16 @@
                 icons.push(`<span class="gallery-status-icon${g.isExpired ? ' gallery-status-expired' : ''}" title="${g.isExpired ? t.galleryStatusExpired : t.galleryStatusExpires(formatExpirationDate(g.expiresAt))}">${clockSvg}</span>`);
             }
             return icons.length ? `<span class="gallery-status-icons">${icons.join('')}</span>` : '';
+        }
+
+        // /api/collections sends hasPassword and expiresAt but no isExpired (the
+        // galleries list computes that server-side), so it is derived here.
+        function collectionStatusIconsHtml(c) {
+            return renderGalleryStatusIconsHtml({
+                hasPassword: !!c.hasPassword,
+                expiresAt: c.expiresAt || null,
+                isExpired: !!c.expiresAt && c.expiresAt < new Date().toISOString()
+            });
         }
 
         function renderGalleryItemHtml(g) {
@@ -3793,52 +3858,77 @@
                 syncPasswordStatus(g.hasPassword);
                 syncExpirationField(g.expiresAt);
             }
+            syncCollectionProtectionNotes(col);
         }
 
-        function syncPasswordStatus(hasPassword) {
-            if (_gallerySettings) _gallerySettings.hasPassword = hasPassword;
-            const status = document.getElementById('gsPasswordStatus');
+        // The gallery and collection settings panels share their protection
+        // controls (password, expiration date). `kind` picks the element ids (gs*
+        // or cs*), the owner, its API path and the state object kept in sync: the
+        // gallery panel's _gallerySettings, or the collection's _collectionsData
+        // entry (which the collection rows and page also render from).
+        function protectionTarget(kind) {
+            if (kind === 'collection') {
+                const id = _collectionDetailId;
+                return { prefix: 'cs', api: 'collection', id, state: (_collectionsData || []).find(c => c.id === id) || null };
+            }
+            return { prefix: 'gs', api: 'gallery', id: _galleryDetailId, state: _gallerySettings };
+        }
+
+        // After a collection's protection changed: its row and page show it.
+        function refreshCollectionProtectionViews(kind) {
+            if (kind !== 'collection') return;
+            if (_collectionsData) renderCollections(_collectionsData);
+            renderCollectionDetailPage();
+        }
+
+        function syncPasswordStatus(hasPassword, kind = 'gallery') {
+            const { prefix, state } = protectionTarget(kind);
+            if (state) state.hasPassword = hasPassword;
+            const status = document.getElementById(`${prefix}PasswordStatus`);
             status.textContent = hasPassword ? t.passwordIsSet : t.passwordNotSet;
             status.className = 'settings-status' + (hasPassword ? ' is-on' : '');
-            document.getElementById('gsPasswordClearBtn').style.display = hasPassword ? '' : 'none';
+            document.getElementById(`${prefix}PasswordClearBtn`).style.display = hasPassword ? '' : 'none';
         }
 
-        async function saveGalleryPassword() {
-            const galleryId = _galleryDetailId;
-            const password = document.getElementById('gsPasswordInput').value;
+        async function savePassword(kind) {
+            const { prefix, api, id } = protectionTarget(kind);
+            const input = document.getElementById(`${prefix}PasswordInput`);
+            const password = input.value;
             if (!password) return; // removing a password is its own button, not an empty Save
             try {
-                const res = await fetch(`/api/gallery/${galleryId}/password`, {
+                const res = await fetch(`/api/${api}/${id}/password`, {
                     method: 'PATCH',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ password })
                 });
                 if (!res.ok) throw new Error('Failed');
-                document.getElementById('gsPasswordInput').value = '';
-                syncPasswordStatus(true);
+                input.value = '';
+                syncPasswordStatus(true, kind);
+                refreshCollectionProtectionViews(kind);
             } catch (err) {
                 showError(t.couldNotUpdatePassword);
             }
         }
 
-        async function clearGalleryPassword() {
-            const galleryId = _galleryDetailId;
+        async function clearPassword(kind) {
+            const { prefix, api, id } = protectionTarget(kind);
             try {
-                const res = await fetch(`/api/gallery/${galleryId}/password`, {
+                const res = await fetch(`/api/${api}/${id}/password`, {
                     method: 'PATCH',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ password: null })
                 });
                 if (!res.ok) throw new Error('Failed');
-                document.getElementById('gsPasswordInput').value = '';
-                syncPasswordStatus(false);
+                document.getElementById(`${prefix}PasswordInput`).value = '';
+                syncPasswordStatus(false, kind);
+                refreshCollectionProtectionViews(kind);
             } catch (err) {
                 showError(t.couldNotUpdatePassword);
             }
         }
 
-        async function saveGalleryExpiration(value) {
-            const galleryId = _galleryDetailId;
+        async function saveExpiration(kind, value) {
+            const { api, id, state } = protectionTarget(kind);
             // Same bounds the server enforces, checked first so a half-typed year
             // is caught here with a clear message instead of a round trip.
             if (value) {
@@ -3847,7 +3937,7 @@
                 if (value > max) { showError(t.expirationTooFar); return; }
             }
             try {
-                const res = await fetch(`/api/gallery/${galleryId}/expiration`, {
+                const res = await fetch(`/api/${api}/${id}/expiration`, {
                     method: 'PATCH',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ expiresAt: value || null })
@@ -3859,8 +3949,9 @@
                     throw new Error('Failed');
                 }
                 const data = await res.json();
-                if (_gallerySettings) _gallerySettings.expiresAt = data.expiresAt;
-                syncExpirationField(data.expiresAt);
+                if (state) state.expiresAt = data.expiresAt;
+                syncExpirationField(data.expiresAt, kind);
+                refreshCollectionProtectionViews(kind);
             } catch (err) {
                 showError(t.couldNotUpdateExpiration);
             }
@@ -3880,19 +3971,37 @@
         // Fills the expiration field and its status pill from a stored expires_at
         // (or null). The input reads expiresAt.slice(0, 10) directly: no Date
         // object, so no timezone shift (see formatExpirationDate()).
-        function syncExpirationField(expiresAt) {
-            const input = document.getElementById('gsExpirationInput');
+        function syncExpirationField(expiresAt, kind = 'gallery') {
+            const { prefix } = protectionTarget(kind);
+            const input = document.getElementById(`${prefix}ExpirationInput`);
             const { min, max } = expirationBounds();
             input.min = min;
             input.max = max;
             input.value = expiresAt ? expiresAt.slice(0, 10) : '';
-            document.getElementById('gsExpirationClearBtn').style.display = expiresAt ? '' : 'none';
-            const status = document.getElementById('gsExpirationStatus');
+            document.getElementById(`${prefix}ExpirationClearBtn`).style.display = expiresAt ? '' : 'none';
+            const status = document.getElementById(`${prefix}ExpirationStatus`);
             const expired = !!expiresAt && expiresAt < new Date().toISOString();
             if (!expiresAt) status.textContent = t.noExpiration;
             else if (expired) status.textContent = t.galleryStatusExpired;
             else status.textContent = t.galleryStatusExpires(formatExpirationDate(expiresAt));
             status.className = 'settings-status' + (expired ? ' is-expired' : (expiresAt ? ' is-on' : ''));
+        }
+
+        // In the gallery panel: what its collection's protection adds on top of the
+        // gallery's own (the collection's password is asked first; its expiration
+        // closes the gallery too). Hidden when the collection sets neither.
+        function syncCollectionProtectionNotes(col) {
+            const pwNote = document.getElementById('gsPasswordCollectionNote');
+            const expNote = document.getElementById('gsExpirationCollectionNote');
+            const hasPw = !!(col && col.hasPassword);
+            pwNote.style.display = hasPw ? '' : 'none';
+            pwNote.textContent = hasPw ? t.gsCollectionPasswordNote(col.name) : '';
+            const exp = col && col.expiresAt;
+            expNote.style.display = exp ? '' : 'none';
+            expNote.textContent = !exp ? ''
+                : (exp < new Date().toISOString()
+                    ? t.gsCollectionExpiredNote(col.name)
+                    : t.gsCollectionExpirationNote(col.name, formatExpirationDate(exp)));
         }
 
         function onGalleryAppearanceChange() {
@@ -5196,7 +5305,7 @@
                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
                             </button>
                         </div>
-                        <div class="gallery-meta">${meta}</div>
+                        <div class="gallery-meta">${meta}${collectionStatusIconsHtml(c)}</div>
                         <div class="gallery-bottom gallery-detail-panel">
                             <label class="downloads-toggle" title="${t.allowDownloads}">
                                 <span class="toggle-switch">
@@ -5319,7 +5428,7 @@
             removeBtn.title = t.removeAudio;
 
             const n = c.galleryIds.length;
-            count.textContent = `${n} ${n === 1 ? t.gallerySingular : t.galleryPlural}`;
+            count.innerHTML = `${n} ${n === 1 ? t.gallerySingular : t.galleryPlural}${collectionStatusIconsHtml(c)}`;
             hint.textContent = n > 1 ? t.collectionReorderHint : '';
             if (!n) {
                 grid.innerHTML = `<button type="button" class="photos-empty-drop" onclick="openGalleryPicker(_collectionDetailId)">
@@ -5437,7 +5546,9 @@
             document.getElementById('csDownloadsCheckbox').checked = c.downloadsEnabled !== false;
             document.getElementById('csCommentsCheckbox').checked = c.commentsEnabled !== false;
             document.getElementById('csClientLanguage').value = c.clientLanguage || 'auto';
-            const n = c.galleryIds.length;
+            document.getElementById('csPasswordInput').value = '';
+            syncPasswordStatus(!!c.hasPassword, 'collection');
+            syncExpirationField(c.expiresAt || null, 'collection');
             document.getElementById('csIntro').textContent = t.collectionSettingsIntro;
             document.getElementById('collectionSettingsModal').classList.add('active');
             document.querySelector('#collectionSettingsModal .side-panel-body').scrollTop = 0;

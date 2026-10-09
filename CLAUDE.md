@@ -122,7 +122,7 @@ connection open, so it's self-healing if a table were ever dropped by hand):
 | Table | Replaces | Notes |
 |---|---|---|
 | `galleries` | the old gallery JSON object's scalar fields | `id`, `event_name`, `created_at`, `background` (bookkeeping only — see below), `downloads_enabled`/`comments_enabled` (`INTEGER` 0/1, `NOT NULL DEFAULT 1`), `download_count`, `view_count`, `client_language` (`NULL` = "auto" — never the literal string), `deleted`/`deleted_at` (paired by a `CHECK`), `sort_order` (`NULL` = never manually reordered), `audio_filename`/`audio_stored`/`audio_size`/`audio_duration`/`audio_uploaded_at` (all-or-nothing, enforced by a `CHECK`) |
-| `collections` | the old collection JSON object | same shape minus `deleted`/`deleted_at`/`sort_order` — collections have no trash and no manual card order |
+| `collections` | the old collection JSON object | same shape minus `deleted`/`deleted_at`/`sort_order`: collections have no trash and no manual card order. `password_hash`/`expires_at` protect the collection and all its galleries (see "Collection password and expiration") |
 | `collection_galleries` | `collection.galleryIds[]` | `(collection_id, gallery_id, position)` — `UNIQUE(gallery_id)` is what declares "a gallery belongs to at most one collection" instead of the old per-request scan of every collection; `position` preserves display order (this IS meaningful here, unlike `files` below) |
 | `files` | `gallery.files[]` **and** `gallery.dimensions{}` | one row per `(gallery_id, filename)` — membership and cached `width`/`height`/`duration`(video)/`animated`(image) live together now. **No `type`/`kind` column**: still derived from the extension via `isVideoFile()` at read time, same as before — storing it would be a redundant, driftable duplicate. **No proofing/rating/color/status columns yet** — the shape is already right for that work to be a plain `ALTER TABLE` when it starts, deliberately not added speculatively before then |
 | `favorites` | `gallery.favorites{}` | `(gallery_id, filename, visitor_id)` — `FOREIGN KEY (gallery_id, filename) REFERENCES files` means favoriting an already-deleted photo now 404s instead of silently creating a permanent orphan entry (see "Soft-delete and trash" and the photo-delete route — this is a deliberate, announced behavior change) |
@@ -214,11 +214,10 @@ CIDR matching is implemented with BigInt bitwise arithmetic using the Node built
 ### Per-gallery password and expiration
 
 A gallery may optionally carry a password (`galleries.password_hash`) and/or a link
-expiration date (`galleries.expires_at`), both `NULL` by default. This is **gallery-only**:
-collections do not have this feature in this version, deliberately. `GET /api/
-collection/:collectionId` still exposes every member gallery's name and cover with no
-gate of its own (a known, accepted limitation: covers are public on purpose, see below),
-and extending password/expiration to collections would need its own leak audit.
+expiration date (`galleries.expires_at`), both `NULL` by default. A **collection** can carry
+the same two settings, which then cover its index and every gallery in it: see "Collection
+password and expiration" at the end of this section. Everything below describes the
+gallery's own pair, and holds for the collection's unless that part says otherwise.
 
 **The photographer is never locked out of their own gallery.** The admin's gallery page
 loads its grid, thumbnails and ZIP through the same public routes visitors use, so both
@@ -232,13 +231,20 @@ minute); honouring the header there would turn each of them into an admin-passwo
 guessing oracle that bypasses `authLimiter`, the exact hole described in "Rate limiting".
 The session token is a CSPRNG `uuidv4()`, so honouring it is safe.
 
-**Every path that can hand out photos outside the per-gallery gates checks
-`galleryPhotosArePrivate(galleryId)`** (password set, or expiration passed):
-- the **collection ZIP** leaves such a member gallery out for visitors. In the first
-  version it did not, so downloading the collection bypassed a member gallery's password;
-- the **gallery OG image** never falls back to the first photo for such a gallery (a cover
-  is still used, covers are public); with no cover it returns 404;
-- the **collection OG image** skips such galleries when falling back to a first photo.
+**Every path that can hand out photos outside the per-gallery gates checks the gallery's
+privacy**, through one of two helpers: `galleryOwnPhotosArePrivate(galleryId)` (its own
+password set, or its own expiration passed) and `galleryPhotosArePrivate(galleryId)` (the
+same, **or** its collection's):
+- the **collection ZIP** leaves a member gallery with its own protection out for visitors
+  (`galleryOwnPhotosArePrivate`: the collection's own gates already ran on that route). In
+  the first version it did not, so downloading the collection bypassed a member gallery's
+  password;
+- the **gallery OG image** never falls back to the first photo for a gallery private by
+  either rule (`galleryPhotosArePrivate`; a cover is still used, covers are public); with
+  no cover it returns 404;
+- the **collection OG image** falls back to no photo at all when the collection itself is
+  private (`collectionIsPrivate()`), and otherwise skips member galleries with their own
+  protection.
 
 Setting, clearing or changing a password or an expiration calls
 `invalidateShareImages(galleryId)`, which drops the gallery's cached OG image and its
@@ -267,10 +273,18 @@ withheld and re-prompt an already-unlocked visitor every time. `Max-Age` ~30 day
 independent of `expires_at`.
 
 **Two composable middlewares**, next to `validateGalleryId`/`validateFilename`:
-- `checkGalleryExpiration`: 410 `gallery_expired` if `expires_at` is set and in the past.
-- `requireGalleryUnlock`: 401 `password_required` unless a valid unlock cookie is
-  presented. **No-ops instantly when `password_hash` is `NULL`**, which is the opt-in
-  guarantee: a gallery with neither set behaves exactly as before this feature existed.
+- `checkGalleryExpiration`: 410 `gallery_expired` if the gallery's `expires_at`, **or its
+  collection's**, is set and in the past.
+- `requireGalleryUnlock`: 401 `password_required` unless the visitor holds every unlock
+  the gallery needs: its collection's cookie first when the collection has a password
+  (`scope: 'collection'`, with `collectionId`), then its own (`scope: 'gallery'`). **No-ops
+  instantly when neither has a password**, which is the opt-in guarantee: a gallery with
+  nothing set, in a collection with nothing set, behaves exactly as before this feature
+  existed.
+
+Every 401/410 body also carries `clientLanguage` (the resolved one, as `/info` would send
+it): it is the only thing a locked visitor learns, and it lets the gate page speak their
+language.
 
 Chain order everywhere both apply: `<limiter>, validateGalleryId, checkGalleryExpiration,
 requireGalleryUnlock, <validateFilename if present>, <handler>`. Expiration is always
@@ -288,13 +302,16 @@ exceptions in this file (e.g. the `background` bookkeeping-only column):
 
 `GET /preview/:id` and `GET /favorites/:id` are **not** server-gated at all: the HTML shell
 and OG tags must always render for crawlers. `preview.html`'s `loadGallery()` branches on
-the `/info` fetch's status instead: `401` → `showPasswordGate()` (a new `#passwordGate`
-block, a form posting to `POST /api/gallery/:id/unlock`), `410` → `showExpiredState()`
-(reuses the existing generic `#notFound` block with two new i18n keys). Both run *before*
-`locale` is resolved from `info.clientLanguage`; there is no `info` yet in this branch, so
-the gate/expired text is unavoidably in the English fallback. `favorites.html` gets the same
-401/410 branching but with plain, untranslated text, consistent with that page's existing
-no-i18n posture (see "Comments" section below).
+the `/info` fetch's status instead: `401` → `showPasswordGate(kind, id, retry)` (the
+`#passwordGate` block, a form posting to `POST /api/<kind>/:id/unlock`, `kind` taken from the
+401's `scope`), `410` → `showExpiredState(kind)` (reuses the generic `#notFound` block).
+`applyGateLocale()` first resolves the locale from the refusal's `clientLanguage`, so both
+screens are in the visitor's language (they used to be English only, since nothing was
+handed over before the unlock). After a successful unlock the gate calls `retry`, which
+for a gallery in a protected collection with its own password means a second gate, for the
+gallery's. `favorites.html` gets the same 401/410 branching but with plain, untranslated
+text, consistent with that page's existing no-i18n posture (see "Comments" section below);
+its "open the gallery link first" message holds for a collection password too.
 
 **Admin-side**: `PATCH /api/gallery/:id/password` (`{password: string|null}`, never echoes
 the hash back, only `{hasPassword}`), `PATCH /api/gallery/:id/expiration`
@@ -302,7 +319,8 @@ the hash back, only `{hasPassword}`), `PATCH /api/gallery/:id/expiration`
 Settings panel (see `public/admin.html` section below).
 
 **The expiration date is a calendar date, not an instant: handle it as one everywhere.**
-`PATCH .../expiration` normalises the incoming `YYYY-MM-DD` to `${date}T23:59:59.999Z`
+`PATCH .../expiration` (gallery and collection alike, through `parseExpirationInput()`)
+normalises the incoming `YYYY-MM-DD` to `${date}T23:59:59.999Z`
 before storing, specifically to avoid expiring the gallery at midnight UTC on the chosen day
 (which would make the day the photographer picked already inaccessible). It then rejects a
 date that does not round-trip through `toISOString()` (calendar overflow such as
@@ -324,6 +342,43 @@ every other (genuinely instant-valued) date in the admin UI. The gallery-setting
 `<input type="date">` sidesteps the whole issue by reading `expiresAt.slice(0, 10)` directly
 off the ISO string: no `Date` object, no timezone conversion, since an HTML date input's
 value format already *is* `YYYY-MM-DD`.
+
+#### Collection password and expiration
+
+`collections.password_hash` / `expires_at` (same formats, both `NULL` by default, added
+through `COLLECTIONS_ADDED_COLUMNS`) protect the collection **and every gallery in it**,
+wherever the gallery is opened from: the collection page, or its own `/preview/:id` link
+shared separately. **One unlock opens them all**: `POST /api/collection/:id/unlock` sets
+`delyvr_unlock_c_<collectionId>`, signed by the same HMAC helpers with the subject
+`collection:<id>` (the prefix keeps a gallery token and a collection token from ever being
+accepted for one another). A gallery with **its own** password inside a protected
+collection asks for both, the collection's first. A gallery expires when its own date or
+its collection's has passed. The admin bypass (`isAdminRequest()`) applies unchanged.
+
+- **Collection routes**: `checkCollectionExpiration` (410 `collection_expired`) and
+  `requireCollectionUnlock` (401 `password_required`, `scope: 'collection'`) gate
+  `GET /api/collection/:id` (the index: without the unlock a visitor learns nothing, not
+  even the galleries' names), its ZIP and its montage. The cover route and the OG image stay
+  ungated, for the same reasons as a gallery's, and so does `GET /collection/:id` (the OG
+  tags show the collection's name, exactly as a protected gallery's show its own).
+- **Share images**: protecting, unprotecting or (un)expiring a collection calls
+  `invalidateCollectionShareImages()`, which drops its cached OG image and every member
+  gallery's. Adding a gallery to a protected collection drops that gallery's, which may
+  have been built from its first photo.
+- **Client**: `loadCollectionIndex()` resolves `false` when refused, and the bootstrap only
+  routes once it resolved `true` (`bootCollection()`, which is also the gate's retry, so a
+  deep-linked `#/gallery/:id` opens right after the unlock). `renderRoute()` returns early
+  while `_collectionData` is unset: a hash change must not reveal an empty index over the
+  gate.
+- **Admin**: a "Protection" section in the collection settings panel, the same controls as
+  the gallery's (`cs*` ids). `savePassword(kind)`, `clearPassword(kind)`,
+  `saveExpiration(kind, value)`, `syncPasswordStatus(…, kind)` and
+  `syncExpirationField(…, kind)` serve both panels through `protectionTarget(kind)`. The
+  collection's state lives in its `_collectionsData` entry (`hasPassword`/`expiresAt`, from
+  `/api/collections`), so its row and page redraw their padlock/clock
+  (`collectionStatusIconsHtml()`, built on `renderGalleryStatusIconsHtml()`) right after a
+  change. The gallery panel says when its collection adds a password or a date on top of
+  its own (`syncCollectionProtectionNotes()`).
 
 ### Path safety
 
@@ -849,7 +904,7 @@ Gallery names use `contenteditable="false"` by default. Double-clicking (or clic
 | `PATCH` | `/api/collection/:id/appearance` | ✓ | Set the default client photo grid of the collection's galleries |
 | `POST` | `/api/gallery/:id/unlock` | | Submit a gallery password; sets the per-gallery unlock cookie |
 | `PATCH` | `/api/gallery/:id/photo/:filename/flag` | ✓ | Set or clear a photo's proofing flag |
-| `GET` | `/api/gallery/:id/info` | | Metadata + totalSizeBytes (410 if expired, 401 if password-protected and locked) |
+| `GET` | `/api/gallery/:id/info` | | Metadata + totalSizeBytes (410 if it or its collection expired, 401 if a password, its collection's or its own, is still locked) |
 | `GET` | `/api/gallery/:id/photos` | | Photo list with URLs and dimensions |
 | `GET` | `/api/gallery/:id/photo/:filename` | | Serve photo; `?thumb=1` for 400px thumbnail, `?preview=1` for 1920px preview |
 | `GET` | `/api/gallery/:id/download` | | ZIP download (store mode, RFC 5987) |
@@ -889,7 +944,10 @@ Gallery names use `contenteditable="false"` by default. Double-clicking (or clic
 | `GET` | `/collection/:id` | | Collection page |
 | `POST` | `/api/collection/create` | ✓ | Create collection |
 | `GET` | `/api/collections` | ✓ | List collections |
-| `GET` | `/api/collection/:id` | | Collection info + totalSizeBytes |
+| `GET` | `/api/collection/:id` | | Collection info + totalSizeBytes (410 if expired, 401 if password-protected and locked) |
+| `PATCH` | `/api/collection/:id/password` | ✓ | Set or clear the collection's password (protects every gallery in it) |
+| `PATCH` | `/api/collection/:id/expiration` | ✓ | Set or clear the collection's link expiration date |
+| `POST` | `/api/collection/:id/unlock` | | Submit a collection password; sets the per-collection unlock cookie |
 | `POST` | `/api/collection/:id/rename` | ✓ | Rename |
 | `PATCH` | `/api/collection/:id/downloads` | ✓ | Toggle downloads |
 | `PATCH` | `/api/collection/:id/comments-enabled` | ✓ | Toggle comments |
@@ -1230,10 +1288,11 @@ Loaded by all client pages via `<script src="/shared.js">` before their inline `
     `login()` reloads the page when it was opened while logged out.
   - **Settings panel** (`#collectionSettingsModal`, same side panel as the gallery's):
     downloads and comments (master switches for every gallery of the collection, as before),
-    the client language (the default its galleries inherit) and the client photo grid (the
-    default grid of its galleries; see "Photo grid appearance" in the `preview.html`
-    section). It says up front that the settings apply to every gallery of the collection,
-    including those added later.
+    the client language (the default its galleries inherit), the protection (a password and
+    an expiration date covering every gallery; see "Collection password and expiration")
+    and the client photo grid (the default grid of its galleries; see "Photo grid
+    appearance" in the `preview.html` section). It says up front that the settings apply to
+    every gallery of the collection, including those added later.
     `setCollectionClientLanguage()` now checks the response and updates the cache, which
     both the list row and the panel read.
   - **Back links**: a gallery page opened from its collection's page returns there;

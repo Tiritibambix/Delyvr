@@ -2285,6 +2285,10 @@
                 passwordGatePlaceholder: 'Password',
                 passwordGateSubmitBtn: 'Unlock',
                 passwordGateWrongPassword: 'Incorrect password.',
+                collectionGateTitle: 'Protected Collection',
+                collectionGateText: 'This collection is protected by a password.',
+                collectionExpiredTitle: 'Collection Expired',
+                collectionExpiredText: 'This collection link is no longer available. Contact the photographer.',
                 backToCollection: 'Back to collection',
                 favAdded: '♥ Saved to favorites',
                 favRemoved: 'Removed from favorites',
@@ -2330,6 +2334,10 @@
                 passwordGatePlaceholder: 'Palavra-passe',
                 passwordGateSubmitBtn: 'Desbloquear',
                 passwordGateWrongPassword: 'Palavra-passe incorreta.',
+                collectionGateTitle: 'Coleção protegida',
+                collectionGateText: 'Esta coleção está protegida por palavra-passe.',
+                collectionExpiredTitle: 'Coleção expirada',
+                collectionExpiredText: 'O link desta coleção já não está disponível. Contacte o fotógrafo.',
                 backToCollection: 'Voltar à coleção',
                 favAdded: '♥ Salvo nos favoritos',
                 favRemoved: 'Removido dos favoritos',
@@ -2375,6 +2383,10 @@
                 passwordGatePlaceholder: 'Contraseña',
                 passwordGateSubmitBtn: 'Desbloquear',
                 passwordGateWrongPassword: 'Contraseña incorrecta.',
+                collectionGateTitle: 'Colección protegida',
+                collectionGateText: 'Esta colección está protegida con una contraseña.',
+                collectionExpiredTitle: 'Colección caducada',
+                collectionExpiredText: 'El enlace de esta colección ya no está disponible. Contacta con el fotógrafo.',
                 backToCollection: 'Volver a la colección',
                 favAdded: '♥ Guardado en favoritos',
                 favRemoved: 'Eliminado de favoritos',
@@ -2420,6 +2432,10 @@
                 passwordGatePlaceholder: 'Password',
                 passwordGateSubmitBtn: 'Sblocca',
                 passwordGateWrongPassword: 'Password errata.',
+                collectionGateTitle: 'Collezione protetta',
+                collectionGateText: 'Questa collezione è protetta da una password.',
+                collectionExpiredTitle: 'Collezione scaduta',
+                collectionExpiredText: 'Il link di questa collezione non è più disponibile. Contatta il fotografo.',
                 backToCollection: 'Torna alla collezione',
                 favAdded: '♥ Salvato nei preferiti',
                 favRemoved: 'Rimosso dai preferiti',
@@ -2465,6 +2481,10 @@
                 passwordGatePlaceholder: 'Mot de passe',
                 passwordGateSubmitBtn: 'Déverrouiller',
                 passwordGateWrongPassword: 'Mot de passe incorrect.',
+                collectionGateTitle: 'Collection protégée',
+                collectionGateText: 'Cette collection est protégée par un mot de passe.',
+                collectionExpiredTitle: 'Collection expirée',
+                collectionExpiredText: 'Le lien de cette collection n\'est plus disponible. Contactez le photographe.',
                 backToCollection: 'Retour à la collection',
                 favAdded: '♥ Ajouté aux favoris',
                 favRemoved: 'Retiré des favoris',
@@ -2933,8 +2953,16 @@
             try {
                 // Get gallery info
                 const infoRes = await fetch(`/api/gallery/${galleryId}/info`);
-                if (infoRes.status === 401) return showPasswordGate();
-                if (infoRes.status === 410) return showExpiredState();
+                if (infoRes.status === 401 || infoRes.status === 410) {
+                    // A refusal carries the client language (and, for a password, whose
+                    // password it is: this gallery's, or its collection's).
+                    const body = await infoRes.json().catch(() => ({}));
+                    applyGateLocale(body.clientLanguage);
+                    if (infoRes.status === 410) return showExpiredState('gallery');
+                    return body.scope === 'collection' && body.collectionId
+                        ? showPasswordGate('collection', body.collectionId, loadGallery)
+                        : showPasswordGate('gallery', galleryId, loadGallery);
+                }
                 if (!infoRes.ok) throw new Error('Not found');
                 const info = await infoRes.json();
                 applyGalleryAppearance(info); // before renderGallery() reads _galleryAppearance
@@ -3034,22 +3062,37 @@
             }
         }
 
-        // Expired galleries reuse #notFound — same container, two new keys — since
-        // there is no form involved, unlike the password gate below.
-        function showExpiredState() {
+        // A 401/410 hands over nothing but the resolved client language, which is
+        // enough to show the gate in the visitor's language.
+        function applyGateLocale(clientLanguage) {
+            if (!clientLanguage) return;
+            locale = resolveClientLocale(clientLanguage);
+            t = translations[locale];
+            applyStaticTranslations();
+        }
+
+        // Expired galleries and collections reuse #notFound (same container, their
+        // own keys), since there is no form involved, unlike the password gate below.
+        function showExpiredState(kind) {
             document.getElementById('loadingState').style.display = 'none';
-            document.getElementById('notFoundTitle').textContent = t.galleryExpiredTitle;
-            document.getElementById('notFoundText').textContent = t.galleryExpiredText;
+            const isCollection = kind === 'collection';
+            document.getElementById('notFoundTitle').textContent = isCollection ? t.collectionExpiredTitle : t.galleryExpiredTitle;
+            document.getElementById('notFoundText').textContent = isCollection ? t.collectionExpiredText : t.galleryExpiredText;
             document.getElementById('notFound').classList.add('active');
         }
 
-        // Shown on a 401 from /info. `t` is still the English default here — the
-        // server refused before handing over anything, including the gallery's own
-        // clientLanguage, so there is nothing to resolve a locale from yet.
-        function showPasswordGate() {
+        // Shown on a 401 from /info or from the collection index. `kind`/`id` say
+        // whose password is asked for (a gallery's, or its collection's, which opens
+        // every gallery of the collection at once); `retry` reloads what was refused
+        // once the unlock cookie is set. A gallery with its own password inside a
+        // protected collection asks for both, one after the other.
+        let _gate = null;
+        function showPasswordGate(kind, id, retry) {
+            _gate = { kind, id, retry };
+            const isCollection = kind === 'collection';
             document.getElementById('loadingState').style.display = 'none';
-            document.getElementById('passwordGateTitle').textContent = t.passwordGateTitle;
-            document.getElementById('passwordGateText').textContent = t.passwordGateText;
+            document.getElementById('passwordGateTitle').textContent = isCollection ? t.collectionGateTitle : t.passwordGateTitle;
+            document.getElementById('passwordGateText').textContent = isCollection ? t.collectionGateText : t.passwordGateText;
             document.getElementById('passwordGateInput').placeholder = t.passwordGatePlaceholder;
             document.getElementById('passwordGateSubmitBtn').textContent = t.passwordGateSubmitBtn;
             document.getElementById('passwordGateError').classList.remove('visible');
@@ -3063,9 +3106,10 @@
             const input = document.getElementById('passwordGateInput');
             const errorEl = document.getElementById('passwordGateError');
             const submitBtn = document.getElementById('passwordGateSubmitBtn');
+            if (!_gate) return false;
             submitBtn.disabled = true;
             try {
-                const res = await fetch(`/api/gallery/${galleryId}/unlock`, {
+                const res = await fetch(`/api/${_gate.kind}/${_gate.id}/unlock`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ password: input.value })
@@ -3073,9 +3117,11 @@
                 if (res.ok) {
                     document.getElementById('passwordGate').classList.remove('active');
                     input.value = '';
-                    // The unlock cookie is now set — every request this reload makes,
+                    // The unlock cookie is now set: every request this reload makes,
                     // including <img>/<video> tags, authenticates transparently.
-                    await loadGallery();
+                    const retry = _gate.retry;
+                    _gate = null;
+                    await retry();
                     return;
                 }
                 errorEl.textContent = t.passwordGateWrongPassword;
@@ -4113,9 +4159,18 @@
             });
         }
 
+        // Resolves true once the index is built, false when it was refused (password
+        // gate or expired screen shown instead) or not found.
         async function loadCollectionIndex() {
             try {
                 const res = await fetch(`/api/collection/${collectionId}`);
+                if (res.status === 401 || res.status === 410) {
+                    const body = await res.json().catch(() => ({}));
+                    applyGateLocale(body.clientLanguage);
+                    if (res.status === 410) showExpiredState('collection');
+                    else showPasswordGate('collection', collectionId, bootCollection);
+                    return false;
+                }
                 if (!res.ok) throw new Error('Not found');
                 const data = await res.json();
                 _collectionData = data;
@@ -4185,11 +4240,13 @@
                 });
 
                 setMontage(data.audio, data.name, `/api/collection/${collectionId}/background?card=1`);
+                return true;
             } catch (err) {
                 document.getElementById('loadingState').style.display = 'none';
                 document.getElementById('notFoundTitle').textContent = t.collectionNotFoundTitle;
                 document.getElementById('notFoundText').textContent = t.collectionNotFoundText;
                 document.getElementById('notFound').classList.add('active');
+                return false;
             }
         }
 
@@ -4370,7 +4427,10 @@
         }
 
         function renderRoute() {
-            if (!_isCollectionMode) return;
+            // Nothing to route until the index exists: while the collection's
+            // password gate (or its expired screen) is up, a hash change must not
+            // reveal an empty index over it.
+            if (!_isCollectionMode || !_collectionData) return;
             const gid = currentGalleryFromHash();
             if (gid) {
                 document.getElementById('collectionView').style.display = 'none';
@@ -4408,8 +4468,14 @@
 
         // Load the collection first so the montage and the index exist before a
         // deep-linked #/gallery/:id mounts on top of them.
+        // Also the collection gate's retry: once unlocked, the index loads and the
+        // deep-linked gallery, if any, mounts on top of it.
+        async function bootCollection() {
+            if (await loadCollectionIndex()) renderRoute();
+        }
+
         if (_isCollectionMode) {
-            loadCollectionIndex().then(renderRoute);
+            bootCollection();
         } else {
             loadGallery();
         }

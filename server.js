@@ -1107,76 +1107,166 @@ function verifyGalleryPassword(password, stored) {
     return expected.length === actual.length && crypto.timingSafeEqual(expected, actual);
 }
 
-// Stateless unlock token: an HMAC over the gallery id and a short fingerprint
-// of the CURRENT password_hash, signed with a secret generated once per
-// process start (same lifetime as the `sessions` Map above — a restart costs
-// every visitor one re-prompt, same as it already costs the admin). Because
-// the MAC covers the password's own fingerprint, changing or clearing a
-// gallery's password silently invalidates every cookie issued for the old
-// one — nothing to revoke explicitly.
+// Stateless unlock token: an HMAC over the protected subject and a short
+// fingerprint of its CURRENT password_hash, signed with a secret generated once
+// per process start (same lifetime as the `sessions` Map above: a restart costs
+// every visitor one re-prompt, same as it already costs the admin). Because the
+// MAC covers the password's own fingerprint, changing or clearing a password
+// silently invalidates every cookie issued for the old one, with nothing to
+// revoke explicitly. `subject` is the gallery id for a gallery and
+// `collection:<id>` for a collection, so a token of one kind can never be
+// accepted as the other.
 const GALLERY_UNLOCK_SECRET = crypto.randomBytes(32);
 
 function galleryPasswordFingerprint(passwordHash) {
     return crypto.createHash('sha256').update(passwordHash).digest('hex').slice(0, 16);
 }
 
-function signGalleryUnlockToken(galleryId, passwordHash) {
+function signGalleryUnlockToken(subject, passwordHash) {
     const fp = galleryPasswordFingerprint(passwordHash);
-    const mac = crypto.createHmac('sha256', GALLERY_UNLOCK_SECRET).update(`${galleryId}.${fp}`).digest('base64url');
+    const mac = crypto.createHmac('sha256', GALLERY_UNLOCK_SECRET).update(`${subject}.${fp}`).digest('base64url');
     return `${fp}.${mac}`;
 }
 
-function verifyGalleryUnlockToken(token, galleryId, passwordHash) {
+function verifyGalleryUnlockToken(token, subject, passwordHash) {
     if (!token) return false;
     const parts = token.split('.');
     if (parts.length !== 2) return false;
     const [fp, mac] = parts;
     if (fp !== galleryPasswordFingerprint(passwordHash)) return false;
-    const expected = crypto.createHmac('sha256', GALLERY_UNLOCK_SECRET).update(`${galleryId}.${fp}`).digest('base64url');
+    const expected = crypto.createHmac('sha256', GALLERY_UNLOCK_SECRET).update(`${subject}.${fp}`).digest('base64url');
     const a = Buffer.from(mac);
     const b = Buffer.from(expected);
     return a.length === b.length && crypto.timingSafeEqual(a, b);
 }
 
-// True when a gallery's PHOTOS must not reach anyone but its unlocked visitors:
-// it has a password, or its link has expired. Used by the routes that can expose
-// photos WITHOUT going through the per-gallery gates below: the collection ZIP
-// (which bundles every member gallery) and the OG-image fallback to a first photo.
-// Covers are not covered by this; they stay public on purpose (see the
-// background route's comment).
-function galleryPhotosArePrivate(galleryId) {
-    const row = db.prepare(`SELECT password_hash, expires_at FROM galleries WHERE id = ?`).get(galleryId);
-    if (!row) return false;
-    return !!row.password_hash || !!(row.expires_at && row.expires_at < new Date().toISOString());
+// Sets an unlock cookie (delyvr_unlock_<galleryId> or delyvr_unlock_c_<collectionId>).
+// SameSite=Lax, deliberately not Strict: a client reopening an emailed or texted
+// link is a cross-site top-level navigation, where a Strict cookie would be
+// withheld and re-prompt an already-unlocked visitor every time.
+function setUnlockCookie(req, res, name, token) {
+    const isHttps = req.secure || req.headers['x-forwarded-proto'] === 'https';
+    res.setHeader('Set-Cookie', [
+        `${name}=${token}`,
+        'HttpOnly',
+        'SameSite=Lax',
+        'Path=/',
+        `Max-Age=${30 * 24 * 60 * 60}`,
+        ...(isHttps ? ['Secure'] : [])
+    ].join('; '));
 }
 
-// 410 if expires_at is set and in the past. A missing/deleted gallery falls
-// through untouched so the route's own existence check still produces its
-// usual 404 — this middleware only ever narrows, never widens, what a request
-// can reach.
+// expires_at is always the end of a UTC day (see the expiration routes), so a
+// plain string comparison against the current ISO instant is exact.
+function isPastExpiry(expiresAt) {
+    return !!(expiresAt && expiresAt < new Date().toISOString());
+}
+
+// Collection protection. A collection's password and expiration cover its index
+// AND every member gallery, wherever the gallery is opened from (the collection
+// page or its own /preview/:id link): one unlock of the collection opens all of
+// them. A gallery with its own password additionally asks for that one.
+
+// The collection a gallery belongs to (at most one, UNIQUE(gallery_id)), with
+// its protection columns, or undefined.
+function collectionProtectionOf(galleryId) {
+    return db.prepare(`
+        SELECT c.id, c.password_hash, c.expires_at
+        FROM collection_galleries cg JOIN collections c ON c.id = cg.collection_id
+        WHERE cg.gallery_id = ?`).get(galleryId);
+}
+
+function collectionIsPrivate(collectionId) {
+    const row = db.prepare(`SELECT password_hash, expires_at FROM collections WHERE id = ?`).get(collectionId);
+    return !!row && (!!row.password_hash || isPastExpiry(row.expires_at));
+}
+
+function hasCollectionUnlock(req, collectionId, passwordHash) {
+    const token = parseCookies(req.headers.cookie)[`delyvr_unlock_c_${collectionId}`];
+    return verifyGalleryUnlockToken(token, `collection:${collectionId}`, passwordHash);
+}
+
+// True when the gallery's OWN settings make its photos private (its own password,
+// or its own expiration passed), whatever its collection says. The collection ZIP
+// uses this one: by the time it runs, the collection's own gates have passed.
+function galleryOwnPhotosArePrivate(galleryId) {
+    const row = db.prepare(`SELECT password_hash, expires_at FROM galleries WHERE id = ?`).get(galleryId);
+    if (!row) return false;
+    return !!row.password_hash || isPastExpiry(row.expires_at);
+}
+
+// True when a gallery's PHOTOS must not reach anyone but its unlocked visitors:
+// it, or its collection, has a password or an expired link. Used by the gallery
+// OG image, which can expose a photo WITHOUT going through the gates below (its
+// fallback to a first photo). Covers are not covered by this; they stay public on
+// purpose (see the background route's comment).
+function galleryPhotosArePrivate(galleryId) {
+    if (galleryOwnPhotosArePrivate(galleryId)) return true;
+    const coll = collectionProtectionOf(galleryId);
+    return !!coll && (!!coll.password_hash || isPastExpiry(coll.expires_at));
+}
+
+// 410 if the gallery's expires_at, or its collection's, is set and in the past.
+// A missing/deleted gallery falls through untouched so the route's own existence
+// check still produces its usual 404: this middleware only ever narrows, never
+// widens, what a request can reach.
 function checkGalleryExpiration(req, res, next) {
     // The admin's own gallery page loads photos, thumbnails and the ZIP through
     // these same public routes, so the photographer must never be locked out of
     // their own expired gallery.
     if (isAdminRequest(req)) return next();
     const row = db.prepare(`SELECT expires_at FROM galleries WHERE id = ? AND deleted = 0`).get(req.params.galleryId);
-    if (row && row.expires_at && row.expires_at < new Date().toISOString()) {
-        return res.status(410).json({ error: 'gallery_expired' });
+    if (row) {
+        const coll = collectionProtectionOf(req.params.galleryId);
+        if (isPastExpiry(row.expires_at) || (coll && isPastExpiry(coll.expires_at))) {
+            return res.status(410).json({ error: 'gallery_expired', clientLanguage: resolveGalleryClientLanguage(req.params.galleryId) });
+        }
     }
     next();
 }
 
-// 401 unless a valid delyvr_unlock_<galleryId> cookie is presented. A gallery
-// with no password_hash is a pure no-op — this is the opt-in guarantee that
-// keeps every existing gallery's public routes behaving exactly as before.
+// 401 unless the visitor holds every unlock this gallery needs: its collection's
+// (delyvr_unlock_c_<collectionId>) when the collection has a password, then its
+// own (delyvr_unlock_<galleryId>) when it has one. The collection is asked for
+// first, and `scope` tells the client page which password form to show. With no
+// password on either, this is a pure no-op: the opt-in guarantee that keeps every
+// unprotected gallery's public routes behaving exactly as before.
 function requireGalleryUnlock(req, res, next) {
     if (isAdminRequest(req)) return next(); // same reason as checkGalleryExpiration above
-    const row = db.prepare(`SELECT password_hash FROM galleries WHERE id = ? AND deleted = 0`).get(req.params.galleryId);
+    const { galleryId } = req.params;
+    const row = db.prepare(`SELECT password_hash FROM galleries WHERE id = ? AND deleted = 0`).get(galleryId);
+    if (!row) return next();
+    const coll = collectionProtectionOf(galleryId);
+    // clientLanguage rides along so the password page can be shown in the
+    // visitor's language: it is the only thing a locked visitor is told.
+    const clientLanguage = resolveGalleryClientLanguage(galleryId);
+    if (coll && coll.password_hash && !hasCollectionUnlock(req, coll.id, coll.password_hash)) {
+        return res.status(401).json({ error: 'password_required', scope: 'collection', collectionId: coll.id, clientLanguage });
+    }
+    if (!row.password_hash) return next();
+    const token = parseCookies(req.headers.cookie)[`delyvr_unlock_${galleryId}`];
+    if (verifyGalleryUnlockToken(token, galleryId, row.password_hash)) return next();
+    res.status(401).json({ error: 'password_required', scope: 'gallery', clientLanguage });
+}
+
+// The collection-route counterparts (the index, its ZIP, its montage), with the
+// same admin bypass and the same opt-in no-op when nothing is set.
+function checkCollectionExpiration(req, res, next) {
+    if (isAdminRequest(req)) return next();
+    const row = db.prepare(`SELECT expires_at FROM collections WHERE id = ?`).get(req.params.collectionId);
+    if (row && isPastExpiry(row.expires_at)) {
+        return res.status(410).json({ error: 'collection_expired', clientLanguage: resolveCollectionClientLanguage(req.params.collectionId) });
+    }
+    next();
+}
+
+function requireCollectionUnlock(req, res, next) {
+    if (isAdminRequest(req)) return next();
+    const { collectionId } = req.params;
+    const row = db.prepare(`SELECT password_hash FROM collections WHERE id = ?`).get(collectionId);
     if (!row || !row.password_hash) return next();
-    const cookies = parseCookies(req.headers.cookie);
-    const token = cookies[`delyvr_unlock_${req.params.galleryId}`];
-    if (verifyGalleryUnlockToken(token, req.params.galleryId, row.password_hash)) return next();
-    res.status(401).json({ error: 'password_required' });
+    if (hasCollectionUnlock(req, collectionId, row.password_hash)) return next();
+    res.status(401).json({ error: 'password_required', scope: 'collection', collectionId, clientLanguage: resolveCollectionClientLanguage(collectionId) });
 }
 
 // ── IP allowlist (ADMIN_ALLOWED_IPS) ────────────────────────────────────────
@@ -1843,6 +1933,42 @@ function invalidateShareImages(galleryId) {
     }
 }
 
+// Same, when a COLLECTION is protected, unprotected or (un)expired: its own share
+// image and every member gallery's, since each may have fallen back to a photo
+// that the collection now keeps private (galleryPhotosArePrivate() covers it).
+function invalidateCollectionShareImages(collectionId) {
+    try { fs.unlinkSync(safeResolvePath(OG_CACHE_DIR, `collection-${collectionId}.jpg`)); } catch (_) {}
+    const members = db.prepare(`SELECT gallery_id FROM collection_galleries WHERE collection_id = ?`).all(collectionId);
+    for (const { gallery_id: gid } of members) {
+        try { fs.unlinkSync(safeResolvePath(OG_CACHE_DIR, `${gid}.jpg`)); } catch (_) {}
+    }
+}
+
+// Validates an expiration date sent by the admin, for a gallery or a collection.
+// The incoming 'YYYY-MM-DD' is normalised to the END of that day in UTC: comparing
+// a bare date against an ISO instant would otherwise expire the link at midnight
+// UTC on the chosen day, making the day the photographer picked already
+// inaccessible. Returns { value } (null clears) or { error } for a 400.
+function parseExpirationInput(expiresAt) {
+    if (expiresAt === null || expiresAt === '' || expiresAt === undefined) return { value: null };
+    if (typeof expiresAt !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(expiresAt)) {
+        return { error: 'expiresAt must be a YYYY-MM-DD string or null' };
+    }
+    const normalized = `${expiresAt}T23:59:59.999Z`;
+    // Round-trip check rather than a bare Date.parse: it also rejects calendar
+    // overflow such as 2026-02-31, which would otherwise roll into March.
+    const parsed = new Date(normalized);
+    if (Number.isNaN(parsed.getTime()) || parsed.toISOString() !== normalized) {
+        return { error: 'expiresAt is not a valid date' };
+    }
+    // A date already past would expire the link the moment it is saved, which is
+    // never what setting an expiration means; a year far ahead is almost always a
+    // typo (or a half-typed year, e.g. "0002" while typing "2026").
+    if (normalized < new Date().toISOString()) return { error: 'expiration_in_past' };
+    if (parsed.getUTCFullYear() > new Date().getUTCFullYear() + 10) return { error: 'expiration_too_far' };
+    return { value: normalized };
+}
+
 // Set or clear a gallery's password. The hash is never echoed back — only
 // whether one is now set.
 app.patch('/api/gallery/:galleryId/password', adminLimiter, requireAuth, validateGalleryId, (req, res) => {
@@ -1864,45 +1990,17 @@ app.patch('/api/gallery/:galleryId/password', adminLimiter, requireAuth, validat
     res.json({ hasPassword: true });
 });
 
-// Set or clear a gallery's link expiration date. The incoming 'YYYY-MM-DD' is
-// normalised to the END of that day in UTC before storing — comparing a bare
-// date against an ISO instant would otherwise expire the gallery at midnight
-// UTC on the chosen day, making the day the photographer picked already
-// inaccessible.
+// Set or clear a gallery's link expiration date (see parseExpirationInput()).
 app.patch('/api/gallery/:galleryId/expiration', adminLimiter, requireAuth, validateGalleryId, (req, res) => {
     const { galleryId } = req.params;
     const galleryExists = db.prepare(`SELECT 1 FROM galleries WHERE id = ?`).get(galleryId);
     if (!galleryExists) return res.status(404).json({ error: 'Gallery not found' });
 
-    const { expiresAt } = req.body;
-    if (expiresAt === null || expiresAt === '' || expiresAt === undefined) {
-        db.prepare(`UPDATE galleries SET expires_at = NULL WHERE id = ?`).run(galleryId);
-        invalidateShareImages(galleryId);
-        return res.json({ expiresAt: null });
-    }
-    if (typeof expiresAt !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(expiresAt)) {
-        return res.status(400).json({ error: 'expiresAt must be a YYYY-MM-DD string or null' });
-    }
-    const normalized = `${expiresAt}T23:59:59.999Z`;
-    // Round-trip check rather than a bare Date.parse: it also rejects calendar
-    // overflow such as 2026-02-31, which would otherwise roll into March.
-    const parsed = new Date(normalized);
-    if (Number.isNaN(parsed.getTime()) || parsed.toISOString() !== normalized) {
-        return res.status(400).json({ error: 'expiresAt is not a valid date' });
-    }
-    // A date already past would expire the gallery the moment it is saved, which
-    // is never what setting an expiration means; a year far ahead is almost
-    // always a typo (or a half-typed year, e.g. "0002" while typing "2026").
-    const nowIso = new Date().toISOString();
-    if (normalized < nowIso) {
-        return res.status(400).json({ error: 'expiration_in_past' });
-    }
-    if (parsed.getUTCFullYear() > new Date().getUTCFullYear() + 10) {
-        return res.status(400).json({ error: 'expiration_too_far' });
-    }
-    db.prepare(`UPDATE galleries SET expires_at = ? WHERE id = ?`).run(normalized, galleryId);
+    const parsed = parseExpirationInput(req.body.expiresAt);
+    if (parsed.error) return res.status(400).json({ error: parsed.error });
+    db.prepare(`UPDATE galleries SET expires_at = ? WHERE id = ?`).run(parsed.value, galleryId);
     invalidateShareImages(galleryId);
-    res.json({ expiresAt: normalized });
+    res.json({ expiresAt: parsed.value });
 });
 
 // The four client grid settings, validated and patched (only the keys present,
@@ -2009,17 +2107,7 @@ app.post('/api/gallery/:galleryId/unlock', galleryUnlockLimiter, validateGallery
         return res.status(401).json({ error: 'invalid_password' });
     }
 
-    const token = signGalleryUnlockToken(galleryId, row.password_hash);
-    const isHttps = req.secure || req.headers['x-forwarded-proto'] === 'https';
-    const cookieOpts = [
-        `delyvr_unlock_${galleryId}=${token}`,
-        'HttpOnly',
-        'SameSite=Lax', // deliberately not Strict — see checkGalleryExpiration/requireGalleryUnlock's doc comment
-        'Path=/',
-        `Max-Age=${30 * 24 * 60 * 60}`,
-        ...(isHttps ? ['Secure'] : [])
-    ].join('; ');
-    res.setHeader('Set-Cookie', cookieOpts);
+    setUnlockCookie(req, res, `delyvr_unlock_${galleryId}`, signGalleryUnlockToken(galleryId, row.password_hash));
     res.json({ success: true });
 });
 
@@ -2373,6 +2461,9 @@ app.get('/api/collection/:collectionId/og-image', imageLimiter, validateCollecti
         if (colBg) sourceFile = safeResolvePath(backgroundsDir, colBg);
     }
     if (!sourceFile) {
+        // A protected or expired collection never falls back to a photo at all:
+        // only covers, which stay public on purpose.
+        const collectionPrivate = collectionIsPrivate(collectionId);
         const galleryIds = db.prepare(`SELECT gallery_id FROM collection_galleries WHERE collection_id = ? ORDER BY position`).all(collectionId).map(r => r.gallery_id);
         for (const gid of galleryIds) {
             if (sourceFile) break;
@@ -2381,8 +2472,8 @@ app.get('/api/collection/:collectionId/og-image', imageLimiter, validateCollecti
                 if (gbg) { sourceFile = safeResolvePath(backgroundsDir, gbg); break; }
             }
             // A member gallery's cover (above) is public on purpose; its photos are
-            // not when it is password-protected or expired.
-            if (galleryPhotosArePrivate(gid)) continue;
+            // not when it, or the collection, is password-protected or expired.
+            if (collectionPrivate || galleryOwnPhotosArePrivate(gid)) continue;
             const gPath = safeResolvePath(path.join(DATA_DIR, 'uploads'), gid);
             if (fs.existsSync(gPath)) {
                 const files = fs.readdirSync(gPath).filter(f => !f.startsWith('.'));
@@ -2970,6 +3061,9 @@ app.get('/api/collections', adminLimiter, requireAuth, (req, res) => {
             clientLanguage: c.client_language || 'auto',
             // The default client grid of its galleries (collection settings panel).
             ...gridFromRow(c),
+            // Protection state; the hash itself is never sent.
+            hasPassword: !!c.password_hash,
+            expiresAt: c.expires_at || null,
             // Audio montage, so the collection card can show / replace / remove it.
             // Reported only when the file is actually still on disk.
             audio: (c.audio_filename && findAudioFile(`collection-${c.id}`))
@@ -2980,8 +3074,11 @@ app.get('/api/collections', adminLimiter, requireAuth, (req, res) => {
     res.json(list);
 });
 
-// Get collection info (public — used by collection page)
-app.get('/api/collection/:collectionId', publicReadLimiter, validateCollectionId, (req, res) => {
+// Get collection info (public, used by the collection page). Gated by the
+// collection's own expiration and password: without the unlock, a visitor learns
+// nothing, not even its galleries' names. The cover stays reachable through the
+// background route, so the password page can still show it.
+app.get('/api/collection/:collectionId', publicReadLimiter, validateCollectionId, checkCollectionExpiration, requireCollectionUnlock, (req, res) => {
     const { collectionId } = req.params;
     const collection = db.prepare(`SELECT * FROM collections WHERE id = ?`).get(collectionId);
     if (!collection) return res.status(404).json({ error: 'Collection not found' });
@@ -3181,7 +3278,7 @@ app.delete('/api/collection/:collectionId/audio', adminLimiter, requireAuth, val
 // seeking work, exactly as for video originals. Served under imageLimiter (600/min),
 // NOT publicReadLimiter (300/min): a media element fires many range requests while
 // streaming and seeking, and a tripped limiter surfaces as a hard, visible error.
-app.get('/api/collection/:collectionId/audio', imageLimiter, validateCollectionId, (req, res) => {
+app.get('/api/collection/:collectionId/audio', imageLimiter, validateCollectionId, checkCollectionExpiration, requireCollectionUnlock, (req, res) => {
     const { collectionId } = req.params;
     const file = findAudioFile(`collection-${collectionId}`);
     if (!file) return res.status(404).json({ error: 'No audio found' });
@@ -3205,6 +3302,12 @@ app.post('/api/collection/:collectionId/galleries', adminLimiter, requireAuth, v
     if (result.error === 'collection_not_found') return res.status(404).json({ error: 'Collection not found' });
     if (result.error === 'gallery_not_found') return res.status(404).json({ error: 'Gallery not found' });
     if (result.error === 'already_in_another_collection') return res.status(409).json({ error: 'Gallery already belongs to another collection' });
+
+    // Joining a protected collection makes the gallery's photos private: a share
+    // image it cached from its first photo must go (rebuilt cover-only on demand).
+    if (collectionIsPrivate(collectionId)) {
+        try { fs.unlinkSync(safeResolvePath(OG_CACHE_DIR, `${galleryId}.jpg`)); } catch (_) {}
+    }
 
     res.json({ success: true, galleryIds: result.galleryIds });
 });
@@ -3244,7 +3347,7 @@ app.delete('/api/collection/:collectionId/galleries/:galleryId', adminLimiter, r
 });
 
 // Download all photos in a collection as a ZIP (one sub-folder per gallery)
-app.get('/api/collection/:collectionId/download', downloadLimiter, validateCollectionId, (req, res) => {
+app.get('/api/collection/:collectionId/download', downloadLimiter, validateCollectionId, checkCollectionExpiration, requireCollectionUnlock, (req, res) => {
     const { collectionId } = req.params;
     const collection = db.prepare(`SELECT name, downloads_enabled, audio_filename FROM collections WHERE id = ?`).get(collectionId);
     if (!collection) return res.status(404).json({ error: 'Collection not found' });
@@ -3265,10 +3368,12 @@ app.get('/api/collection/:collectionId/download', downloadLimiter, validateColle
     const entries = [];
     const includedGalleryIds = [];
     for (const galleryId of memberGalleryIds) {
-        // A password-protected or expired member gallery is left out for visitors:
-        // otherwise this ZIP would hand out photos the gallery's own gates refuse,
-        // and the password would be bypassable by downloading the collection.
-        if (!isAdmin && galleryPhotosArePrivate(galleryId)) continue;
+        // A member gallery with its own password or expired link is left out for
+        // visitors: otherwise this ZIP would hand out photos the gallery's own gates
+        // refuse, and its password would be bypassable by downloading the
+        // collection. The collection's own protection was checked by the route's
+        // middlewares, hence the "own" variant here.
+        if (!isAdmin && galleryOwnPhotosArePrivate(galleryId)) continue;
         const gallery = db.prepare(`SELECT event_name FROM galleries WHERE id = ?`).get(galleryId);
         const galleryPath = safeResolvePath(path.join(DATA_DIR, 'uploads'), galleryId);
         if (!fs.existsSync(galleryPath)) continue;
@@ -3348,6 +3453,58 @@ app.patch('/api/collection/:collectionId/client-language', adminLimiter, require
     const clientLanguage = language === 'auto' ? null : language;
     db.prepare(`UPDATE collections SET client_language = ? WHERE id = ?`).run(clientLanguage, collectionId);
     res.json({ success: true, clientLanguage: clientLanguage || 'auto' });
+});
+
+// Set or clear a collection's password. It protects the collection index and
+// every member gallery (see requireGalleryUnlock()). The hash is never echoed back.
+app.patch('/api/collection/:collectionId/password', adminLimiter, requireAuth, validateCollectionId, (req, res) => {
+    const { collectionId } = req.params;
+    const collectionExists = db.prepare(`SELECT 1 FROM collections WHERE id = ?`).get(collectionId);
+    if (!collectionExists) return res.status(404).json({ error: 'Collection not found' });
+
+    const { password } = req.body;
+    if (password === null || password === '' || password === undefined) {
+        db.prepare(`UPDATE collections SET password_hash = NULL WHERE id = ?`).run(collectionId);
+        invalidateCollectionShareImages(collectionId);
+        return res.json({ hasPassword: false });
+    }
+    if (typeof password !== 'string') {
+        return res.status(400).json({ error: 'password must be a string or null' });
+    }
+    db.prepare(`UPDATE collections SET password_hash = ? WHERE id = ?`).run(hashGalleryPassword(password), collectionId);
+    invalidateCollectionShareImages(collectionId);
+    res.json({ hasPassword: true });
+});
+
+// Set or clear a collection's link expiration date: past it, the index and every
+// member gallery answer 410. Same validation as a gallery's (parseExpirationInput()).
+app.patch('/api/collection/:collectionId/expiration', adminLimiter, requireAuth, validateCollectionId, (req, res) => {
+    const { collectionId } = req.params;
+    const collectionExists = db.prepare(`SELECT 1 FROM collections WHERE id = ?`).get(collectionId);
+    if (!collectionExists) return res.status(404).json({ error: 'Collection not found' });
+
+    const parsed = parseExpirationInput(req.body.expiresAt);
+    if (parsed.error) return res.status(400).json({ error: parsed.error });
+    db.prepare(`UPDATE collections SET expires_at = ? WHERE id = ?`).run(parsed.value, collectionId);
+    invalidateCollectionShareImages(collectionId);
+    res.json({ expiresAt: parsed.value });
+});
+
+// Verify a collection password and, on success, set delyvr_unlock_c_<collectionId>,
+// which opens the index and every member gallery at once. Public, like the gallery
+// unlock, and under the same galleryUnlockLimiter (both are password guesses).
+app.post('/api/collection/:collectionId/unlock', galleryUnlockLimiter, validateCollectionId, checkCollectionExpiration, (req, res) => {
+    const { collectionId } = req.params;
+    const row = db.prepare(`SELECT password_hash FROM collections WHERE id = ?`).get(collectionId);
+    if (!row) return res.status(404).json({ error: 'Collection not found' });
+    if (!row.password_hash) return res.json({ success: true }); // no password set, nothing to unlock
+
+    const { password } = req.body;
+    if (typeof password !== 'string' || !verifyGalleryPassword(password, row.password_hash)) {
+        return res.status(401).json({ error: 'invalid_password' });
+    }
+    setUnlockCookie(req, res, `delyvr_unlock_c_${collectionId}`, signGalleryUnlockToken(`collection:${collectionId}`, row.password_hash));
+    res.json({ success: true });
 });
 
 // Delete a collection (admin only — does NOT delete the galleries)

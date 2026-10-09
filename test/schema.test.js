@@ -276,6 +276,15 @@ describe('ensureGalleriesColumns / ensureFilesColumns — upgrading an already-m
         assert.doesNotThrow(() => applySchema(db));
         db.close();
     });
+
+    test('collections get password_hash and expires_at, NULL (unprotected) on existing rows', () => {
+        const db = legacyDb();
+        db.prepare(`INSERT INTO collections (id, created_at) VALUES ('c1', ?)`).run(new Date().toISOString());
+        applySchema(db);
+        const col = db.prepare(`SELECT password_hash, expires_at FROM collections WHERE id = 'c1'`).get();
+        assert.deepEqual(col, { password_hash: null, expires_at: null });
+        db.close();
+    });
 });
 
 describe('CHECK constraints — enums', () => {
