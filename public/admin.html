@@ -547,37 +547,51 @@
                 <div class="view-header">
                     <a class="client-btn accent" href="#/galleries" id="galleryDetailBackBtn">Back to galleries</a>
                     <h1 class="view-title" id="galleryDetailTitle"></h1>
-                    <button class="client-btn view-header-action" id="galleryDetailSettingsBtn" onclick="openGallerySettingsPanel()">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
-                        <span id="galleryDetailSettingsBtnText">Settings</span>
-                    </button>
                 </div>
                 <div class="gallery-detail-layout">
+                    <!-- One class for every action, <a> and <button> alike: .gallery-detail-action
+                         sets its own height, font and line-height, so the two tags cannot render
+                         at different sizes (a <button> does not inherit line-height, an <a> does). -->
                     <aside class="gallery-detail-actions">
-                        <a class="client-btn gallery-detail-action" id="galleryDetailPreviewBtn" target="_blank" rel="noopener">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8Z"/><circle cx="12" cy="12" r="3"/></svg>
+                        <button class="gallery-detail-action" id="galleryDetailSettingsBtn" onclick="openGallerySettingsPanel()">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+                            <span id="galleryDetailSettingsBtnText">Settings</span>
+                        </button>
+                        <span class="gallery-detail-actions-sep" aria-hidden="true"></span>
+                        <a class="gallery-detail-action" id="galleryDetailPreviewBtn" target="_blank" rel="noopener">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8Z"/><circle cx="12" cy="12" r="3"/></svg>
                             <span id="galleryDetailPreviewText">Preview</span>
                         </a>
-                        <button class="client-btn gallery-detail-action" id="galleryDetailCopyLinkBtn" onclick="copyGalleryDetailLink(this)">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
-                            <span id="galleryDetailCopyLinkText">Copy link</span>
+                        <button class="gallery-detail-action" id="galleryDetailCopyLinkBtn" onclick="copyGalleryDetailLink(this)">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                            <span id="galleryDetailCopyLinkText">Copy client link</span>
                         </button>
-                        <button class="client-btn gallery-detail-action" onclick="document.getElementById('photosAddInput').click()">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                        <button class="gallery-detail-action" id="galleryDetailCopyCritiqueBtn" onclick="copyCritiqueLink(_galleryDetailId, this)">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="10" y1="6" x2="21" y2="6"/><line x1="10" y1="12" x2="21" y2="12"/><line x1="10" y1="18" x2="21" y2="18"/><path d="M4 6h1v4M4 10h2M6 18H4c0-1 2-2 2-3s-1-1.5-2-1" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                            <span id="galleryDetailCopyCritiqueText">Copy critique link</span>
+                        </button>
+                        <span class="gallery-detail-actions-sep" aria-hidden="true"></span>
+                        <button class="gallery-detail-action" onclick="document.getElementById('photosAddInput').click()">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
                             <span id="galleryDetailAddFilesText">Add files</span>
                         </button>
-                        <a class="client-btn gallery-detail-action" id="galleryDetailDownloadBtn" href="#">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                        <a class="gallery-detail-action" id="galleryDetailDownloadBtn" href="#">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
                             <span id="galleryDetailDownloadText">Download ZIP</span>
                         </a>
-                        <button class="section-select-btn gallery-detail-action" id="photosSelectBtn" onclick="togglePhotoSelection()">Select</button>
+                        <span class="gallery-detail-actions-sep" aria-hidden="true"></span>
+                        <button class="gallery-detail-action" id="photosSelectBtn" onclick="togglePhotoSelection()">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+                            <span id="photosSelectBtnText">Select</span>
+                        </button>
                     </aside>
                     <div class="gallery-detail-main">
-                        <!-- Bulk delete bar (selection mode) — same ids/behavior as the old modal's. -->
+                        <!-- Bulk delete bar (selection mode). -->
                         <div class="photos-bulk-bar" id="photosBulkBar" style="display:none">
                             <span id="photosSelectedCount">0 selected</span>
                             <button class="bulk-select-all" id="photosSelectAllBtn" onclick="selectAllPhotos()">Select all</button>
-                            <button class="bulk-btn bulk-btn-cancel" id="photosCancelSelectBtn" onclick="togglePhotoSelection()">Cancel</button>
+                            <button class="bulk-select-all" id="photosDeselectAllBtn" onclick="deselectAllPhotos()">Deselect all</button>
+                            <button class="bulk-btn bulk-btn-cancel" id="photosCancelSelectBtn" onclick="setPhotoSelectionMode(false)">Cancel</button>
                             <button class="bulk-btn bulk-btn-danger" id="photosDeleteSelectedBtn" onclick="deleteSelectedPhotos()" disabled>Delete selected</button>
                         </div>
 
@@ -604,28 +618,40 @@
                         <!-- Normal meta -->
                         <div class="photos-modal-meta" id="photosModalMeta"></div>
 
-                        <!-- Drop zone -->
-                        <div class="photos-add-zone" id="photosAddZone" onclick="document.getElementById('photosAddInput').click()">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="16" height="16" style="vertical-align:middle;margin-right:6px"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-                            <span id="photosDropText">Drop photos here or</span> <button class="zone-browse" id="photosBrowseBtn" onclick="event.stopPropagation(); document.getElementById('photosAddInput').click()">browse</button>
-                        </div>
                         <input type="file" id="photosAddInput" multiple accept="image/*,video/mp4,video/quicktime,video/webm,video/x-m4v" style="display:none" onchange="handlePhotosAddInput(event)">
 
-                        <!-- Upload queue (files selected, not yet uploaded) -->
-                        <div id="photosQueueWrap" style="display:none">
-                            <div class="file-count" id="photosQueueCount"></div>
+                        <!-- Upload queue (files picked or dropped, not yet sent). Files are
+                             dropped anywhere on this page: see setupPhotosDropZone(). -->
+                        <div class="photos-upload-panel" id="photosQueueWrap" style="display:none">
+                            <div class="photos-upload-panel-head">
+                                <span class="photos-upload-panel-title" id="photosQueueCount"></span>
+                                <div class="photos-upload-panel-actions">
+                                    <button class="btn-secondary" id="photosQueueClearBtn" onclick="clearUploadQueue()">Cancel</button>
+                                    <button class="btn-primary" id="photosUploadBtn" onclick="uploadQueuedPhotos()">Upload</button>
+                                </div>
+                            </div>
                             <div class="file-pills" id="photosQueuePills"></div>
-                            <button class="btn-primary" id="photosUploadBtn" onclick="uploadQueuedPhotos()" style="margin-top:8px;width:100%">Upload</button>
                         </div>
 
                         <!-- Upload progress -->
-                        <div id="photosUploadWrap" style="display:none">
-                            <div class="photos-upload-bar"><div class="photos-upload-fill" id="photosUploadFill"></div></div>
+                        <div class="photos-upload-panel" id="photosUploadWrap" style="display:none">
                             <div class="photos-upload-text" id="photosUploadText"></div>
+                            <div class="photos-upload-bar"><div class="photos-upload-fill" id="photosUploadFill"></div></div>
                         </div>
 
                         <!-- Photos grid -->
                         <div class="photos-grid" id="photosGrid"></div>
+                    </div>
+                </div>
+                <!-- Shown while files are dragged over this page. position: fixed and
+                     sized by showPhotosDropOverlay() to the visible part of the grid
+                     column, so its message stays on screen however far the grid is
+                     scrolled. Its children ignore pointer events, so moving over the
+                     message does not fire a dragleave on the overlay. -->
+                <div class="photos-drop-overlay" id="photosDropOverlay" aria-hidden="true">
+                    <div class="photos-drop-overlay-msg">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                        <span id="photosDropOverlayText">Drop to add them to this gallery</span>
                     </div>
                 </div>
             </section>
@@ -725,13 +751,14 @@
             const trashOpenBtn = document.getElementById('trashOpenBtn');
             if (trashOpenBtn) trashOpenBtn.title = t.trash;
 
-            byId('photosSelectBtn', t.select);
+            byId('photosSelectBtnText', t.select);
             byId('photosSelectAllBtn', t.selectAll);
+            byId('photosDeselectAllBtn', t.deselectAll);
             byId('photosCancelSelectBtn', t.cancel);
             byId('photosDeleteSelectedBtn', t.deleteSelected);
-            byId('photosDropText', t.dropPhotosHereOr);
-            byId('photosBrowseBtn', t.browse);
+            byId('photosQueueClearBtn', t.cancel);
             byId('photosUploadBtn', t.upload);
+            byId('photosDropOverlayText', t.dropToAddFiles);
 
             byId('favoritesModalTitle', t.clientFavorites);
             byId('favCopyRankingBtnText', t.copyRankingLink);
@@ -740,13 +767,14 @@
             byId('commentsBackBtn', t.backToGalleries);
             byId('commentsPageClearBtn', t.clearAll);
 
-            // galleryDetailBackBtn's text is rewritten to the owning collection's
-            // name by loadGalleryDetailPage() when the gallery has one — this sets
-            // only the fallback shown before that, or for a gallery with none.
-            byId('galleryDetailBackBtn', t.backToGalleries);
+            // The owning collection's name when the gallery has one, else "Galleries".
+            syncGalleryDetailBackLink();
             byId('galleryDetailSettingsBtnText', t.headerProfile);
             byId('galleryDetailPreviewText', t.galleryDetailPreview);
             byId('galleryDetailCopyLinkText', t.copyClientLink);
+            byId('galleryDetailCopyCritiqueText', t.galleryDetailCopyCritique);
+            const critiqueBtn = document.getElementById('galleryDetailCopyCritiqueBtn');
+            if (critiqueBtn) critiqueBtn.title = t.copyCritiqueLink; // the long form explains "numbered photos"
             byId('galleryDetailAddFilesText', t.galleryDetailAddFiles);
             byId('galleryDetailDownloadText', t.galleryDetailDownloadZip);
             byId('filterFavoritedText', t.filterFavorited);
@@ -944,13 +972,27 @@
             if (sb) sb.classList.toggle('open');
         }
 
-        // Gallery-detail-page state read by teardownGalleryDetailPage(), which
-        // renderRoute() calls on every navigation — same temporal-dead-zone
-        // hazard as _uploadInProgress just below, and the same fix: declare
-        // before the initial renderRoute() call, not down with the rest of the
-        // gallery-detail-page code.
+        // Gallery-detail-page state. The initial renderRoute() call below runs
+        // loadGalleryDetailPage() when the page is opened or reloaded directly on
+        // '#/gallery/:id', and on any other route it runs teardownGalleryDetailPage().
+        // Both touch this state synchronously, so all of it must be declared here,
+        // before that call, not down with the rest of the gallery-detail-page code:
+        // a `let` read before its declaration throws (temporal dead zone). Only
+        // _galleryDetailId/_photosResizeObs were up here at first, and a reload of
+        // a gallery page then died on _pendingUploadFiles and stayed blank.
         let _galleryDetailId = null;
         let _photosResizeObs = null;
+        let _photosSelectionMode = false;
+        let _photosSelected = new Set();
+        let _pendingUploadFiles = [];
+        // Proofing filters, AND'd together. _photoFlagFilter is a Set of active
+        // colors (empty = no color filter); the other two are plain booleans.
+        let _photoFlagFilter = new Set();
+        let _photoFavoritedFilter = false;
+        let _photoCommentsFilter = false;
+        let _galleryDetailPhotos = []; // last fetched, unfiltered: filters re-render from this without a refetch
+        let _galleryDetailCollectionId = null; // for the back link, see syncGalleryDetailBackLink()
+        const DEFAULT_DOCUMENT_TITLE = document.title;
 
         // Upload-activity state. Declared here — before the initial renderRoute() call
         // below — because renderRoute() → syncUploadUI() reads _uploadInProgress; a later
@@ -1009,6 +1051,12 @@
                     loadCollections();
                     loadTrash();
                     checkLogoState();
+                    // A gallery or comments page opened while logged out (a reload
+                    // after a redeploy, which clears the in-memory sessions) already
+                    // failed its fetches: load it again now that they can succeed.
+                    const { route, params } = parseHash();
+                    if (route === 'gallery-detail') loadGalleryDetailPage(params.galleryId);
+                    if (route === 'gallery-comments') loadGalleryCommentsPage(params.galleryId);
                 } else {
                     errorEl.textContent = res.status === 403
                         ? t.loginErrorDenied
@@ -2966,18 +3014,9 @@
         // ── GALLERY DETAIL PAGE (formerly the "photos modal") ──────────────
         // Every id below (photosGrid, photosModalMeta, photosBulkBar, ...) lives
         // in #view-gallery-detail now, not an overlay — see that section's markup.
-        // _galleryDetailId/_photosResizeObs themselves are declared further up
-        // the script, before the initial renderRoute() call — see that comment.
-
-        let _photosSelectionMode = false;
-        let _photosSelected = new Set();
-        let _pendingUploadFiles = [];
-        // Proofing filters, AND'd together. _photoFlagFilter is a Set of active
-        // colors (empty = no color filter); the other two are plain booleans.
-        let _photoFlagFilter = new Set();
-        let _photoFavoritedFilter = false;
-        let _photoCommentsFilter = false;
-        let _galleryDetailPhotos = []; // last fetched, unfiltered — filters re-render from this without a refetch
+        // Its state (_galleryDetailId, the selection, the filters, the upload
+        // queue...) is declared further up the script, before the initial
+        // renderRoute() call: see that comment.
 
         // ── In-app confirm dialog (page-level, reusable from anywhere) ────
 
@@ -3002,12 +3041,14 @@
         // same reset-then-fetch shape, but against a page instead of an overlay.
         async function loadGalleryDetailPage(galleryId) {
             _galleryDetailId = galleryId;
+            _galleryDetailCollectionId = null;
+            _galleryDetailPhotos = [];
             _pendingUploadFiles = [];
-            _photosSelected = new Set();
-            _photosSelectionMode = false;
             _photoFlagFilter = new Set();
             _photoFavoritedFilter = false;
             _photoCommentsFilter = false;
+            setPhotoSelectionMode(false);
+            hidePhotosDropOverlay();
             document.querySelectorAll('.flag-filter-chip.active').forEach(c => c.classList.remove('active'));
             document.getElementById('filterFavoritedBtn').classList.remove('active');
             document.getElementById('filterCommentsBtn').classList.remove('active');
@@ -3015,49 +3056,65 @@
             document.getElementById('photosGrid').innerHTML = `<p style="color:var(--muted);font-size:13px">${t.loading}</p>`;
             document.getElementById('photosUploadWrap').style.display = 'none';
             document.getElementById('photosQueueWrap').style.display = 'none';
-            document.getElementById('photosBulkBar').style.display = 'none';
             document.getElementById('galleryDetailTitle').textContent = '';
             document.getElementById('galleryDetailPreviewBtn').href = `/preview/${galleryId}`;
             document.getElementById('galleryDetailDownloadBtn').href = `/api/gallery/${galleryId}/download`;
+            syncGalleryDetailBackLink();
             setupPhotosDropZone();
 
-            // Full admin-shape object — gives the title, the collection (for the
-            // back-trail) and the fileCount shown while the photo list itself is
-            // still loading.
+            // Full admin-shape object: gives the title and the collection (for the
+            // back link).
             try {
                 const res = await fetch(`/api/gallery/${galleryId}`);
                 if (!res.ok) throw new Error('Gallery not found');
                 const g = await res.json();
+                if (_galleryDetailId !== galleryId) return; // navigated to another gallery meanwhile
                 document.getElementById('galleryDetailTitle').textContent = g.eventName;
-                document.title = `${g.eventName} — Delyvr`;
-                // Most-specific-wins, same precedence as resolveGalleryClientLanguage
-                // server-side: a gallery that belongs to a collection always shows
-                // that collection as its parent, regardless of how this page was
-                // reached — simpler than tracking the click path, and always correct.
-                const backBtn = document.getElementById('galleryDetailBackBtn');
-                if (g.collectionId) {
-                    // Same hardcoded-English fallback already used everywhere else an
-                    // unnamed collection is displayed (e.g. the collection picker).
-                    const collection = (_collectionsData || []).find(c => c.id === g.collectionId);
-                    backBtn.textContent = collection ? `← ${collection.name || 'Untitled Collection'}` : `← ${t.backToGalleries}`;
-                } else {
-                    backBtn.textContent = `← ${t.backToGalleries}`;
-                }
+                document.title = `${g.eventName} - Delyvr`;
+                _galleryDetailCollectionId = g.collectionId || null;
+                syncGalleryDetailBackLink();
             } catch (err) {
+                if (_galleryDetailId !== galleryId) return;
                 document.getElementById('galleryDetailTitle').textContent = t.couldNotLoadGallery;
             }
 
             await refreshPhotosGrid(galleryId);
         }
 
+        // Most-specific-wins, same precedence as resolveGalleryClientLanguage
+        // server-side: a gallery that belongs to a collection always shows that
+        // collection as its parent, regardless of how this page was reached.
+        // Called again by loadCollections() and applyAdminTranslations(): on a
+        // direct load of '#/gallery/:id' the collections may arrive after the
+        // gallery, and a language change must not overwrite the collection name.
+        // t.backToGalleries already carries its own arrow.
+        function syncGalleryDetailBackLink() {
+            const backBtn = document.getElementById('galleryDetailBackBtn');
+            if (!backBtn) return;
+            const collection = _galleryDetailCollectionId
+                ? (_collectionsData || []).find(c => c.id === _galleryDetailCollectionId)
+                : null;
+            // Same hardcoded-English fallback already used everywhere else an
+            // unnamed collection is displayed (e.g. the collection picker).
+            backBtn.textContent = collection ? `← ${collection.name || 'Untitled Collection'}` : t.backToGalleries;
+        }
+
         // Called from renderRoute() whenever the hash navigates AWAY from
-        // '#/gallery/:id' — disconnects the resize observer (a hidden .view is
+        // '#/gallery/:id': disconnects the resize observer (a hidden .view is
         // still in the DOM, just display:none, so the observer would otherwise
-        // keep firing against a page nobody can see) and refreshes the list so
-        // any change made on the detail page (rename, uploads, deletes) shows up.
+        // keep firing against a page nobody can see), closes what belongs to this
+        // page, and refreshes the list so any change made on the detail page
+        // (rename, uploads, deletes) shows up.
         function teardownGalleryDetailPage() {
             if (_photosResizeObs) { _photosResizeObs.disconnect(); _photosResizeObs = null; }
-            if (_galleryDetailId) { _galleryDetailId = null; loadGalleries(); }
+            hidePhotosDropOverlay();
+            if (_galleryDetailId) {
+                _galleryDetailId = null;
+                _galleryDetailCollectionId = null;
+                closeGallerySettingsPanel();
+                document.title = DEFAULT_DOCUMENT_TITLE;
+                loadGalleries();
+            }
         }
 
         function copyGalleryDetailLink(btn) {
@@ -3217,10 +3274,18 @@
         function addToUploadQueue(files) {
             _pendingUploadFiles = [..._pendingUploadFiles, ...files];
             renderUploadQueue();
+            // The panel sits above the grid; after a drop deep in a long gallery
+            // it would otherwise appear off-screen.
+            document.getElementById('photosQueueWrap').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
         }
 
         function removeFromUploadQueue(index) {
             _pendingUploadFiles.splice(index, 1);
+            renderUploadQueue();
+        }
+
+        function clearUploadQueue() {
+            _pendingUploadFiles = [];
             renderUploadQueue();
         }
 
@@ -3231,9 +3296,8 @@
             const btn = document.getElementById('photosUploadBtn');
             if (_pendingUploadFiles.length === 0) { wrap.style.display = 'none'; return; }
             wrap.style.display = 'block';
-            const n = _pendingUploadFiles.length;
-            count.textContent = t.photoSelectedCount(n, n > 1 ? t.photoPlural : t.photoSingular);
-            btn.textContent = `${t.upload} ${n} ${n > 1 ? t.photoPlural : t.photoSingular}`;
+            count.textContent = t.uploadQueueTitle(_pendingUploadFiles.length);
+            btn.textContent = t.upload;
             pills.innerHTML = _pendingUploadFiles.map((f, i) =>
                 `<span class="file-pill">
                     <span class="file-pill-name">${escapeAttr(f.name)}</span>
@@ -3294,39 +3358,109 @@
             }
         }
 
+        // ── Drop files anywhere on the gallery page ───────────────────────
+        // Replaces the thin "drop photos here" strip that sat above the grid.
+        // Dragging files over any part of #view-gallery-detail shows
+        // #photosDropOverlay over the grid column, and a drop anywhere on the page
+        // queues the files. Only real file drags count (dataTransfer.types has
+        // 'Files'), so dragging text or an image from the page itself does nothing.
+        //
+        // The enter/leave depth counter lives on the overlay element, not in a
+        // module `let`: hidePhotosDropOverlay() runs from teardownGalleryDetailPage(),
+        // which the initial renderRoute() calls before the rest of this script is
+        // evaluated (see the state declarations next to _galleryDetailId).
+        function isFileDrag(e) {
+            return !!e.dataTransfer && Array.from(e.dataTransfer.types || []).includes('Files');
+        }
+
+        function showPhotosDropOverlay() {
+            const overlay = document.getElementById('photosDropOverlay');
+            const main = document.querySelector('#view-gallery-detail .gallery-detail-main');
+            if (!overlay || !main) return;
+            // Visible part of the grid column, down to the bottom of the window:
+            // the column can be far taller than the screen, or shorter than it.
+            const r = main.getBoundingClientRect();
+            const top = Math.max(r.top, 12);
+            overlay.style.left = r.left + 'px';
+            overlay.style.width = r.width + 'px';
+            overlay.style.top = top + 'px';
+            overlay.style.height = Math.max(window.innerHeight - 12 - top, 120) + 'px';
+            overlay.classList.add('visible');
+        }
+
+        function hidePhotosDropOverlay() {
+            const overlay = document.getElementById('photosDropOverlay');
+            if (!overlay) return;
+            overlay._depth = 0;
+            overlay.classList.remove('visible');
+        }
+
         function setupPhotosDropZone() {
-            const zone = document.getElementById('photosAddZone');
-            if (!zone || zone._initialized) return;
-            zone._initialized = true;
-            zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('drag-over'); });
-            zone.addEventListener('dragleave', () => zone.classList.remove('drag-over'));
-            zone.addEventListener('drop', e => {
+            const view = document.getElementById('view-gallery-detail');
+            const overlay = document.getElementById('photosDropOverlay');
+            if (!view || !overlay || view._dropInitialized) return;
+            view._dropInitialized = true;
+            view.addEventListener('dragenter', e => {
+                if (!isFileDrag(e)) return;
                 e.preventDefault();
-                zone.classList.remove('drag-over');
+                overlay._depth = (overlay._depth || 0) + 1;
+                if (overlay._depth === 1) showPhotosDropOverlay();
+            });
+            view.addEventListener('dragover', e => {
+                if (!isFileDrag(e)) return;
+                e.preventDefault();
+                e.dataTransfer.dropEffect = 'copy';
+            });
+            view.addEventListener('dragleave', e => {
+                if (!isFileDrag(e)) return;
+                overlay._depth = Math.max((overlay._depth || 0) - 1, 0);
+                if (overlay._depth === 0) hidePhotosDropOverlay();
+            });
+            view.addEventListener('drop', e => {
+                if (!isFileDrag(e)) return;
+                e.preventDefault();
+                hidePhotosDropOverlay();
                 const files = Array.from(e.dataTransfer.files).filter(isMediaFile);
                 if (files.length) addToUploadQueue(files);
             });
+            // A file dropped outside the view (the sidebar) needs nothing here:
+            // the document.body listeners near login() already cancel every drag
+            // event, so the browser never navigates away to open the file.
         }
 
         // ── Selection mode & bulk delete ─────────────────────────────────
 
-        function togglePhotoSelection() {
-            _photosSelectionMode = !_photosSelectionMode;
+        // Entering or leaving selection mode always starts from an empty
+        // selection, and the gold .photo-selected mark goes with it. The first
+        // version reset _photosSelected but left the class on the cards, so
+        // photos still looked selected after Cancel or a second click on Select.
+        function setPhotoSelectionMode(on) {
+            _photosSelectionMode = on;
             _photosSelected = new Set();
-            const grid = document.getElementById('photosGrid');
-            grid.classList.toggle('selection-mode', _photosSelectionMode);
-            document.getElementById('photosSelectBtn').classList.toggle('active', _photosSelectionMode);
-            document.getElementById('photosBulkBar').style.display = _photosSelectionMode ? 'flex' : 'none';
-            document.getElementById('photosModalMeta').style.display = _photosSelectionMode ? 'none' : '';
+            document.querySelectorAll('#photosGrid .photo-selected').forEach(c => c.classList.remove('photo-selected'));
+            document.getElementById('photosGrid').classList.toggle('selection-mode', on);
+            document.getElementById('photosSelectBtn').classList.toggle('active', on);
+            document.getElementById('photosBulkBar').style.display = on ? 'flex' : 'none';
+            document.getElementById('photosModalMeta').style.display = on ? 'none' : '';
             updatePhotosSelectionBar();
+        }
+
+        function togglePhotoSelection() {
+            setPhotoSelectionMode(!_photosSelectionMode);
         }
 
         function updatePhotosSelectionBar() {
             const n = _photosSelected.size;
+            const shown = document.querySelectorAll('#photosGrid .photos-grid-card').length;
             document.getElementById('photosSelectedCount').textContent = t.photoSelectedCount(n, n === 1 ? t.photoSingular : t.photoPlural);
             document.getElementById('photosDeleteSelectedBtn').disabled = n === 0;
+            document.getElementById('photosDeselectAllBtn').disabled = n === 0;
+            document.getElementById('photosSelectAllBtn').disabled = shown === 0 || n >= shown;
         }
 
+        // "All" means every photo the grid shows, so with a filter active it is
+        // the filtered set (and applyPhotoFilters() drops from the selection any
+        // photo a filter hides, so a delete never reaches a photo not on screen).
         function selectAllPhotos() {
             document.querySelectorAll('#photosGrid .photos-grid-card').forEach(card => {
                 const filename = card.dataset.filename;
@@ -3334,6 +3468,12 @@
                 _photosSelected.add(filename);
                 card.classList.add('photo-selected');
             });
+            updatePhotosSelectionBar();
+        }
+
+        function deselectAllPhotos() {
+            _photosSelected = new Set();
+            document.querySelectorAll('#photosGrid .photo-selected').forEach(c => c.classList.remove('photo-selected'));
             updatePhotosSelectionBar();
         }
 
@@ -3396,7 +3536,7 @@
                 toast.className = 'upload-toast visible success';
                 setTimeout(() => toast.classList.remove('visible', 'success'), 3000);
             }
-            togglePhotoSelection();
+            setPhotoSelectionMode(false);
             if (_photosResizeObs) { _photosResizeObs.disconnect(); _photosResizeObs = null; }
             await refreshPhotosGrid(galleryId);
             loadGalleries();
@@ -3433,13 +3573,9 @@
                 const res = await fetch(`/api/gallery/${galleryId}/photos`);
                 if (!res.ok) throw new Error('Failed');
                 const { photos } = await res.json();
-                _galleryDetailPhotos = photos; // unfiltered — applyPhotoFilters() re-renders from this
+                if (galleryId !== _galleryDetailId) return; // navigated away meanwhile
+                _galleryDetailPhotos = photos; // unfiltered: applyPhotoFilters() re-renders from this
                 const grid = document.getElementById('photosGrid');
-                if (photos.length === 0) {
-                    document.getElementById('photosModalMeta').textContent = `0 ${t.photoPlural}`;
-                    grid.innerHTML = `<p style="color:var(--muted);font-size:13px">${t.noPhotosLeft}</p>`;
-                    return;
-                }
                 applyPhotoFilters();
                 if (_photosResizeObs) { _photosResizeObs.disconnect(); _photosResizeObs = null; }
                 _photosResizeObs = new ResizeObserver(() => applyPhotoFilters());
@@ -3462,12 +3598,29 @@
             });
             const total = _galleryDetailPhotos.length;
             const shown = filtered.length;
+            // A filter must never leave a hidden photo selected: "Delete selected"
+            // would then delete photos that are not on screen.
+            if (_photosSelected.size) {
+                const visible = new Set(filtered.map(p => p.filename));
+                _photosSelected.forEach(f => { if (!visible.has(f)) _photosSelected.delete(f); });
+            }
             document.getElementById('photosModalMeta').textContent = (shown === total)
                 ? `${total} ${total !== 1 ? t.photoPlural : t.photoSingular}`
                 : t.photosFilteredCount(shown, total);
             const grid = document.getElementById('photosGrid');
-            if (shown === 0) { grid.innerHTML = `<p style="color:var(--muted);font-size:13px">${t.noPhotosMatchFilters}</p>`; return; }
-            _renderPhotosRows(_galleryDetailId, filtered);
+            if (total === 0) {
+                // Empty gallery: the drop target the old strip used to be, but
+                // large, since it is the only thing on the page.
+                grid.innerHTML = `<button type="button" class="photos-empty-drop" onclick="document.getElementById('photosAddInput').click()">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                    <span>${t.dropPhotosHereOr} <span class="photos-empty-drop-browse">${t.browse}</span></span>
+                </button>`;
+            } else if (shown === 0) {
+                grid.innerHTML = `<p style="color:var(--muted);font-size:13px">${t.noPhotosMatchFilters}</p>`;
+            } else {
+                _renderPhotosRows(_galleryDetailId, filtered);
+            }
+            if (_photosSelectionMode) updatePhotosSelectionBar();
         }
 
         function togglePhotoFlagFilter(color) {
@@ -3930,6 +4083,7 @@
                 _collectionsData = await res.json();
                 renderCollections(_collectionsData);
                 populateCollectionSelect();
+                if (_galleryDetailId) syncGalleryDetailBackLink();
                 if (_galleriesData && _galleriesData.length) {
                     filterGalleries(document.getElementById('gallerySearch').value);
                 }

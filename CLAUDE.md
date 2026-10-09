@@ -982,37 +982,81 @@ Loaded by all client pages via `<script src="/shared.js">` before their inline `
 - **Gallery detail page** (`#/gallery/:id`, view `view-gallery-detail`): **replaces the old
   "photos modal" overlay entirely**; `openPhotosModal`/`closePhotosModal`/`#photosModal` are
   gone, not kept as a secondary path (this project has no other precedent for two ways to
-  reach the same thing). Every element id the old modal used (`photosGrid`,
-  `photosModalMeta`, `photosBulkBar`, `photosAddZone`, …) now lives directly in this routed
-  section instead of inside an overlay, which is what let almost every internal function
-  (`_buildPhotoRows`/`_renderPhotosRows`/`deleteSelectedPhotos`/the upload drop zone) port
-  over unmodified. Reached by clicking a gallery row/card (`handleGalleryItemClick`'s
-  previously-no-op non-selection-mode branch now does `location.hash = '#/gallery/' + id`)
-  or its "manage photos" icon.
+  reach the same thing). Most element ids the old modal used (`photosGrid`,
+  `photosModalMeta`, `photosBulkBar`, …) now live directly in this routed section, which is
+  what let `_buildPhotoRows`/`_renderPhotosRows`/`deleteSelectedPhotos` port over almost
+  unmodified. Reached by clicking a gallery row (`handleGalleryItemClick`'s non-selection
+  branch does `location.hash = '#/gallery/' + id`) or its "manage photos" icon.
   - **Router**: `parseHash()` matches `seg[0]==='gallery' && seg[1] && !seg[2]`, checked
     **after** the existing 3-segment `.../comments` pattern so the shorter pattern can't
     shadow it. `teardownGalleryDetailPage()` runs on every navigation **away** from this
-    route (disconnects the photo-grid `ResizeObserver`, which would otherwise keep firing
-    against a `display:none` page, and refetches the gallery list so a rename/upload/delete
-    made here is reflected back on `#/galleries`). **`_galleryDetailId`/`_photosResizeObs`
-    must stay declared before the initial `renderRoute()` call**, same temporal-dead-zone
-    hazard as `_uploadInProgress`: `renderRoute()` calls `teardownGalleryDetailPage()`
-    unconditionally on first load, and a `let` declared further down the script (where the
-    rest of this feature's code lives) would throw before ever being reached.
-  - **Back-trail**: a single link, not a breadcrumb bar. Defaults to "← Galleries"; when the
-    gallery belongs to a collection, `loadGalleryDetailPage()` rewrites it to "← `<collection
-    name>`" by reading `collectionId` off the new `GET /api/gallery/:id` response and looking
-    it up in `_collectionsData`, **always**, regardless of which link was actually clicked
-    to arrive here (simpler than tracking the click path, and a gallery's collection is
-    always its most relevant parent). Same "most specific wins" precedence as
-    `resolveGalleryClientLanguage` server-side.
-  - **Left-panel actions**: preview (opens `/preview/:id` in a new tab), copy client link
-    (`copyGalleryDetailLink()` calling the existing `copyGalleryLink()`), add files (triggers
-    the same `#photosAddInput` the drop zone uses), download ZIP (`GET .../download`,
-    existing route), and the relocated Select toggle.
-  - **Settings panel** (`#gallerySettingsModal`, opened via the page header's button): same
-    `.profile-*` markup/classes as the global Settings modal (`#profileModal`) for visual
-    consistency. Downloads/comments/client-language controls call the **same**
+    route: it disconnects the photo-grid `ResizeObserver` (which would otherwise keep firing
+    against a `display:none` page), hides the drop overlay, closes the settings panel,
+    restores `document.title` and refetches the gallery list so a rename/upload/delete made
+    here is reflected back on `#/galleries`.
+  - **All of this page's state is declared before the initial `renderRoute()` call**
+    (`_galleryDetailId`, `_photosResizeObs`, the selection, the filters, the upload queue,
+    `_galleryDetailPhotos`, `_galleryDetailCollectionId`), same temporal-dead-zone hazard
+    as `_uploadInProgress`. On a direct load or reload of `#/gallery/:id`, that first
+    `renderRoute()` runs `loadGalleryDetailPage()` while the script is still being
+    evaluated, and it writes this state synchronously before its first `await`. The first
+    version declared only `_galleryDetailId`/`_photosResizeObs` up there, so every reload
+    of a gallery page threw `Cannot access '_pendingUploadFiles' before initialization`
+    (inside an async function, so only as an unhandled rejection) and stayed blank. Anything
+    else the synchronous part of `loadGalleryDetailPage()`/`teardownGalleryDetailPage()`
+    touches must stay a function declaration or a DOM property, never a later `let`: the
+    drop overlay's enter/leave depth lives on the overlay element (`overlay._depth`) for
+    that reason.
+  - **Reload after a redeploy**: admin sessions are in memory, so a redeploy logs everyone
+    out and a reloaded gallery or comments page fails its fetches behind the login modal.
+    `login()` therefore reloads the current `gallery-detail`/`gallery-comments` page once the
+    session exists. `loadGalleryDetailPage()` and `refreshPhotosGrid()` also drop a response
+    that arrives after the user has moved to another gallery.
+  - **Back link**: a single link, not a breadcrumb bar. `syncGalleryDetailBackLink()` shows
+    "← `<collection name>`" when the gallery belongs to a collection, else
+    `t.backToGalleries` (which carries its own arrow: never prefix it with another one).
+    It reads `_galleryDetailCollectionId` (from `GET /api/gallery/:id`) against
+    `_collectionsData`, **always**, regardless of which link was clicked to arrive here.
+    Same "most specific wins" precedence as `resolveGalleryClientLanguage` server-side.
+    It is called again by `loadCollections()` and `applyAdminTranslations()`: on a direct
+    load the collections can arrive after the gallery, and a language switch used to
+    overwrite the collection name with "Galleries".
+  - **Left-panel actions**, in this order, in three groups separated by thin rules:
+    Settings; Preview, Copy client link, Copy critique link; Add files, Download ZIP;
+    Select. **Settings lives here, first**, not in the page header. Every one of them is a
+    `.gallery-detail-action`, `<a>` (Preview, Download ZIP) and `<button>` alike, and that
+    class declares its own height, font and line-height instead of borrowing `.client-btn`
+    or `.section-select-btn`: an `<a>` inherits the body's `line-height: 1.5` while a
+    `<button>` does not, which is what made the first version's buttons different heights.
+    The column is 220px so the longest label of every locale fits on one line (checked:
+    none truncated in en/fr/es/pt/it). Under 900px the panel becomes a two-column grid of
+    44px buttons whose label may wrap to two lines, so every button keeps the same size.
+    The critique button reuses `copyCritiqueLink()` with the short label
+    `t.galleryDetailCopyCritique` and the long `t.copyCritiqueLink` as its tooltip.
+  - **Adding files: drop anywhere on the page**, no drop strip. `setupPhotosDropZone()`
+    listens on the whole view; a drag that carries files (`dataTransfer.types` includes
+    `'Files'`, so dragging text or an image of the page does nothing) shows
+    `#photosDropOverlay`, `position: fixed` and sized by `showPhotosDropOverlay()` to the
+    visible part of the grid column, so its message is on screen however far the grid is
+    scrolled. Enter/leave are counted (`overlay._depth`) because each child element fires its
+    own pair; the overlay's children have `pointer-events: none`. Nothing is needed against a
+    file dropped outside the view: the `document.body` listeners near `login()` already
+    cancel every drag event, so the browser never navigates away to open it. An **empty**
+    gallery shows one large clickable drop box (`.photos-empty-drop`) instead of a message.
+    The queue (`#photosQueueWrap`, with Cancel and Upload) and the progress
+    (`#photosUploadWrap`) are framed `.photos-upload-panel` blocks above the grid, and
+    `addToUploadQueue()` scrolls the queue into view, since a drop deep in a long gallery
+    would otherwise create it off-screen.
+  - **Selection**: `setPhotoSelectionMode(on)` is the only way in or out (the Select button,
+    Cancel, a successful bulk delete, and loading another gallery), and it always clears both
+    `_photosSelected` **and** every card's `.photo-selected`. The first version reset the Set
+    but left the gold class on the cards, so photos still looked selected after Cancel. The
+    bar has "Select all" and "Deselect all" (which stays in selection mode); "all" means the
+    photos the grid currently shows. `applyPhotoFilters()` drops from the selection any photo
+    a filter hides, so "Delete selected" can never reach a photo that is not on screen.
+  - **Settings panel** (`#gallerySettingsModal`, opened from the left panel's first button):
+    same `.profile-*` markup/classes as the global Settings modal (`#profileModal`) for
+    visual consistency. Downloads/comments/client-language controls call the **same**
     `toggleDownloads`/`toggleComments`/`setGalleryClientLanguage` already used on the gallery
     card, relocated here, not reimplemented. Password, expiration and the three lightbox-
     appearance selects are new (see "Per-gallery password and expiration" above and
