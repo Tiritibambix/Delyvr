@@ -231,6 +231,69 @@
         </aside>
     </div>
 
+    <!-- Collection settings: same side panel as the gallery's. Its values apply to
+         every gallery of the collection: downloads and comments as a master switch
+         (off here is off for all of them), the language as their default. -->
+    <div class="side-panel-overlay" id="collectionSettingsModal" onclick="if(event.target===this) closeCollectionSettingsPanel()">
+        <aside class="side-panel" role="dialog" aria-modal="true" aria-labelledby="collectionSettingsTitle">
+            <header class="side-panel-header">
+                <h3 id="collectionSettingsTitle">Collection settings</h3>
+                <button class="side-panel-close" id="collectionSettingsCloseBtn" onclick="closeCollectionSettingsPanel()" title="Close">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                </button>
+            </header>
+            <div class="side-panel-body">
+                <p class="settings-section-intro collection-settings-intro" id="csIntro"></p>
+                <section class="settings-section">
+                    <h4 class="settings-section-title">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                        <span id="csAccessLabel">Access</span>
+                    </h4>
+                    <label class="settings-row" for="csDownloadsCheckbox">
+                        <span class="settings-row-text">
+                            <span class="settings-row-label" id="csDownloadsLabel">Allow downloads</span>
+                            <span class="settings-row-help" id="csDownloadsHelp"></span>
+                        </span>
+                        <span class="toggle-switch">
+                            <input type="checkbox" id="csDownloadsCheckbox" onchange="toggleCollectionDownloads(_collectionDetailId, this.checked, this)">
+                            <span class="toggle-track"></span>
+                        </span>
+                    </label>
+                    <label class="settings-row" for="csCommentsCheckbox">
+                        <span class="settings-row-text">
+                            <span class="settings-row-label" id="csCommentsLabel">Allow comments</span>
+                            <span class="settings-row-help" id="csCommentsHelp"></span>
+                        </span>
+                        <span class="toggle-switch">
+                            <input type="checkbox" id="csCommentsCheckbox" onchange="toggleCollectionComments(_collectionDetailId, this.checked, this)">
+                            <span class="toggle-track"></span>
+                        </span>
+                    </label>
+                </section>
+                <section class="settings-section">
+                    <h4 class="settings-section-title">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m5 8 6 6"/><path d="m4 14 6-6 2-3"/><path d="M2 5h12"/><path d="M7 2h1"/><path d="m22 22-5-10-5 10"/><path d="M14 18h6"/></svg>
+                        <span id="csLanguageSectionLabel">Language</span>
+                    </h4>
+                    <div class="settings-row settings-row-stacked">
+                        <span class="settings-row-text">
+                            <span class="settings-row-label" id="csLanguageLabel">Client language</span>
+                            <span class="settings-row-help" id="csLanguageHelp"></span>
+                        </span>
+                        <select class="settings-select" id="csClientLanguage" onchange="setCollectionClientLanguage(_collectionDetailId, this.value)">
+                            <option value="auto" id="csLangAutoOpt">Auto</option>
+                            <option value="en">English</option>
+                            <option value="fr">Français</option>
+                            <option value="es">Español</option>
+                            <option value="pt">Português</option>
+                            <option value="it">Italiano</option>
+                        </select>
+                    </div>
+                </section>
+            </div>
+        </aside>
+    </div>
+
     <!-- Page-level in-app confirm dialog, reused by confirmDialog() everywhere -->
     <div class="confirm-dialog-overlay" id="confirmDialogOverlay">
         <div class="confirm-dialog-card">
@@ -822,6 +885,76 @@
                 </div>
             </section>
 
+            <!-- VIEW: a single collection's own page (#/collection/:id), built like
+                 the gallery page: actions on the left, its galleries as cards on the
+                 right (reorder by drag, remove, add, click to open). Filled by
+                 renderCollectionDetailPage() from the _collectionsData/_galleriesData
+                 caches, which every change refreshes. -->
+            <section class="view" id="view-collection-detail">
+                <div class="view-header">
+                    <a class="back-link" href="#/collections" id="collectionDetailBackBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="11 18 5 12 11 6"/></svg><span id="collectionDetailBackText">Back</span></a>
+                    <h1 class="view-title" id="collectionDetailTitle"></h1>
+                </div>
+                <div class="gallery-detail-layout">
+                    <aside class="gallery-detail-actions">
+                        <button class="gallery-detail-action" id="collectionDetailSettingsBtn" onclick="openCollectionSettingsPanel()">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+                            <span id="collectionDetailSettingsText">Settings</span>
+                        </button>
+                        <span class="gallery-detail-actions-sep" aria-hidden="true"></span>
+                        <a class="gallery-detail-action" id="collectionDetailPreviewBtn" target="_blank" rel="noopener">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8Z"/><circle cx="12" cy="12" r="3"/></svg>
+                            <span id="collectionDetailPreviewText">Preview</span>
+                        </a>
+                        <button class="gallery-detail-action" id="collectionDetailCopyLinkBtn" onclick="copyCollectionLink(_collectionDetailId, this)">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                            <span id="collectionDetailCopyLinkText">Copy client link</span>
+                        </button>
+                        <button class="gallery-detail-action" id="collectionDetailCopyCritiqueBtn" onclick="copyCollectionCritiqueLink(_collectionDetailId, this)">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="10" y1="6" x2="21" y2="6"/><line x1="10" y1="12" x2="21" y2="12"/><line x1="10" y1="18" x2="21" y2="18"/><path d="M4 6h1v4M4 10h2M6 18H4c0-1 2-2 2-3s-1-1.5-2-1" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                            <span id="collectionDetailCopyCritiqueText">Copy critique link</span>
+                        </button>
+                        <button class="gallery-detail-action" id="collectionDetailRegenerateOgBtn" onclick="regenerateCollectionOG(_collectionDetailId)">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
+                            <span id="collectionDetailRegenerateOgText">Regenerate share preview</span>
+                        </button>
+                        <span class="gallery-detail-actions-sep" aria-hidden="true"></span>
+                        <button class="gallery-detail-action" id="collectionDetailAddGalleriesBtn" onclick="openGalleryPicker(_collectionDetailId)">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                            <span id="collectionDetailAddGalleriesText">Add galleries</span>
+                        </button>
+                        <div class="gallery-detail-action-split">
+                            <button class="gallery-detail-action" id="collectionDetailAudioBtn" onclick="document.getElementById('collectionDetailAudioInput').click()">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
+                                <span id="collectionDetailAudioText">Add an audio file</span>
+                            </button>
+                            <button class="gallery-detail-action gallery-detail-action-icon" id="collectionDetailAudioRemoveBtn" onclick="removeOwnerAudio('collection', _collectionDetailId)" style="display:none">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/></svg>
+                            </button>
+                        </div>
+                        <input type="file" id="collectionDetailAudioInput" accept="audio/*,.mp3,.m4a,.aac,.ogg,.opus,.wav,.flac" style="display:none"
+                               onchange="uploadOwnerAudio('collection', _collectionDetailId, this.files[0]); this.value='';">
+                        <a class="gallery-detail-action" id="collectionDetailDownloadBtn" href="#">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                            <span id="collectionDetailDownloadText">Download ZIP</span>
+                        </a>
+                        <span class="gallery-detail-actions-sep" aria-hidden="true"></span>
+                        <!-- Deleting a collection keeps its galleries (the dialog offers to
+                             trash them too), same dialog as the collections list. -->
+                        <button class="gallery-detail-action gallery-detail-action-danger" id="collectionDetailDeleteBtn" onclick="deleteCollection(_collectionDetailId)">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
+                            <span id="collectionDetailDeleteText">Delete the collection</span>
+                        </button>
+                    </aside>
+                    <div class="gallery-detail-main">
+                        <div class="collection-detail-meta">
+                            <span id="collectionDetailCount"></span>
+                            <span class="collection-detail-hint" id="collectionDetailHint"></span>
+                        </div>
+                        <div class="collection-gallery-grid" id="collectionGalleryGrid"></div>
+                    </div>
+                </div>
+            </section>
         </main>
     </div>
 
@@ -946,6 +1079,30 @@
             if (critiqueBtn) critiqueBtn.title = t.critiqueLinkHint;
             byId('galleryDetailAddFilesText', t.galleryDetailAddFiles);
             byId('galleryDetailTrashText', t.moveToTrash);
+
+            // Collection page and its settings panel
+            byId('collectionDetailBackText', t.backLink);
+            byId('collectionDetailSettingsText', t.headerProfile);
+            byId('collectionDetailPreviewText', t.galleryDetailPreview);
+            byId('collectionDetailCopyLinkText', t.copyClientLink);
+            byId('collectionDetailCopyCritiqueText', t.galleryDetailCopyCritique);
+            byId('collectionDetailRegenerateOgText', t.galleryDetailRegenerateOg);
+            byId('collectionDetailAddGalleriesText', t.collectionDetailAddGalleries);
+            byId('collectionDetailDownloadText', t.galleryDetailDownloadZip);
+            byId('collectionDetailDeleteText', t.deleteCollectionLabel);
+            const colTitles = { collectionDetailCopyCritiqueBtn: t.critiqueLinkHint, collectionDetailRegenerateOgBtn: t.ogTooltipCollection, collectionSettingsCloseBtn: t.close };
+            Object.entries(colTitles).forEach(([elId, title]) => { const el = document.getElementById(elId); if (el) el.title = title; });
+            byId('collectionSettingsTitle', t.collectionSettingsTitle);
+            byId('csAccessLabel', t.gsAccessLabel);
+            byId('csDownloadsLabel', t.allowDownloads);
+            byId('csDownloadsHelp', t.csDownloadsHelp);
+            byId('csCommentsLabel', t.allowComments);
+            byId('csCommentsHelp', t.csCommentsHelp);
+            byId('csLanguageSectionLabel', t.language);
+            byId('csLanguageLabel', t.clientLanguageTitle);
+            byId('csLanguageHelp', t.csLanguageHelp);
+            byId('csLangAutoOpt', t.autoLanguage);
+            if (_collectionDetailId) renderCollectionDetailPage();
             byId('galleryDetailDownloadText', t.galleryDetailDownloadZip);
             byId('filterFavoritedText', t.filterFavorited);
             byId('filterCommentsText', t.filterHasComments);
@@ -1111,7 +1268,8 @@
             'collections':      'view-collections',
             'new':              'view-new',
             'gallery-comments': 'view-gallery-comments',
-            'gallery-detail':   'view-gallery-detail'
+            'gallery-detail':   'view-gallery-detail',
+            'collection-detail': 'view-collection-detail'
         };
         // Gallery and collection creation share one view, so the older
         // per-entity URLs still resolve there instead of 404-ing to the list.
@@ -1134,6 +1292,9 @@
             if (seg[0] === 'gallery' && seg[1] && !seg[2]) {
                 return { route: 'gallery-detail', params: { galleryId: seg[1] } };
             }
+            if (seg[0] === 'collection' && seg[1] && !seg[2]) {
+                return { route: 'collection-detail', params: { collectionId: seg[1] } };
+            }
             const key = seg.join('-');
             const resolved = ROUTE_ALIASES[key] || key;
             return ROUTES[resolved] ? { route: resolved, params: {} } : { route: DEFAULT_ROUTE, params: {} };
@@ -1145,8 +1306,11 @@
                 const el = document.getElementById(viewId);
                 if (el) el.classList.toggle('active', key === route);
             });
+            // A gallery or collection page lights up its list in the sidebar.
+            const NAV_PARENT = { 'gallery-detail': 'galleries', 'gallery-comments': 'galleries', 'collection-detail': 'collections' };
+            const navRoute = NAV_PARENT[route] || route;
             document.querySelectorAll('.nav-item[data-route]').forEach(a => {
-                a.classList.toggle('active', a.dataset.route === route);
+                a.classList.toggle('active', a.dataset.route === navRoute);
             });
             // Close the mobile drawer and reset scroll on every navigation
             const sb = document.getElementById('sidebar');
@@ -1163,9 +1327,20 @@
                 const cameFromElsewhere = fromHash && fromHash !== location.hash && !/\/comments$/.test(fromHash);
                 if (back) back.setAttribute('href', cameFromElsewhere ? fromHash : '#/galleries');
             }
+            // A gallery page opened from its collection's page returns there; opened
+            // from anywhere else (or reloaded), to the galleries list. Coming back from
+            // the gallery's own comments page keeps whichever it already had.
+            if (route === 'gallery-detail') {
+                const back = document.getElementById('galleryDetailBackBtn');
+                const fromCollection = !!fromHash && /^#\/collection\/[^/]+$/.test(fromHash);
+                const fromOwnComments = fromHash === location.hash + '/comments';
+                if (back && !fromOwnComments) back.setAttribute('href', fromCollection ? fromHash : '#/galleries');
+            }
             if (route === 'gallery-comments') loadGalleryCommentsPage(params.galleryId);
             if (route === 'gallery-detail') loadGalleryDetailPage(params.galleryId);
             else teardownGalleryDetailPage();
+            if (route === 'collection-detail') loadCollectionDetailPage(params.collectionId);
+            else teardownCollectionDetailPage();
             syncUploadUI(); // banner on Create / corner panel elsewhere, per current route
         }
 
@@ -1202,6 +1377,8 @@
         // Hash of the page shown before the current one, for the comments page's
         // back link (see renderRoute()).
         let _currentRouteHash = null;
+        // Collection page (#/collection/:id): same early declaration, same reason.
+        let _collectionDetailId = null;
         // Last GET /api/gallery/:id the settings panel loaded (collection, password,
         // expiration), so a language switch can rewrite its help lines and status.
         let _gallerySettings = null;
@@ -1273,6 +1450,7 @@
                     const { route, params } = parseHash();
                     if (route === 'gallery-detail') loadGalleryDetailPage(params.galleryId);
                     if (route === 'gallery-comments') loadGalleryCommentsPage(params.galleryId);
+                    if (route === 'collection-detail') loadCollectionDetailPage(params.collectionId);
                 } else {
                     errorEl.textContent = res.status === 403
                         ? t.loginErrorDenied
@@ -2455,6 +2633,7 @@
                 renderCollections(_collectionsData);
                 filterGalleries(document.getElementById('gallerySearch').value);
                 if (_galleryDetailId) syncGalleryDetailExtras();
+                if (_collectionDetailId) renderCollectionDetailPage();
 
             } catch (err) {
                 console.error('Error loading galleries:', err);
@@ -4786,6 +4965,7 @@
                 renderCollections(_collectionsData);
                 populateCollectionSelect();
                 if (_galleryDetailId) syncGalleryDetailExtras();
+                if (_collectionDetailId) renderCollectionDetailPage();
                 if (_galleriesData && _galleriesData.length) {
                     filterGalleries(document.getElementById('gallerySearch').value);
                 }
@@ -4795,15 +4975,17 @@
         }
 
         // A collection matches the search box on its own name or on the name of
-        // any gallery inside it. Matching pills are highlighted to show why the
-        // collection is listed, but every pill is still rendered: movePill()
-        // saves the order it reads from the DOM, so hiding a pill here would
-        // drop that gallery from the collection on the next reorder.
+        // any gallery inside it; in the second case its meta line says which.
         function galleryNameById(gid) {
             const g = _galleriesData ? _galleriesData.find(x => x.id === gid) : null;
             return g ? g.eventName : null;
         }
 
+        // The collections list: one row per collection, built like a gallery row
+        // (same .gallery-item / .gallery-cover / .gallery-info / .gallery-actions
+        // classes, so both lists look and behave alike). A click on the row opens
+        // the collection's own page (#/collection/:id), where its galleries are
+        // managed; the gallery "pills" this list used to carry are gone.
         function renderCollections(colls) {
             const container = document.getElementById('collectionList');
             if (colls.length === 0) {
@@ -4821,122 +5003,321 @@
                 container.innerHTML = `<div class="empty-state">${t.noCollectionsMatch(escapeHtml(rawQuery))}</div>`;
                 return;
             }
+            const placeholderSvg = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 2 2 7l10 5 10-5-10-5Z"/><path d="m2 17 10 5 10-5"/><path d="m2 12 10 5 10-5"/></svg>`;
             container.innerHTML = shown.map(c => {
-                const pillsHtml = c.galleryIds.map(gid => {
-                        const rawName = galleryNameById(gid);
-                        const name = rawName !== null ? escapeHtml(rawName) : gid.slice(0, 8) + '…';
-                        return `<span class="gallery-pill${nameMatches(rawName) ? ' gallery-pill-match' : ''}" draggable="true"
-                                    data-gid="${gid}" data-cid="${c.id}"
-                                    ondragstart="handlePillDragStart(event)"
-                                    ondragover="handlePillDragOver(event)"
-                                    ondrop="handlePillDrop(event, '${c.id}')"
-                                    ondragend="handlePillDragEnd(event)">
-                            <button class="pill-move" onclick="movePill('${c.id}','${gid}',-1)" title="${t.moveLeft}">◀</button>
-                            <span class="gallery-pill-name">${name}</span>
-                            <button class="pill-move" onclick="movePill('${c.id}','${gid}',1)" title="${t.moveRight}">▶</button>
-                            <button class="pill-remove" onclick="removeFromCollection('${c.id}', '${gid}')" title="${t.remove}">✕</button>
-                        </span>`;
-                    }).join('') + `<button class="add-gallery-pill" onclick="openGalleryPicker('${c.id}')">${t.addGallery}</button>`;
-
-                const coverHtml = c.hasBackground
-                    ? `<img src="/api/collection/${c.id}/background?thumb=1&v=${c.bgVersion || 0}" alt="" loading="lazy">`
-                    : `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>`;
-
-                return `<div class="collection-item">
-                    <div class="collection-header">
-                        <div class="collection-cover-thumb"
-                             id="col-cover-${c.id}"
-                             onclick="document.getElementById('col-cover-input-${c.id}').click()"
-                             ondragover="handleColCoverDragOver(event, '${c.id}')"
-                             ondragleave="handleColCoverDragLeave(event, '${c.id}')"
-                             ondrop="handleColCoverDrop(event, '${c.id}')"
-                             title="${t.changeCoverTitle}">
-                            ${coverHtml}
-                            <div class="collection-cover-overlay">
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
-                            </div>
-                            <input type="file" id="col-cover-input-${c.id}" accept="image/*" style="display:none"
-                                   onchange="uploadCollectionBackground('${c.id}', this.files[0])">
+                const n = c.galleryIds.length;
+                // Listed because of one of its galleries rather than its own name: say which.
+                const matchedGallery = q && !nameMatches(c.name)
+                    ? galleryNameById(c.galleryIds.find(gid => nameMatches(galleryNameById(gid))))
+                    : null;
+                const meta = `${n} ${n === 1 ? t.gallerySingular : t.galleryPlural}`
+                    + (c.created ? ` · ${formatAdminDate(c.created, false)}` : '')
+                    + (matchedGallery ? ` · ${escapeHtml(t.collectionContains(matchedGallery))}` : '');
+                return `
+                <div class="gallery-item collection-row" id="collection-row-${c.id}" onclick="handleCollectionRowClick(event, '${c.id}')">
+                    <div class="gallery-cover ${c.hasBackground ? 'has-image' : ''}"
+                         id="col-cover-${c.id}"
+                         title="${t.changeCoverTitle}"
+                         onclick="event.stopPropagation(); document.getElementById('col-cover-input-${c.id}').click()"
+                         ondragover="handleColCoverDragOver(event, '${c.id}')"
+                         ondragleave="handleColCoverDragLeave(event, '${c.id}')"
+                         ondrop="handleColCoverDrop(event, '${c.id}')">
+                        ${c.hasBackground ? `<img src="/api/collection/${c.id}/background?thumb=1&v=${c.bgVersion || 0}" alt="" loading="lazy">` : ''}
+                        <div class="gallery-cover-placeholder">${placeholderSvg}</div>
+                        <div class="gallery-cover-overlay">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
+                            <span>${t.dropOrClick}</span>
                         </div>
-                        <div class="collection-info">
-                            <div style="display:flex;align-items:center;gap:4px;min-width:0;">
-                                <div class="gallery-name" contenteditable="false" spellcheck="false"
-                                     id="col-name-${c.id}"
-                                     ondblclick="startCollectionRename('${c.id}')"
-                                     onblur="finishCollectionRename('${c.id}', this)"
-                                     onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur();} if(event.key==='Escape'){this.textContent=this.dataset.orig;this.blur();}"
-                                     >${escapeHtml(c.name)}</div>
-                                <button class="name-edit-btn" onclick="startCollectionRename('${c.id}')" title="${t.rename}">
-                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-                                </button>
-                            </div>
-                            <div class="collection-meta-row">${c.galleryIds.length} ${c.galleryIds.length === 1 ? t.gallerySingular : t.galleryPlural}</div>
-                            <div class="gallery-bottom">
-                                <label class="downloads-toggle" title="${t.allowDownloads}">
-                                    <span class="toggle-switch">
-                                        <input type="checkbox" ${c.downloadsEnabled !== false ? 'checked' : ''}
-                                               onchange="toggleCollectionDownloads('${c.id}', this.checked, this)">
-                                        <span class="toggle-track"></span>
-                                    </span>
-                                    ${t.downloads}
-                                </label>
-                                <label class="downloads-toggle" title="${t.allowComments}">
-                                    <span class="toggle-switch">
-                                        <input type="checkbox" ${c.commentsEnabled !== false ? 'checked' : ''}
-                                               onchange="toggleCollectionComments('${c.id}', this.checked, this)">
-                                        <span class="toggle-track"></span>
-                                    </span>
-                                    ${t.comments}
-                                </label>
-                                <select class="lang-select" title="${t.clientLanguageTitle}" onchange="setCollectionClientLanguage('${c.id}', this.value)">
-                                    <option value="auto" title="${t.autoLanguage}" ${c.clientLanguage === 'auto' ? 'selected' : ''}>🌐</option>
-                                    <option value="en" title="English" ${c.clientLanguage === 'en' ? 'selected' : ''}>En</option>
-                                    <option value="fr" title="Français" ${c.clientLanguage === 'fr' ? 'selected' : ''}>Fr</option>
-                                    <option value="es" title="Español" ${c.clientLanguage === 'es' ? 'selected' : ''}>Es</option>
-                                    <option value="pt" title="Português" ${c.clientLanguage === 'pt' ? 'selected' : ''}>Pt</option>
-                                    <option value="it" title="Italiano" ${c.clientLanguage === 'it' ? 'selected' : ''}>It</option>
-                                </select>
-                            </div>
+                        <input type="file" id="col-cover-input-${c.id}" accept="image/*" style="display:none"
+                               onclick="event.stopPropagation()" onchange="uploadCollectionBackground('${c.id}', this.files[0])">
+                    </div>
+
+                    <div class="gallery-info">
+                        <div style="display:flex;align-items:center;gap:4px;min-width:0;">
+                            <div class="gallery-name" contenteditable="false" spellcheck="false"
+                                 id="col-name-${c.id}"
+                                 ondblclick="event.stopPropagation(); startCollectionRename('${c.id}')"
+                                 onblur="finishCollectionRename('${c.id}', this)"
+                                 onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur();} if(event.key==='Escape'){this.textContent=this.dataset.orig;this.blur();}"
+                                 >${escapeHtml(c.name)}</div>
+                            <button class="name-edit-btn" onclick="event.stopPropagation(); startCollectionRename('${c.id}')" title="${t.rename}">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                            </button>
                         </div>
-                        <div class="collection-actions">
-                            ${renderAudioButtons('collection', c.id, c.audio)}
-                            <span class="action-sep"></span>
-                            <button class="btn-icon" onclick="copyCollectionLink('${c.id}', this)" title="${t.copyClientLink}">
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
-                            </button>
-                            <button class="btn-icon" onclick="copyCollectionCritiqueLink('${c.id}', this)" title="${t.copyCritiqueLink}">
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="10" y1="6" x2="21" y2="6"/><line x1="10" y1="12" x2="21" y2="12"/><line x1="10" y1="18" x2="21" y2="18"/><path d="M4 6h1v4M4 10h2M6 18H4c0-1 2-2 2-3s-1-1.5-2-1" stroke-linecap="round" stroke-linejoin="round"/></svg>
-                            </button>
-                            <div class="og-tooltip-wrap">
-                                <button class="btn-icon" onclick="regenerateCollectionOG('${c.id}')" title="${t.regenerateShare}">
-                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
-                                </button>
-                                <div class="og-tooltip og-tooltip--down">${t.ogTooltipCollection}</div>
-                            </div>
-                            <button class="btn-icon btn-icon-danger" onclick="deleteCollection('${c.id}')" title="${t.delete}">
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
-                            </button>
+                        <div class="gallery-meta">${meta}</div>
+                        <div class="gallery-bottom gallery-detail-panel">
+                            <label class="downloads-toggle" title="${t.allowDownloads}">
+                                <span class="toggle-switch">
+                                    <input type="checkbox" ${c.downloadsEnabled !== false ? 'checked' : ''}
+                                           onchange="toggleCollectionDownloads('${c.id}', this.checked, this)">
+                                    <span class="toggle-track"></span>
+                                </span>
+                                ${t.downloads}
+                            </label>
+                            <label class="downloads-toggle" title="${t.allowComments}">
+                                <span class="toggle-switch">
+                                    <input type="checkbox" ${c.commentsEnabled !== false ? 'checked' : ''}
+                                           onchange="toggleCollectionComments('${c.id}', this.checked, this)">
+                                    <span class="toggle-track"></span>
+                                </span>
+                                ${t.comments}
+                            </label>
+                            <select class="lang-select" title="${t.clientLanguageTitle}" onchange="setCollectionClientLanguage('${c.id}', this.value)">
+                                <option value="auto" title="${t.autoLanguage}" ${c.clientLanguage === 'auto' ? 'selected' : ''}>🌐</option>
+                                <option value="en" title="English" ${c.clientLanguage === 'en' ? 'selected' : ''}>En</option>
+                                <option value="fr" title="Français" ${c.clientLanguage === 'fr' ? 'selected' : ''}>Fr</option>
+                                <option value="es" title="Español" ${c.clientLanguage === 'es' ? 'selected' : ''}>Es</option>
+                                <option value="pt" title="Português" ${c.clientLanguage === 'pt' ? 'selected' : ''}>Pt</option>
+                                <option value="it" title="Italiano" ${c.clientLanguage === 'it' ? 'selected' : ''}>It</option>
+                            </select>
                         </div>
                     </div>
-                    <div class="collection-galleries"
-                         id="col-drop-${c.id}"
-                         ondragover="handleColDragOver(event, '${c.id}')"
-                         ondragleave="handleColDragLeave(event, '${c.id}')"
-                         ondrop="handleColDrop(event, '${c.id}')">
-                        ${pillsHtml}
+
+                    <div class="gallery-actions">
+                        ${renderAudioButtons('collection', c.id, c.audio)}
+                        <span class="action-sep"></span>
+                        <button class="btn-icon" onclick="copyCollectionLink('${c.id}', this)" title="${t.copyClientLink}">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                        </button>
+                        <button class="btn-icon" onclick="copyCollectionCritiqueLink('${c.id}', this)" title="${t.copyCritiqueLink}">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="10" y1="6" x2="21" y2="6"/><line x1="10" y1="12" x2="21" y2="12"/><line x1="10" y1="18" x2="21" y2="18"/><path d="M4 6h1v4M4 10h2M6 18H4c0-1 2-2 2-3s-1-1.5-2-1" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                        </button>
+                        <div class="og-tooltip-wrap">
+                            <button class="btn-icon" onclick="regenerateCollectionOG('${c.id}')" title="${t.regenerateShare}">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
+                            </button>
+                            <div class="og-tooltip">${t.ogTooltipCollection}</div>
+                        </div>
+                        <button class="btn-icon btn-icon-danger" onclick="deleteCollection('${c.id}')" title="${t.delete}">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
+                        </button>
                     </div>
                 </div>`;
             }).join('');
         }
 
+        // Same rule as the gallery rows (handleGalleryItemClick): the controls
+        // inside the row keep their own click, anything else opens the page.
+        function handleCollectionRowClick(event, collectionId) {
+            if (event.target.closest('button, input, [contenteditable], label, select, a, .gallery-cover')) return;
+            location.hash = '#/collection/' + collectionId;
+        }
+
+        // ── COLLECTION PAGE (#/collection/:id) ─────────────────────────────
+        // Built like the gallery page. It keeps no data of its own: it renders from
+        // the _collectionsData/_galleriesData caches, and loadCollections()/
+        // loadGalleries() call renderCollectionDetailPage() back while it is shown,
+        // so every change made here or elsewhere (rename, cover, audio, add, remove,
+        // reorder, toggles) shows up without a dedicated refresh.
+
+        async function loadCollectionDetailPage(collectionId) {
+            _collectionDetailId = collectionId;
+            document.getElementById('collectionDetailTitle').textContent = '';
+            document.getElementById('collectionDetailCount').textContent = '';
+            document.getElementById('collectionDetailHint').textContent = '';
+            document.getElementById('collectionGalleryGrid').innerHTML = `<p style="color:var(--muted);font-size:13px">${t.loading}</p>`;
+            document.getElementById('collectionDetailPreviewBtn').href = `/collection/${collectionId}`;
+            document.getElementById('collectionDetailDownloadBtn').href = `/api/collection/${collectionId}/download`;
+            // The caches are `let`s declared far below the initial renderRoute() call,
+            // which runs this on a reload of '#/collection/:id': read them only after
+            // an await (the temporal-dead-zone trap of the gallery page).
+            await null;
+            if (_collectionDetailId !== collectionId) return;
+            if (!_collectionsData.length) await loadCollections();
+            if (!_galleriesData.length) await loadGalleries();
+            if (_collectionDetailId !== collectionId) return;
+            renderCollectionDetailPage();
+        }
+
+        // DOM and _collectionDetailId only: renderRoute() runs this at bootstrap.
+        function teardownCollectionDetailPage() {
+            closeCollectionSettingsPanel();
+            if (_collectionDetailId) {
+                _collectionDetailId = null;
+                document.title = DEFAULT_DOCUMENT_TITLE;
+            }
+        }
+
+        function renderCollectionDetailPage() {
+            const id = _collectionDetailId;
+            if (!id) return;
+            const c = (_collectionsData || []).find(x => x.id === id);
+            const title = document.getElementById('collectionDetailTitle');
+            const grid = document.getElementById('collectionGalleryGrid');
+            const count = document.getElementById('collectionDetailCount');
+            const hint = document.getElementById('collectionDetailHint');
+            if (!c) {
+                title.textContent = t.collectionNotFound;
+                grid.innerHTML = '';
+                count.textContent = '';
+                hint.textContent = '';
+                return;
+            }
+            // Same hardcoded-English fallback as everywhere else an unnamed collection shows.
+            title.textContent = c.name || 'Untitled Collection';
+            document.title = `${c.name || 'Untitled Collection'} - Delyvr`;
+
+            const audio = c.audio;
+            const audioBtn = document.getElementById('collectionDetailAudioBtn');
+            document.getElementById('collectionDetailAudioText').textContent = audio ? t.replaceAudio : t.addAudio;
+            audioBtn.title = audio ? [audio.filename || '', audio.duration != null ? formatAudioDuration(audio.duration) : '', audio.size != null ? formatFileSize(audio.size) : ''].filter(Boolean).join(' · ') : '';
+            audioBtn.classList.toggle('is-set', !!audio);
+            const removeBtn = document.getElementById('collectionDetailAudioRemoveBtn');
+            removeBtn.style.display = audio ? '' : 'none';
+            removeBtn.title = t.removeAudio;
+
+            const n = c.galleryIds.length;
+            count.textContent = `${n} ${n === 1 ? t.gallerySingular : t.galleryPlural}`;
+            hint.textContent = n > 1 ? t.collectionReorderHint : '';
+            if (!n) {
+                grid.innerHTML = `<button type="button" class="photos-empty-drop" onclick="openGalleryPicker(_collectionDetailId)">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                    <span>${t.collectionEmpty} <span class="photos-empty-drop-browse">${t.collectionDetailAddGalleries}</span></span>
+                </button>`;
+                return;
+            }
+            const placeholderSvg = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>`;
+            grid.innerHTML = c.galleryIds.map(gid => {
+                const g = (_galleriesData || []).find(x => x.id === gid);
+                const name = g ? escapeHtml(g.eventName) : gid.slice(0, 8) + '…';
+                const cover = g && g.hasBackground
+                    ? `<img src="/api/gallery/${gid}/background?card=1&v=${g.bgVersion || 0}" alt="" loading="lazy">`
+                    : `<span class="cgc-placeholder">${placeholderSvg}</span>`;
+                const meta = g
+                    ? `${g.fileCount} ${g.fileCount === 1 ? t.photoSingular : t.photoPlural} · ${formatAdminDate(g.created, false)}${renderGalleryStatusIconsHtml(g)}`
+                    : '';
+                return `
+                <div class="collection-gallery-card" draggable="true" data-gid="${gid}"
+                     onclick="handleCollectionCardClick(event, '${gid}')"
+                     ondragstart="handleCollectionCardDragStart(event)"
+                     ondragover="handleCollectionCardDragOver(event)"
+                     ondrop="event.preventDefault()"
+                     ondragend="handleCollectionCardDragEnd()">
+                    <div class="cgc-cover">${cover}</div>
+                    <div class="cgc-body">
+                        <div class="cgc-name">${name}</div>
+                        <div class="cgc-meta">${meta}</div>
+                    </div>
+                    <div class="cgc-tools">
+                        <button class="cgc-btn cgc-move" onclick="moveCollectionCard('${gid}', -1)" title="${t.moveLeft}">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+                        </button>
+                        <button class="cgc-btn cgc-move" onclick="moveCollectionCard('${gid}', 1)" title="${t.moveRight}">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+                        </button>
+                        <button class="cgc-btn cgc-remove" onclick="removeFromCollection('${id}', '${gid}')" title="${t.removeFromThisCollection}">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                        </button>
+                    </div>
+                </div>`;
+            }).join('');
+        }
+
+        function handleCollectionCardClick(event, galleryId) {
+            if (event.target.closest('button')) return;
+            location.hash = '#/gallery/' + galleryId;
+        }
+
+        // Reordering: drag a card over another (it moves live, before or after it
+        // depending on the pointer's half), the new order is saved on drop; on a
+        // touch screen, the ‹ › buttons do the same one step at a time.
+        let _draggedCollectionCard = null;
+
+        function handleCollectionCardDragStart(event) {
+            _draggedCollectionCard = event.currentTarget;
+            event.dataTransfer.effectAllowed = 'move';
+            event.dataTransfer.setData('text/plain', _draggedCollectionCard.dataset.gid);
+            requestAnimationFrame(() => _draggedCollectionCard && _draggedCollectionCard.classList.add('dragging'));
+        }
+
+        function handleCollectionCardDragOver(event) {
+            if (!_draggedCollectionCard) return;
+            event.preventDefault();
+            event.dataTransfer.dropEffect = 'move';
+            const target = event.currentTarget;
+            if (target === _draggedCollectionCard) return;
+            const r = target.getBoundingClientRect();
+            const after = event.clientX > r.left + r.width / 2;
+            target.parentNode.insertBefore(_draggedCollectionCard, after ? target.nextSibling : target);
+        }
+
+        async function handleCollectionCardDragEnd() {
+            if (!_draggedCollectionCard) return;
+            _draggedCollectionCard.classList.remove('dragging');
+            _draggedCollectionCard = null;
+            const order = [...document.querySelectorAll('#collectionGalleryGrid .collection-gallery-card')].map(el => el.dataset.gid);
+            await saveCollectionOrder(order);
+        }
+
+        async function moveCollectionCard(galleryId, direction) {
+            const c = (_collectionsData || []).find(x => x.id === _collectionDetailId);
+            if (!c) return;
+            const order = c.galleryIds.slice();
+            const i = order.indexOf(galleryId);
+            const j = i + direction;
+            if (i < 0 || j < 0 || j >= order.length) return;
+            [order[i], order[j]] = [order[j], order[i]];
+            await saveCollectionOrder(order);
+        }
+
+        async function saveCollectionOrder(order) {
+            const id = _collectionDetailId;
+            const c = (_collectionsData || []).find(x => x.id === id);
+            if (!c || order.join() === c.galleryIds.join()) return;
+            try {
+                const res = await fetch(`/api/collection/${id}/galleries/reorder`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ galleryIds: order })
+                });
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                c.galleryIds = order;
+            } catch (err) {
+                showError(t.couldNotReorderGalleries(err.message));
+            }
+            renderCollectionDetailPage();
+        }
+
+        // ── Collection settings panel ──
+        function openCollectionSettingsPanel() {
+            const c = (_collectionsData || []).find(x => x.id === _collectionDetailId);
+            if (!c) return;
+            document.getElementById('csDownloadsCheckbox').checked = c.downloadsEnabled !== false;
+            document.getElementById('csCommentsCheckbox').checked = c.commentsEnabled !== false;
+            document.getElementById('csClientLanguage').value = c.clientLanguage || 'auto';
+            const n = c.galleryIds.length;
+            document.getElementById('csIntro').textContent = t.collectionSettingsIntro;
+            document.getElementById('collectionSettingsModal').classList.add('active');
+            document.querySelector('#collectionSettingsModal .side-panel-body').scrollTop = 0;
+        }
+
+        function closeCollectionSettingsPanel() {
+            const panel = document.getElementById('collectionSettingsModal');
+            if (panel) panel.classList.remove('active');
+        }
+
+        document.addEventListener('keydown', e => {
+            if (e.key === 'Escape' && document.getElementById('collectionSettingsModal').classList.contains('active')) {
+                closeCollectionSettingsPanel();
+            }
+        });
+
         async function setCollectionClientLanguage(collectionId, language) {
             try {
-                await fetch(`/api/collection/${collectionId}/client-language`, {
+                const res = await fetch(`/api/collection/${collectionId}/client-language`, {
                     method: 'PATCH',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ language })
                 });
-            } catch (_) {}
+                if (!res.ok) throw new Error('Failed');
+                // Keep the cache in step: the list row and the collection page's
+                // settings panel both read it.
+                const c = (_collectionsData || []).find(x => x.id === collectionId);
+                if (c) c.clientLanguage = language;
+                renderCollections(_collectionsData);
+            } catch (_) {
+                showError(t.couldNotUpdateLanguage);
+            }
         }
 
         // ── Collection audio montage ──────────────────────────────────────
@@ -5035,85 +5416,7 @@
                 </button>${input}`;
         }
 
-        // Pill reordering drag state
-        let _draggedPill = null;
-
-        function handlePillDragStart(event) {
-            _draggedPill = event.currentTarget;
-            event.dataTransfer.effectAllowed = 'move';
-            event.dataTransfer.setData('text/plain', _draggedPill.dataset.gid);
-            setTimeout(() => { if (_draggedPill) _draggedPill.style.opacity = '0.4'; }, 0);
-            // Stop propagation so the gallery-item dragstart doesn't fire
-            event.stopPropagation();
-        }
-
-        function handlePillDragOver(event) {
-            if (!_draggedPill) return;
-            event.preventDefault();
-            event.stopPropagation();
-            event.dataTransfer.dropEffect = 'move';
-            const target = event.currentTarget;
-            if (target !== _draggedPill && target.classList.contains('gallery-pill')) {
-                const rect = target.getBoundingClientRect();
-                const after = event.clientX > rect.left + rect.width / 2;
-                const parent = target.parentNode;
-                if (after) {
-                    parent.insertBefore(_draggedPill, target.nextSibling);
-                } else {
-                    parent.insertBefore(_draggedPill, target);
-                }
-            }
-        }
-
-        async function handlePillDrop(event, collectionId) {
-            event.preventDefault();
-            event.stopPropagation();
-            if (!_draggedPill) return;
-            // Collect new order from DOM
-            const pills = document.querySelectorAll(`#col-drop-${collectionId} .gallery-pill`);
-            const newOrder = Array.from(pills).map(p => p.dataset.gid);
-            try {
-                await fetch(`/api/collection/${collectionId}/galleries/reorder`, {
-                    method: 'PATCH',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ galleryIds: newOrder })
-                });
-                await loadCollections();
-            } catch (err) {
-                showError(t.couldNotReorderGalleries(err.message));
-            }
-        }
-
-        function handlePillDragEnd(event) {
-            if (_draggedPill) _draggedPill.style.opacity = '';
-            _draggedPill = null;
-        }
-
-        async function movePill(collectionId, galleryId, direction) {
-            const container = document.getElementById(`col-drop-${collectionId}`);
-            const pills = Array.from(container.querySelectorAll('.gallery-pill'));
-            const idx = pills.findIndex(p => p.dataset.gid === galleryId);
-            if (idx === -1) return;
-            const newIdx = idx + direction;
-            if (newIdx < 0 || newIdx >= pills.length) return;
-
-            // Swap in DOM
-            const ref = direction > 0 ? pills[newIdx].nextSibling : pills[newIdx];
-            direction > 0 ? container.insertBefore(pills[idx], ref?.nextSibling ?? null)
-                          : container.insertBefore(pills[idx], ref);
-
-            // Save new order
-            const newOrder = Array.from(container.querySelectorAll('.gallery-pill')).map(p => p.dataset.gid);
-            try {
-                await fetch(`/api/collection/${collectionId}/galleries/reorder`, {
-                    method: 'PATCH',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ galleryIds: newOrder })
-                });
-            } catch (_) {}
-        }
-
-        let _galleriesData = []; // cache for collection pill labels
+        let _galleriesData = []; // the gallery list, cached: also read by the collection pages and pickers
 
         function populateCollectionSelect() {
             const sel = document.getElementById('galleryCollectionSelect');
@@ -5286,6 +5589,8 @@
                 }
                 const res = await fetch(`/api/collection/${collectionId}`, { method: 'DELETE' });
                 if (!res.ok) throw new Error('Failed');
+                // Deleted from its own page: that page no longer exists.
+                if (_collectionDetailId === collectionId) location.hash = '#/collections';
                 await loadCollections();
                 await loadGalleries();
                 if (alsoTrash) loadTrash();
@@ -5565,24 +5870,6 @@
                     body: JSON.stringify({ galleryIds: ids })
                 });
             } catch (_) {}
-        }
-
-        function handleColDragOver(event, collectionId) {
-            event.preventDefault();
-            event.dataTransfer.dropEffect = 'move';
-            document.getElementById(`col-drop-${collectionId}`).classList.add('drag-over');
-        }
-
-        function handleColDragLeave(event, collectionId) {
-            document.getElementById(`col-drop-${collectionId}`).classList.remove('drag-over');
-        }
-
-        async function handleColDrop(event, collectionId) {
-            event.preventDefault();
-            document.getElementById(`col-drop-${collectionId}`).classList.remove('drag-over');
-            const galleryId = event.dataTransfer.getData('text/plain');
-            if (!galleryId) return;
-            await addToCollection(collectionId, galleryId);
         }
 
         // Resolves true once the gallery is in the trash, so the gallery page can

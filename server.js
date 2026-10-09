@@ -3194,7 +3194,10 @@ app.get('/api/collection/:collectionId/download', downloadLimiter, validateColle
     const { collectionId } = req.params;
     const collection = db.prepare(`SELECT name, downloads_enabled, audio_filename FROM collections WHERE id = ?`).get(collectionId);
     if (!collection) return res.status(404).json({ error: 'Collection not found' });
-    if (collection.downloads_enabled === 0) {
+    // downloads_enabled restricts CLIENTS: the photographer downloading their own
+    // collection from its admin page is not refused (same rule as the gallery ZIP).
+    const isAdmin = isAdminRequest(req);
+    if (collection.downloads_enabled === 0 && !isAdmin) {
         return res.status(403).json({ error: 'Downloads are disabled for this collection' });
     }
 
@@ -3207,7 +3210,6 @@ app.get('/api/collection/:collectionId/download', downloadLimiter, validateColle
     // Pre-scan files for Content-Length and folder names (store mode)
     const entries = [];
     const includedGalleryIds = [];
-    const isAdmin = isAdminRequest(req);
     for (const galleryId of memberGalleryIds) {
         // A password-protected or expired member gallery is left out for visitors:
         // otherwise this ZIP would hand out photos the gallery's own gates refuse,

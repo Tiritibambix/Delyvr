@@ -490,10 +490,9 @@ music-note button (tooltip `t.addAudio`) that opens the file picker. Present →
 turns gold (`.btn-icon-audio`), its click replaces the file, its `title` is
 `filename · duration · size`, and a `.btn-icon-danger` trash button appears beside it to
 remove. A thin `.action-sep` rule separates this "attach" group (audio, plus add-to-collection
-on gallery cards) from the share/manage buttons. **Collection cards set `overflow: hidden`
-for their rounded corners, which clips the OG-regenerate tooltip when it opens upward from
-the header — so that tooltip carries `.og-tooltip--down` to open downward and stay inside
-the card.**
+on gallery cards) from the share/manage buttons. The collection rows are built like the
+gallery rows (no `overflow: hidden`), so their OG-regenerate tooltip opens upward like the
+galleries' one; `.og-tooltip--down` existed for the old collection cards, which clipped it.
 
 - **Never added to the `files` table.** That table drives the photo grid, the ZIP,
   counts, dimension probing, the OG image fallback and the stem sort — an audio file has
@@ -928,7 +927,7 @@ Loaded by all client pages via `<script src="/shared.js">` before their inline `
 ### `public/admin.html`
 
 - **Split into three files, no build step.** The stylesheet lives in `public/admin.css` (`<link>`) and the five-locale `adminTranslations` object in `public/admin-i18n.js` (a classic script, so its top-level `const` is visible to the inline script that follows). `public/` is already served statically, so no server route was needed. Keeping them inline made `admin.html` unnavigable at ~5500 lines.
-- **Sidebar shell + hash-routed views** replace the old header + two-column dashboard. `parseHash()` returns `{ route, params }`; `renderRoute()` toggles `.active` on the matching `.view`, highlights the nav item, closes the mobile drawer and resets scroll. On mobile the sidebar is a fixed drawer toggled by `toggleSidebar()`; the burger (`.sidebar-toggle`) carries `z-index: 8001` so it stays above the open drawer (`z-index: 8000`) and a second tap closes it — without that the drawer paints over the in-flow burger and the tap lands on the sidebar. Routes: `#/galleries`, `#/collections`, `#/new` (gallery **and** collection creation side by side — `#/new/gallery` and `#/new/collection` are kept as aliases), and the parameterised `#/gallery/:id/comments`. Unknown routes fall back to the galleries list. Parameterised routes are matched on **segments**, not by flattening the hash to a key — that's why `parseHash` splits on `/` before consulting `ROUTES`/`ROUTE_ALIASES`.
+- **Sidebar shell + hash-routed views** replace the old header + two-column dashboard. `parseHash()` returns `{ route, params }`; `renderRoute()` toggles `.active` on the matching `.view`, highlights the nav item, closes the mobile drawer and resets scroll. On mobile the sidebar is a fixed drawer toggled by `toggleSidebar()`; the burger (`.sidebar-toggle`) carries `z-index: 8001` so it stays above the open drawer (`z-index: 8000`) and a second tap closes it; without that the drawer paints over the in-flow burger and the tap lands on the sidebar. Routes: `#/galleries`, `#/collections`, `#/new` (gallery **and** collection creation side by side; `#/new/gallery` and `#/new/collection` are kept as aliases), and the parameterised `#/gallery/:id/comments`, `#/gallery/:id` and `#/collection/:id`. A gallery or collection page lights up its list in the sidebar (`NAV_PARENT`). Unknown routes fall back to the galleries list. Parameterised routes are matched on **segments**, not by flattening the hash to a key: that's why `parseHash` splits on `/` before consulting `ROUTES`/`ROUTE_ALIASES`.
 - Login via in-memory `adminPassword` variable only, not persisted to sessionStorage or localStorage.
 - Password field has an eye toggle button (`.password-toggle`).
 - `applyTheme()` called on load — it also reads `settings.adminLanguage` and calls `applyAdminTranslations(lang)` (see "Language settings"). `toggleTheme()` uses optimistic update.
@@ -1188,8 +1187,50 @@ Loaded by all client pages via `<script src="/shared.js">` before their inline `
   `movePill()` saves the order it reads back from the DOM, so a hidden pill would be
   dropped from the collection on the next reorder.
 - **Gallery picker (for collections):** multi-select. Toggling a gallery adds/removes it from `_pickerSelected` Set. Confirm button shows count and adds all at once.
-- Collection pills: drag to reorder (desktop) or ◀ ▶ buttons (visible on mobile via `@media (hover: none)`).
-- `_galleriesData` cache populated in `loadGalleries()`, used by `renderCollections()` for pill labels and gallery picker.
+- **Collections list: clickable rows, built like the gallery rows** (`renderCollections()`,
+  same `.gallery-item` / `.gallery-cover` / `.gallery-info` / `.gallery-actions` classes): cover
+  (click or drop to change), name (double-click or pencil to rename), "n galleries · date",
+  downloads/comments switches and language, then audio, links, share preview and delete. A
+  click anywhere else opens the collection's page (`handleCollectionRowClick()`, same
+  exclusions as `handleGalleryItemClick()`). The gallery "pills" this list carried are gone:
+  galleries are managed on the collection page. A search that matches a member gallery
+  rather than the collection's own name says which, in the meta line
+  (`t.collectionContains`).
+- **Collection page** (`#/collection/:id`, view `view-collection-detail`), built like the
+  gallery page:
+  - **Left panel**, same `.gallery-detail-action` buttons: Settings; Preview, Copy client
+    link, Copy critique link, Regenerate share preview; Add galleries (the multi-select
+    gallery picker), audio file (add, or replace + remove), Download ZIP; then Delete the
+    collection in red (the usual dialog, which keeps the galleries unless asked; on success
+    from this page, back to `#/collections`). Every button reuses the list's function.
+  - **Main area**: the galleries as cards (`.collection-gallery-card`: cover at 4:3 from
+    `?card=1`, name, count, date, status icons). A card opens the gallery page. Drag a card
+    over another to reorder (it moves live, before or after depending on the pointer's
+    half; the order is saved on `dragend` through `PATCH .../galleries/reorder`); on a touch
+    screen the ‹ › buttons do it one step at a time, since native drag is unreliable there.
+    × removes the gallery from the collection (it stays in the galleries list). An empty
+    collection shows one large "Add galleries" box.
+  - **It keeps no data of its own.** `renderCollectionDetailPage()` reads the
+    `_collectionsData`/`_galleriesData` caches, and `loadCollections()`/`loadGalleries()`
+    call it back while the page is shown, so every change (made here, in the lists or by a
+    picker) shows up through the refetches those actions already do.
+  - **Reload trap, same as the gallery page**: `_collectionDetailId` is declared before the
+    initial `renderRoute()` call, and `loadCollectionDetailPage()` reads the caches (`let`s
+    declared far below) only after an `await`. `teardownCollectionDetailPage()` runs at
+    bootstrap on every other route, so it touches only the DOM and `_collectionDetailId`.
+    `login()` reloads the page when it was opened while logged out.
+  - **Settings panel** (`#collectionSettingsModal`, same side panel as the gallery's):
+    downloads and comments (master switches for every gallery of the collection, as before)
+    and the client language (the default its galleries inherit). It says up front that the
+    settings apply to every gallery of the collection, including those added later.
+    `setCollectionClientLanguage()` now checks the response and updates the cache, which
+    both the list row and the panel read.
+  - **Back links**: a gallery page opened from its collection's page returns there;
+    opened from anywhere else or reloaded, to `#/galleries`; coming back from the gallery's
+    own comments page keeps whichever it had (`renderRoute()`, from `_currentRouteHash`).
+  - The collection ZIP now lets the admin through when downloads are off for clients,
+    like the gallery ZIP, for the page's "Download ZIP".
+- `_galleriesData` cache populated in `loadGalleries()`, read by the collection list and page, the pickers and the gallery page.
 
 ### Gallery creation — multi-folder drop and collection assignment
 
