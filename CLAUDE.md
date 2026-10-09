@@ -1017,30 +1017,30 @@ Loaded by all client pages via `<script src="/shared.js">` before their inline `
     card, relocated here, not reimplemented. Password, expiration and the three lightbox-
     appearance selects are new (see "Per-gallery password and expiration" above and
     "Lightbox appearance" in the `preview.html` section below).
-- **Gallery list view: cards or a compact list, toggled per viewer.** `_galleryViewMode`
-  (`'cards'`|`'list'`), persisted in `localStorage['delyvr_gallery_view_mode']`, **the
-  first use of `localStorage` anywhere in `admin.html`**, deliberately scoped to this one
-  key: a non-sensitive display preference, explicitly distinct from "the admin password is
-  never put in persistent storage" (that rule is about a secret, this is cosmetic).
-  `renderGalleryItems()` picks `renderGalleryItemHtml`/`renderGalleryItemRowHtml` per
-  gallery based on the mode. Both renderers share two extracted templates so the two views
-  cannot drift apart and **nothing from the card is missing in the list**:
-  `renderGalleryActionsHtml(g, manual)` (the full `.gallery-actions` icon cluster) and
-  `renderGalleryStatusIconsHtml(g)` (new: a public globe, always shown; a padlock,
-  open/closed per `g.hasPassword`, click-through to the gallery's own settings; a clock,
-  shown only when `g.expiresAt` is set, styled as a warning once past it, using
-  `formatExpirationDate()`, **not** `formatAdminDate()`, see "Per-gallery password and
-  expiration" above for why). The list row additionally shows `lastModified` with **no new
-  column**: `server.js`'s `/api/galleries` already runs `fs.statSync(galleryPath)` per
-  gallery for other reasons, so `stats.mtime` is exposed for free.
-  - **A class collision bit this during development, worth remembering**: the list row's
-    downloads/comments/language cluster (`.gallery-row-toggles`) was first given
-    `class="gallery-row-col gallery-row-toggles …"` to borrow `.gallery-row-col`'s width
-    rule, but `.gallery-row-col { display: none }` under `900px` then hid it too, since CSS
-    has no way to say "this rule, except for elements that also have this other class."
-    Fixed by giving `.gallery-row-toggles` its own width rule instead of sharing one via a
-    second class. If a future column needs to borrow sizing from `.gallery-row-col`, give it
-    its own rule rather than stacking the class: the same trap is still there otherwise.
+- **Gallery rows: one layout, a click opens the gallery.** `renderGalleryItemHtml(g)` is
+  the only gallery renderer. A compact "list" alternative with a view toggle was tried and
+  removed: the existing row already is the list, and a second layout is only worth adding
+  as true cards (cover, name, count, date, status icons) once the gallery page has
+  settled. Its icon cluster stays extracted in `renderGalleryActionsHtml(g, manual)` so a
+  future second layout reuses it instead of copying it.
+  - **Cursor**: a row keeps the plain arrow and shows a light hover highlight
+    (`@media (hover: hover)`, `var(--bg3)`). The grab hand is set only on
+    `.gallery-item[draggable="true"]`, which `renderGalleryItemHtml` emits in manual order
+    alone. It used to be `cursor: grab` on every row, which advertised a drag that did
+    nothing outside manual order.
+  - **Status icons** (`renderGalleryStatusIconsHtml(g)`) are appended to `.gallery-meta`
+    and rendered **only when they say something**: a padlock when `g.hasPassword`, a clock
+    when `g.expiresAt` is set (red once `g.isExpired`; its tooltip goes through
+    `formatExpirationDate()`, **not** `formatAdminDate()`, see "Per-gallery password and
+    expiration" above). There is no "public"/"online" icon and no open padlock: a gallery is
+    reachable by its link by default, so that is not a status worth an icon on every row.
+- **Collections search** (`#collectionSearch`, same `.gallery-search` style as the
+  galleries toolbar): `renderCollections()` reads the box on every render and keeps a
+  collection whose own name, or the name of any gallery inside it, contains the query.
+  Matching pills get `.gallery-pill-match` so it is clear why a collection is listed.
+  **Every pill of a listed collection is still rendered**, never just the matching ones:
+  `movePill()` saves the order it reads back from the DOM, so a hidden pill would be
+  dropped from the collection on the next reorder.
 - **Gallery picker (for collections):** multi-select. Toggling a gallery adds/removes it from `_pickerSelected` Set. Confirm button shows count and adds all at once.
 - Collection pills: drag to reorder (desktop) or ◀ ▶ buttons (visible on mobile via `@media (hover: none)`).
 - `_galleriesData` cache populated in `loadGalleries()`, used by `renderCollections()` for pill labels and gallery picker.

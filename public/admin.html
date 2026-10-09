@@ -477,6 +477,7 @@
             <section class="view" id="view-collections">
                 <div class="view-header">
                     <h1 class="view-title" id="collectionsSectionLabel">Collections</h1>
+                    <input class="gallery-search view-header-action" id="collectionSearch" type="search" placeholder="Search…" oninput="renderCollections(_collectionsData)">
                 </div>
                 <div id="collectionList"><div class="empty-state" id="noCollectionsYetMsg">No collections yet.</div></div>
             </section>
@@ -504,9 +505,6 @@
                         </button>
                         <button class="section-select-btn" id="toggleDetailsBtn" onclick="toggleGalleryDetailsVisibility()" title="Hide gallery stats">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14" style="vertical-align:middle"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8Z"/><circle cx="12" cy="12" r="3"/></svg>
-                        </button>
-                        <button class="section-select-btn" id="galleryViewModeBtn" onclick="toggleGalleryViewMode()" title="List view">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14" style="vertical-align:middle" id="galleryViewModeIcon"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
                         </button>
                         <button class="section-select-btn" id="filterNoCollectionBtn" onclick="toggleGalleryFilter('noCollection', this)">No collection</button>
                         <button class="section-select-btn" id="filterDownloadsOffBtn" onclick="toggleGalleryFilter('downloadsOff', this)">Downloads off</button>
@@ -705,6 +703,8 @@
             byId('collectionPickerCancelBtn', t.cancel);
             const gallerySearch = document.getElementById('gallerySearch');
             if (gallerySearch) gallerySearch.placeholder = t.searchPlaceholder;
+            const collectionSearch = document.getElementById('collectionSearch');
+            if (collectionSearch) collectionSearch.placeholder = t.searchPlaceholder;
             const sortSelect = document.getElementById('gallerySortField');
             if (sortSelect) {
                 const sortLabels = { date: t.sortDate, name: t.sortName, views: t.sortViews, downloads: t.sortDownloads, photos: t.sortPhotos, comments: t.sortComments, favorites: t.sortFavorites, manual: t.sortManual };
@@ -721,7 +721,6 @@
                 const hidden = document.getElementById('galleryList').classList.contains('details-hidden');
                 toggleDetailsBtn.title = hidden ? t.showGalleryStats : t.hideGalleryStats;
             }
-            syncGalleryViewModeBtn();
             byId('selectionModeBtn', t.select);
             const trashOpenBtn = document.getElementById('trashOpenBtn');
             if (trashOpenBtn) trashOpenBtn.title = t.trash;
@@ -2131,34 +2130,6 @@
         let _gallerySortDir = 'desc';
         let _galleryFilters = new Set();
         let _collapsedGroups = new Set();
-        // Card vs. list. The one piece of admin UI state that survives a reload —
-        // every other toolbar choice here (sort, filters, collapsed groups) is
-        // session-only. A per-viewer display preference like this is exactly what
-        // localStorage is for; this is the first use of it in admin.html (the
-        // admin password itself is deliberately NEVER put there — see CLAUDE.md —
-        // but that is about a secret, not a cosmetic, non-sensitive toggle).
-        let _galleryViewMode = 'cards';
-        try { _galleryViewMode = localStorage.getItem('delyvr_gallery_view_mode') || 'cards'; } catch (_) {}
-
-        function toggleGalleryViewMode() {
-            _galleryViewMode = _galleryViewMode === 'list' ? 'cards' : 'list';
-            try { localStorage.setItem('delyvr_gallery_view_mode', _galleryViewMode); } catch (_) {}
-            syncGalleryViewModeBtn();
-            filterGalleries(document.getElementById('gallerySearch').value);
-        }
-
-        function syncGalleryViewModeBtn() {
-            const btn = document.getElementById('galleryViewModeBtn');
-            const icon = document.getElementById('galleryViewModeIcon');
-            if (!btn || !icon) return;
-            const isList = _galleryViewMode === 'list';
-            btn.title = isList ? t.viewModeCards : t.viewModeList;
-            btn.classList.toggle('active', isList);
-            // Four squares (card view, the default) <-> three stacked bars (list).
-            icon.innerHTML = isList
-                ? '<line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="18" x2="20" y2="18"/>'
-                : '<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>';
-        }
 
         async function loadGalleries() {
             try {
@@ -2242,8 +2213,8 @@
             return { groups };
         }
 
-        // Shared by both the card and list renderers, so they can never drift
-        // apart: adding/removing an action here changes both views at once.
+        // The gallery row's icon cluster, kept as its own template so a future
+        // second layout (cards) reuses it instead of copying it.
         // _manual gates the ▲▼ reorder buttons (only meaningful in manual sort).
         function renderGalleryActionsHtml(g, _manual) {
             return `
@@ -2275,23 +2246,22 @@
             `;
         }
 
-        // Three small glyphs: public (always shown, informational), a padlock
-        // (open/closed per g.hasPassword, click jumps to the gallery's own
-        // settings panel), and a clock (only when an expiration is set, styled
-        // as a warning once past it). Shared by both card and list views.
+        // Appended to the meta line, and only for what departs from the default:
+        // a padlock when the gallery has a password, a clock when it has an
+        // expiration date (red once past it). A gallery with neither shows
+        // nothing, since being reachable by its link is the normal state, not
+        // a status worth an icon on every row.
         function renderGalleryStatusIconsHtml(g) {
-            const lockOpen = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 9.9-1"/></svg>`;
-            const lockClosed = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>`;
+            const lockSvg = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>`;
             const clockSvg = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>`;
-            const globeSvg = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>`;
-            const expiryBit = g.expiresAt ? `
-                <span class="gallery-status-icon${g.isExpired ? ' gallery-status-expired' : ''}" title="${g.isExpired ? t.galleryStatusExpired : t.galleryStatusExpires(formatExpirationDate(g.expiresAt))}">${clockSvg}</span>
-            ` : '';
-            return `
-                <span class="gallery-status-icon" title="${t.galleryStatusPublic}">${globeSvg}</span>
-                <span class="gallery-status-icon${g.hasPassword ? ' gallery-status-locked' : ''}" title="${g.hasPassword ? t.galleryStatusLocked : t.galleryStatusUnlocked}" onclick="event.stopPropagation(); location.hash = '#/gallery/' + '${g.id}'">${g.hasPassword ? lockClosed : lockOpen}</span>
-                ${expiryBit}
-            `;
+            const icons = [];
+            if (g.hasPassword) {
+                icons.push(`<span class="gallery-status-icon gallery-status-locked" title="${t.galleryStatusLocked}">${lockSvg}</span>`);
+            }
+            if (g.expiresAt) {
+                icons.push(`<span class="gallery-status-icon${g.isExpired ? ' gallery-status-expired' : ''}" title="${g.isExpired ? t.galleryStatusExpired : t.galleryStatusExpires(formatExpirationDate(g.expiresAt))}">${clockSvg}</span>`);
+            }
+            return icons.length ? `<span class="gallery-status-icons">${icons.join('')}</span>` : '';
         }
 
         function renderGalleryItemHtml(g) {
@@ -2343,8 +2313,7 @@
                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
                             </button>
                         </div>
-                        <div class="gallery-meta">${g.fileCount} ${t.photoPlural} · ${formatAdminDate(g.created, false)}</div>
-                        <div class="gallery-status-row gallery-detail-panel">${renderGalleryStatusIconsHtml(g)}</div>
+                        <div class="gallery-meta">${g.fileCount} ${t.photoPlural} · ${formatAdminDate(g.created, false)}${renderGalleryStatusIconsHtml(g)}</div>
                         <div class="gallery-bottom gallery-detail-panel">
                             <label class="downloads-toggle ${_dlBlocked ? 'blocked-by-collection' : ''}" title="${_dlBlocked ? t.downloadsBlockedByCollection(_col.name) : t.allowDownloads}">
                                 <span class="toggle-switch">
@@ -2397,82 +2366,6 @@
             `;
         }
 
-        // Compact alternative to renderGalleryItemHtml, toggled by the
-        // card/list button in the toolbar. Keeps every control the card has
-        // (nothing from the existing UI is dropped) in a denser row: cover,
-        // name/count/created/modified stacked, the status icons, then the
-        // same toggles/language-select/actions as the card — just laid out
-        // horizontally instead of in the "stats grid" block.
-        function renderGalleryItemRowHtml(g) {
-            const _col = g.collectionId ? (_collectionsData || []).find(c => c.id === g.collectionId) : null;
-            const _dlBlocked = !!(_col && _col.downloadsEnabled === false);
-            const _cmBlocked = !!(_col && _col.commentsEnabled === false);
-            const _manual = _gallerySort === 'manual';
-            return `
-                <div class="gallery-item gallery-item-row" draggable="${_manual}"
-                     id="gallery-item-${g.id}"
-                     ondragstart="handleGalleryDragStart(event, '${g.id}')"
-                     ondragend="handleGalleryDragEnd(event)"
-                     ondragover="handleGalleryItemDragOver(event, '${g.id}')"
-                     ondragleave="handleGalleryItemDragLeave('${g.id}')"
-                     ondrop="handleGalleryItemDrop(event, '${g.id}')"
-                     onclick="handleGalleryItemClick(event, '${g.id}')">
-                    <input type="checkbox" class="gallery-cb" id="cb-${g.id}"
-                           onclick="event.stopPropagation(); toggleGallerySelection('${g.id}')">
-
-                    <div class="gallery-row-cover ${g.hasBackground ? 'has-image' : ''}">
-                        ${g.hasBackground ? `<img src="/api/gallery/${g.id}/background?thumb=1&v=${g.bgVersion || 0}" alt="" loading="lazy">` : `
-                        <div class="gallery-cover-placeholder">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
-                        </div>`}
-                    </div>
-
-                    <div class="gallery-row-name-col">
-                        <div class="gallery-name" contenteditable="false" spellcheck="false"
-                             id="gname-${g.id}"
-                             ondblclick="startGalleryRename(event, '${g.id}', this)"
-                             onblur="finishGalleryRename('${g.id}', this)"
-                             onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur();} if(event.key==='Escape'){this.textContent=this.dataset.orig;this.blur();}"
-                             >${escapeHtml(g.eventName)}</div>
-                        <div class="gallery-status-row">${renderGalleryStatusIconsHtml(g)}</div>
-                    </div>
-
-                    <div class="gallery-row-col gallery-row-col-count">${g.fileCount} ${t.photoPlural}</div>
-                    <div class="gallery-row-col">${formatAdminDate(g.created, false)}</div>
-                    <div class="gallery-row-col">${g.lastModified ? formatAdminDate(g.lastModified, false) : '—'}</div>
-
-                    <div class="gallery-row-toggles gallery-detail-panel">
-                        <label class="downloads-toggle ${_dlBlocked ? 'blocked-by-collection' : ''}" title="${_dlBlocked ? t.downloadsBlockedByCollection(_col.name) : t.allowDownloads}">
-                            <span class="toggle-switch">
-                                <input type="checkbox" ${g.downloadsEnabled !== false ? 'checked' : ''}
-                                       onchange="toggleDownloads('${g.id}', this.checked, this)">
-                                <span class="toggle-track"></span>
-                            </span>
-                        </label>
-                        <label class="downloads-toggle ${_cmBlocked ? 'blocked-by-collection' : ''}" title="${_cmBlocked ? t.commentsBlockedByCollection(_col.name) : t.allowComments}">
-                            <span class="toggle-switch">
-                                <input type="checkbox" ${g.commentsEnabled !== false ? 'checked' : ''}
-                                       onchange="toggleComments('${g.id}', this.checked, this)">
-                                <span class="toggle-track"></span>
-                            </span>
-                        </label>
-                        <select class="lang-select" title="${t.clientLanguageTitle}" onchange="setGalleryClientLanguage('${g.id}', this.value)">
-                            <option value="auto" title="${t.autoLanguage}" ${g.clientLanguage === 'auto' ? 'selected' : ''}>🌐</option>
-                            <option value="en" title="English" ${g.clientLanguage === 'en' ? 'selected' : ''}>En</option>
-                            <option value="fr" title="Français" ${g.clientLanguage === 'fr' ? 'selected' : ''}>Fr</option>
-                            <option value="es" title="Español" ${g.clientLanguage === 'es' ? 'selected' : ''}>Es</option>
-                            <option value="pt" title="Português" ${g.clientLanguage === 'pt' ? 'selected' : ''}>Pt</option>
-                            <option value="it" title="Italiano" ${g.clientLanguage === 'it' ? 'selected' : ''}>It</option>
-                        </select>
-                    </div>
-
-                    <div class="gallery-actions gallery-row-actions">
-                        ${renderGalleryActionsHtml(g, _manual)}
-                    </div>
-                </div>
-            `;
-        }
-
         function renderGalleryItems(vm) {
             const container = document.getElementById('galleryList');
             if (!vm || !vm.groups || vm.groups.length === 0) {
@@ -2497,7 +2390,7 @@
                         <span class="gallery-group-count">${countLabel}</span>
                     </button>
                     <div class="gallery-group-items">
-                        ${group.galleries.map(g => _galleryViewMode === 'list' ? renderGalleryItemRowHtml(g) : renderGalleryItemHtml(g)).join('')}
+                        ${group.galleries.map(g => renderGalleryItemHtml(g)).join('')}
                     </div>
                 </div>`;
             }).join('');
@@ -3013,7 +2906,8 @@
         async function finishGalleryRename(galleryId, el) {
             el.contentEditable = 'false';
             el.classList.remove('editing');
-            el.closest('.gallery-item')?.setAttribute('draggable', 'true');
+            // Back to what renderGalleryItemHtml set: draggable in manual order only.
+            el.closest('.gallery-item')?.setAttribute('draggable', String(_gallerySort === 'manual'));
             const newName = (el.textContent || '').trim() || 'Untitled Event';
             if (newName !== el.dataset.orig) {
                 await renameGallery(galleryId, newName);
@@ -4044,17 +3938,38 @@
             }
         }
 
+        // A collection matches the search box on its own name or on the name of
+        // any gallery inside it. Matching pills are highlighted to show why the
+        // collection is listed, but every pill is still rendered: movePill()
+        // saves the order it reads from the DOM, so hiding a pill here would
+        // drop that gallery from the collection on the next reorder.
+        function galleryNameById(gid) {
+            const g = _galleriesData ? _galleriesData.find(x => x.id === gid) : null;
+            return g ? g.eventName : null;
+        }
+
         function renderCollections(colls) {
             const container = document.getElementById('collectionList');
             if (colls.length === 0) {
                 container.innerHTML = `<div class="empty-state">${t.noCollectionsYet}</div>`;
                 return;
             }
-            container.innerHTML = colls.map(c => {
+            const searchInput = document.getElementById('collectionSearch');
+            const rawQuery = searchInput ? searchInput.value.trim() : '';
+            const q = rawQuery.toLowerCase();
+            const nameMatches = name => !!q && !!name && name.toLowerCase().includes(q);
+            const shown = q
+                ? colls.filter(c => nameMatches(c.name) || c.galleryIds.some(gid => nameMatches(galleryNameById(gid))))
+                : colls;
+            if (shown.length === 0) {
+                container.innerHTML = `<div class="empty-state">${t.noCollectionsMatch(escapeHtml(rawQuery))}</div>`;
+                return;
+            }
+            container.innerHTML = shown.map(c => {
                 const pillsHtml = c.galleryIds.map(gid => {
-                        const g = _galleriesData ? _galleriesData.find(x => x.id === gid) : null;
-                        const name = g ? escapeHtml(g.eventName) : gid.slice(0, 8) + '…';
-                        return `<span class="gallery-pill" draggable="true"
+                        const rawName = galleryNameById(gid);
+                        const name = rawName !== null ? escapeHtml(rawName) : gid.slice(0, 8) + '…';
+                        return `<span class="gallery-pill${nameMatches(rawName) ? ' gallery-pill-match' : ''}" draggable="true"
                                     data-gid="${gid}" data-cid="${c.id}"
                                     ondragstart="handlePillDragStart(event)"
                                     ondragover="handlePillDragOver(event)"

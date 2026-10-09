@@ -964,6 +964,8 @@ body { display: flex; flex-direction: column; height: 100%; }
     cursor: grab; user-select: none;
 }
 .gallery-pill:active { cursor: grabbing; }
+/* The gallery that made its collection match the search box. */
+.gallery-pill.gallery-pill-match { border-color: var(--accent); color: var(--text); }
 .gallery-pill-name {
     max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
@@ -1088,14 +1090,21 @@ body { display: flex; flex-direction: column; height: 100%; }
 /* ═══════════════════════════════
    GALLERY ITEMS
 ═══════════════════════════════ */
+/* A row opens its gallery page on click, so it keeps the plain arrow and
+   signals that with a light highlight instead. The grab hand is reserved for
+   manual order, the only mode where the row is draggable. */
 .gallery-item {
     border: 1px solid var(--border); border-radius: 5px;
     display: flex; align-items: center; gap: 12px;
     padding: 10px 12px; margin-bottom: 8px;
-    background: var(--bg2); cursor: grab;
-    transition: border-color 0.15s;
+    background: var(--bg2);
+    transition: border-color 0.15s, background 0.15s;
 }
-.gallery-item:active { cursor: grabbing; }
+@media (hover: hover) {
+    .gallery-item:hover { background: var(--bg3); border-color: var(--border2); }
+}
+.gallery-item[draggable="true"] { cursor: grab; }
+.gallery-item[draggable="true"]:active { cursor: grabbing; }
 .gallery-item.dragging { opacity: 0.4; }
 .gallery-item.drag-over-gallery { border-top: 2px solid var(--accent); }
 
@@ -1373,59 +1382,17 @@ body { display: flex; flex-direction: column; height: 100%; }
 
 .gallery-actions { display: flex; gap: 6px; flex-shrink: 0; align-items: center; }
 
-/* ── GALLERY STATUS ICONS (public / locked / expires) ──
-   Shared by the card (added under the meta line, nothing existing removed)
-   and the list row (next to the name). Small, muted by default; a set
-   password or a past expiration date is the only thing that takes color. */
-.gallery-status-row { display: flex; align-items: center; gap: 6px; margin: 2px 0; }
-.gallery-status-icon {
-    display: inline-flex; width: 14px; height: 14px; color: var(--muted2);
+/* ── GALLERY STATUS ICONS (password / expiration) ──
+   Inline at the end of .gallery-meta, rendered only when set. The padlock
+   takes the accent, a past expiration the error color. */
+.gallery-status-icons {
+    display: inline-flex; align-items: center; gap: 5px;
+    margin-left: 8px; vertical-align: -2px;
 }
-.gallery-status-icon svg { width: 14px; height: 14px; }
-.gallery-status-icon.gallery-status-locked { color: var(--accent); cursor: pointer; }
+.gallery-status-icon { display: inline-flex; width: 12px; height: 12px; color: var(--muted); }
+.gallery-status-icon svg { width: 12px; height: 12px; }
+.gallery-status-icon.gallery-status-locked { color: var(--accent); }
 .gallery-status-icon.gallery-status-expired { color: var(--error); }
-a.gallery-status-icon, span.gallery-status-icon[onclick] { cursor: pointer; }
-
-/* ── GALLERY LIST VIEW (compact alternative to the card) ──
-   Same .gallery-item shell/drag/selection behavior, denser inner layout.
-   Every control the card has stays — see renderGalleryItemRowHtml(). */
-#galleryViewModeBtn.active { color: var(--accent); border-color: var(--accent); }
-
-.gallery-item-row {
-    display: flex; align-items: center; gap: 12px;
-    padding: 6px 12px;
-}
-.gallery-row-cover {
-    width: 36px; height: 36px; border-radius: 3px; flex-shrink: 0;
-    background: var(--bg3); border: 1px solid var(--border);
-    overflow: hidden; position: relative;
-    display: flex; align-items: center; justify-content: center;
-}
-.gallery-row-cover img { width: 100%; height: 100%; object-fit: cover; }
-.gallery-row-cover svg { width: 14px; height: 14px; color: var(--muted2); }
-.gallery-row-name-col { flex: 1 1 220px; min-width: 0; }
-.gallery-row-name-col .gallery-name { font-size: 13px; }
-.gallery-row-col {
-    flex: 0 0 auto; width: 110px; font-size: 12px; color: var(--muted);
-    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-}
-.gallery-row-col-count { width: 90px; }
-.gallery-row-toggles {
-    display: flex; align-items: center; gap: 8px; width: 150px;
-}
-.gallery-row-toggles .downloads-toggle { gap: 0; }
-.gallery-row-toggles .lang-select { max-width: 56px; }
-.gallery-row-actions { flex-shrink: 0; }
-
-@media (max-width: 900px) {
-    .gallery-row-col { display: none; }
-    .gallery-row-toggles { width: auto; }
-}
-@media (max-width: 600px) {
-    .gallery-item-row { flex-wrap: wrap; }
-    .gallery-row-toggles { order: 3; width: 100%; border-top: 1px solid var(--border); padding-top: 8px; margin-top: 2px; }
-    .gallery-row-actions { order: 4; width: 100%; justify-content: flex-end; }
-}
 
 @media (max-width: 600px) {
     .gallery-item { flex-wrap: wrap; gap: 8px; padding: 8px 10px; }

@@ -1770,17 +1770,10 @@ app.get('/api/gallery/:galleryId', adminLimiter, requireAuth, validateGalleryId,
     const collectionRow = db.prepare(`SELECT collection_id FROM collection_galleries WHERE gallery_id = ?`).get(galleryId);
     const fileCount = db.prepare(`SELECT COUNT(*) AS n FROM files WHERE gallery_id = ?`).get(galleryId).n;
 
-    let lastModified = null;
-    try {
-        const galleryPath = safeResolvePath(path.join(DATA_DIR, 'uploads'), galleryId);
-        lastModified = fs.statSync(galleryPath).mtime.toISOString();
-    } catch (_) {}
-
     res.json({
         id: row.id,
         eventName: row.event_name,
         created: row.created_at,
-        lastModified,
         fileCount,
         collectionId: collectionRow ? collectionRow.collection_id : null,
         downloadsEnabled: !!row.downloads_enabled,
@@ -3277,7 +3270,6 @@ app.get('/api/galleries', adminLimiter, requireAuth, (req, res) => {
                 downloadsEnabled: !!gallery.downloads_enabled,
                 commentsEnabled: !!gallery.comments_enabled,
                 clientLanguage: gallery.client_language || 'auto',
-                lastModified: stats.mtime.toISOString(),
                 hasPassword: !!gallery.password_hash,
                 expiresAt: gallery.expires_at || null,
                 isExpired: !!(gallery.expires_at && gallery.expires_at < nowIso),
