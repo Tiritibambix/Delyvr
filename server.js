@@ -883,6 +883,26 @@ function audioKey(req) {
     return isCollection ? `collection-${id}` : `gallery-${id}`;
 }
 
+// Runs BEFORE uploadAudio: an upload for a gallery or collection that does not
+// exist is refused before multer writes anything, so there is never a stray file
+// to remove. The routes used to check afterwards and unlink req.file.path, a path
+// built from request data (CodeQL js/path-injection).
+function requireAudioOwner(req, res, next) {
+    const isCollection = !!req.params.collectionId;
+    const row = isCollection
+        ? db.prepare(`SELECT 1 FROM collections WHERE id = ?`).get(req.params.collectionId)
+        : db.prepare(`SELECT 1 FROM galleries WHERE id = ?`).get(req.params.galleryId);
+    if (!row) return res.status(404).json({ error: isCollection ? 'Collection not found' : 'Gallery not found' });
+    next();
+}
+
+// The uploaded montage as stored: its basename, and its path re-resolved inside
+// AUDIO_DIR through safeResolvePath, rather than multer's req.file.path.
+function storedAudioUpload(file) {
+    const stored = path.basename(file.filename);
+    return { stored, filePath: safeResolvePath(AUDIO_DIR, stored) };
+}
+
 // Finds a stored montage regardless of its extension. `key` is an audioKey value.
 function findAudioFile(key) {
     if (!fs.existsSync(AUDIO_DIR)) return null;
@@ -1107,36 +1127,26 @@ function verifyGalleryPassword(password, stored) {
     return expected.length === actual.length && crypto.timingSafeEqual(expected, actual);
 }
 
-// Stateless unlock token: an HMAC over the protected subject and a short
-// fingerprint of its CURRENT password_hash, signed with a secret generated once
-// per process start (same lifetime as the `sessions` Map above: a restart costs
-// every visitor one re-prompt, same as it already costs the admin). Because the
-// MAC covers the password's own fingerprint, changing or clearing a password
-// silently invalidates every cookie issued for the old one, with nothing to
-// revoke explicitly. `subject` is the gallery id for a gallery and
-// `collection:<id>` for a collection, so a token of one kind can never be
-// accepted as the other.
+// Stateless unlock token: an HMAC, keyed by a secret generated once per process
+// start (same lifetime as the `sessions` Map above: a restart costs every visitor
+// one re-prompt, same as it already costs the admin), over the protected subject
+// and its CURRENT stored hash. The cookie holds that MAC and nothing else: it
+// reveals nothing about the password or its hash, and verification recomputes it
+// from the row. Because the MAC covers the stored hash (a new random salt on every
+// change), changing or clearing a password silently invalidates every cookie
+// issued for the old one, with nothing to revoke explicitly. `subject` is the
+// gallery id for a gallery and `collection:<id>` for a collection, so a token of
+// one kind can never be accepted as the other.
 const GALLERY_UNLOCK_SECRET = crypto.randomBytes(32);
 
-function galleryPasswordFingerprint(passwordHash) {
-    return crypto.createHash('sha256').update(passwordHash).digest('hex').slice(0, 16);
+function signUnlockToken(subject, storedHash) {
+    return crypto.createHmac('sha256', GALLERY_UNLOCK_SECRET).update(`${subject}|${storedHash}`).digest('base64url');
 }
 
-function signGalleryUnlockToken(subject, passwordHash) {
-    const fp = galleryPasswordFingerprint(passwordHash);
-    const mac = crypto.createHmac('sha256', GALLERY_UNLOCK_SECRET).update(`${subject}.${fp}`).digest('base64url');
-    return `${fp}.${mac}`;
-}
-
-function verifyGalleryUnlockToken(token, subject, passwordHash) {
-    if (!token) return false;
-    const parts = token.split('.');
-    if (parts.length !== 2) return false;
-    const [fp, mac] = parts;
-    if (fp !== galleryPasswordFingerprint(passwordHash)) return false;
-    const expected = crypto.createHmac('sha256', GALLERY_UNLOCK_SECRET).update(`${subject}.${fp}`).digest('base64url');
-    const a = Buffer.from(mac);
-    const b = Buffer.from(expected);
+function verifyUnlockToken(token, subject, storedHash) {
+    if (typeof token !== 'string' || !token) return false;
+    const a = Buffer.from(token);
+    const b = Buffer.from(signUnlockToken(subject, storedHash));
     return a.length === b.length && crypto.timingSafeEqual(a, b);
 }
 
@@ -1186,7 +1196,7 @@ function collectionIsPrivate(collectionId) {
 
 function hasCollectionUnlock(req, collectionId, passwordHash) {
     const token = parseCookies(req.headers.cookie)[`delyvr_unlock_c_${collectionId}`];
-    return verifyGalleryUnlockToken(token, `collection:${collectionId}`, passwordHash);
+    return verifyUnlockToken(token, `collection:${collectionId}`, passwordHash);
 }
 
 // The expiration that applies to a gallery: its own date, else its collection's.
@@ -1252,7 +1262,7 @@ function requireGalleryUnlock(req, res, next) {
     const clientLanguage = resolveGalleryClientLanguage(galleryId);
     if (row.password_hash) {
         const token = parseCookies(req.headers.cookie)[`delyvr_unlock_${galleryId}`];
-        if (verifyGalleryUnlockToken(token, galleryId, row.password_hash)) return next();
+        if (verifyUnlockToken(token, galleryId, row.password_hash)) return next();
         return res.status(401).json({ error: 'password_required', scope: 'gallery', clientLanguage });
     }
     const coll = collectionProtectionOf(galleryId);
@@ -1820,24 +1830,19 @@ app.get('/api/gallery/:galleryId/background', publicReadLimiter, validateGallery
 // client-side (see preview.html): inside a collection that has its own montage,
 // the collection's track wins so playback stays continuous across galleries.
 
-app.post('/api/gallery/:galleryId/audio', adminLimiter, requireAuth, validateGalleryId, uploadAudio.single('audio'), async (req, res) => {
+app.post('/api/gallery/:galleryId/audio', adminLimiter, requireAuth, validateGalleryId, requireAudioOwner, uploadAudio.single('audio'), async (req, res) => {
     const { galleryId } = req.params;
-    const galleryExists = db.prepare(`SELECT 1 FROM galleries WHERE id = ?`).get(galleryId);
-    if (!galleryExists) {
-        if (req.file) { try { fs.unlinkSync(req.file.path); } catch (_) {} }
-        return res.status(404).json({ error: 'Gallery not found' });
-    }
     if (!req.file) return res.status(400).json({ error: 'No audio file provided' });
+    const { stored: kept, filePath } = storedAudioUpload(req.file);
 
     // Drop any older montage stored under a different extension.
-    const kept = path.basename(req.file.path);
     for (const f of fs.readdirSync(AUDIO_DIR)) {
         if (f.startsWith(`gallery-${galleryId}.`) && f !== kept) {
             try { fs.unlinkSync(safeResolvePath(AUDIO_DIR, f)); } catch (_) {}
         }
     }
 
-    const duration = await probeAudioDuration(req.file.path);
+    const duration = await probeAudioDuration(filePath);
     const audio = {
         filename: decodeUploadFilename(req.file.originalname).normalize('NFC'),
         stored: kept,
@@ -2118,7 +2123,7 @@ app.post('/api/gallery/:galleryId/unlock', galleryUnlockLimiter, validateGallery
         return res.status(401).json({ error: 'invalid_password' });
     }
 
-    setUnlockCookie(req, res, `delyvr_unlock_${galleryId}`, signGalleryUnlockToken(galleryId, row.password_hash));
+    setUnlockCookie(req, res, `delyvr_unlock_${galleryId}`, signUnlockToken(galleryId, row.password_hash));
     res.json({ success: true });
 });
 
@@ -3241,25 +3246,20 @@ app.get('/api/collection/:collectionId/background', publicReadLimiter, validateC
 // the OG image fallback and the stem sort — an audio file has no business in any of them.
 
 // Upload or replace the montage (admin only)
-app.post('/api/collection/:collectionId/audio', adminLimiter, requireAuth, validateCollectionId, uploadAudio.single('audio'), async (req, res) => {
+app.post('/api/collection/:collectionId/audio', adminLimiter, requireAuth, validateCollectionId, requireAudioOwner, uploadAudio.single('audio'), async (req, res) => {
     const { collectionId } = req.params;
-    const collectionExists = db.prepare(`SELECT 1 FROM collections WHERE id = ?`).get(collectionId);
-    if (!collectionExists) {
-        if (req.file) { try { fs.unlinkSync(req.file.path); } catch (_) {} }
-        return res.status(404).json({ error: 'Collection not found' });
-    }
     if (!req.file) return res.status(400).json({ error: 'No audio file provided' });
+    const { stored: kept, filePath } = storedAudioUpload(req.file);
 
     // multer overwrote a previous file of the same extension; drop any older one
     // stored under a different extension so only a single montage remains.
-    const kept = path.basename(req.file.path);
     for (const f of fs.readdirSync(AUDIO_DIR)) {
         if (f.startsWith(`collection-${collectionId}.`) && f !== kept) {
             try { fs.unlinkSync(safeResolvePath(AUDIO_DIR, f)); } catch (_) {}
         }
     }
 
-    const duration = await probeAudioDuration(req.file.path);
+    const duration = await probeAudioDuration(filePath);
     const audio = {
         filename: decodeUploadFilename(req.file.originalname).normalize('NFC'),
         stored: kept,
@@ -3514,7 +3514,7 @@ app.post('/api/collection/:collectionId/unlock', galleryUnlockLimiter, validateC
     if (typeof password !== 'string' || !verifyGalleryPassword(password, row.password_hash)) {
         return res.status(401).json({ error: 'invalid_password' });
     }
-    setUnlockCookie(req, res, `delyvr_unlock_c_${collectionId}`, signGalleryUnlockToken(`collection:${collectionId}`, row.password_hash));
+    setUnlockCookie(req, res, `delyvr_unlock_c_${collectionId}`, signUnlockToken(`collection:${collectionId}`, row.password_hash));
     res.json({ success: true });
 });
 

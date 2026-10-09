@@ -260,11 +260,18 @@ is only paid on an explicit password submission, never on a thumbnail/image requ
 
 **Unlock cookie**: stateless, not a server-side session Map. A Map (like the admin's own
 `sessions`) would evict every visitor's unlock on each container restart, a real problem for
-a link reopened weeks later. `signGalleryUnlockToken`/`verifyGalleryUnlockToken` produce an
-HMAC (`GALLERY_UNLOCK_SECRET`, generated once per process start) over the gallery id and a
-short fingerprint of the *current* `password_hash`. Because the MAC covers that fingerprint,
-changing or clearing a gallery's password silently invalidates every cookie issued for the
-old one, with nothing to revoke explicitly. One cookie **per gallery**
+a link reopened weeks later. `signUnlockToken`/`verifyUnlockToken` produce an HMAC
+(`GALLERY_UNLOCK_SECRET`, generated once per process start) over the subject (the gallery
+id) and the *current* `password_hash`, and **the cookie holds that MAC and nothing else**;
+verification recomputes it from the row. It used to carry a plain SHA-256 fingerprint of
+the hash in front of the MAC, which told a visitor nothing useful but was a value derived
+from password material, sitting in a cookie, and hashed fast: CodeQL raised it as
+`js/clear-text-storage-of-sensitive-data` and `js/insufficient-password-hash`, and the
+fingerprint was never needed (it only short-circuited a mismatch). Do not put anything
+derived from the hash back in the cookie. Because the MAC covers the stored hash, which
+gets a new random salt on every change, changing or clearing a gallery's password silently
+invalidates every cookie issued for the old one, with nothing to revoke explicitly. One
+cookie **per gallery**
 (`delyvr_unlock_<galleryId>`), not one shared cookie: a `<img>`/`<video>`/`<a href>` cannot
 attach a custom header, so a plain per-gallery cookie is what lets those requests
 authenticate automatically once unlocked. `SameSite=Lax`, deliberately **not** `Strict` like
@@ -424,6 +431,19 @@ constrained at the source:
 A CodeQL `js/path-injection` alert on the two `…/audio` route lines is a **false positive**
 for traversal (the ids are UUID-validated before multer runs), but it correctly pointed at
 the only unvalidated component, which is the extension above.
+
+A later `js/path-injection` alert pointed at the 404 branch of the same two routes, which
+unlinked `req.file.path` when the gallery or collection did not exist. **The existence check
+now runs before multer** (`requireAudioOwner`, between `validate…Id` and
+`uploadAudio.single('audio')`), so nothing is ever written for a missing owner and there is
+nothing to remove; and the routes use `storedAudioUpload(req.file)`, which re-resolves the
+stored basename inside `AUDIO_DIR` through `safeResolvePath`, instead of multer's
+`req.file.path`. Keep `requireAudioOwner` before the uploader in any new audio route.
+
+**multer is pinned at `^2.4.0`**: 2.2.x/2.3.x could leave a complete orphan file on disk when
+a multipart upload was aborted in the short window before the disk storage engine assigned
+its path (an incomplete fix of CVE-2026-5038), letting repeated aborted requests fill the
+upload directory. 2.4.0 also drops its `concat-stream` dependency.
 
 ### Rate limiting
 
@@ -847,7 +867,7 @@ Clients can leave a text comment on individual photos/videos from the lightbox. 
 - **UI**: a speech-bubble button (with an unread-style count badge) sits next to the favorite/download buttons in both the desktop cluster and the mobile bottom bar, opening a drawer — a fixed side panel on desktop, a bottom sheet on mobile — with the thread, an optional name field, and a textarea (Enter to send, Shift+Enter for newline). Posting is optimistic, matching `toggleFavorite()`'s update/revert-on-error shape, with a toast reusing the `#favToast` element (`showToast()` was generalized from `showFavToast()`).
 - **XSS safety**: `preview.html` has no `escapeHtml()` helper and intentionally doesn't need one for this feature — comment rows are built via `document.createElement` + `textContent` only, never `innerHTML`, since comment text is long-form and free-form. `admin.html` already has `escapeHtml()` (used for `eventName`/filenames elsewhere) and reuses it for the moderation modal's `innerHTML` rows.
 
-  **The photo grid's `card.innerHTML` in `preview.html` is safe for the same reason, and a CodeQL `js/xss` alert on it is a false positive.** Every interpolation in that template is a fixed string, a number (`commentCount`, `index`, a ffprobe duration), or a URL whose filename component the `/photos` route already passed through `encodeURIComponent`, which escapes `"`, `<`, `>` and `&`. The filename itself is never interpolated: `.photo-name` is filled through `textContent` and `data-filename` through `dataset`, both immediately after the assignment. The scanner flags it because it does not model `encodeURIComponent` as an HTML-attribute sanitiser. Keep the filename out of the template and those two property assignments where they are, and it stays a false positive; a comment at the site says so.
+  **The photo grid's `card.innerHTML` in `preview.html` (`buildPhotoCard()`) carries no data at all.** Its template is static markup whose only variable parts are chosen from booleans (video or not, has comments, critique mode, downloads on); everything that comes from the server or the URL is set right after through DOM properties: the thumbnail URL via `dataset.src`, the download link via `href` (with `galleryId`, read from the URL, and the filename both through `encodeURIComponent`), the duration, comment count and critique number via `textContent`, the filename via `textContent` and `dataset`. It used to interpolate the thumbnail and download URLs and the counts, which was safe (the filename part of the URLs was `encodeURIComponent`ed) but which CodeQL kept raising as `js/xss`, and `galleryId` came straight from `location`. Keep the template free of data. The comment badge now has its `<span>` from the start, which `updateCommentBadge()` writes into: a card built with comments used to lack it, so the first new comment on such a photo threw.
 - The comment drawer is a child of `.lightbox`, so its own touch/click/keydown handling must opt out of the lightbox's swipe-to-navigate, pinch-zoom, and tap-to-toggle-bars listeners (guarded via `e.target.closest('#commentDrawer')`) and the capture-phase arrow-key navigation listener, otherwise scrolling the comment list or typing would trigger photo navigation.
 - **The drawer stays open across photos on desktop** (critique reading): `updateLightbox()` reloads the new photo's thread instead of closing it. On mobile it still closes on navigation — deliberately unchanged, a phone can't show both usefully. `isDrawerMobile()` gates this on the existing breakpoints.
 - **The photo is never resized when the drawer opens.** Reserving space (`padding`, or capping `max-width`) would shrink it — on a 1920×1080 screen a 3:2 landscape already has only ~140px of slack, since `.lightbox-content` is capped at `100vw - 160px` for the arrows. Instead `updateDrawerShift()` applies a `transform: translateX(-N)` to `.lightbox-content`: a transform doesn't affect layout, so the computed size is untouched. `N` is 150px (half the 300px drawer, which re-centres the content in the space left over) **clamped to the free margin actually measured on the left**, so a very wide photo can never be pushed off-screen. A `ResizeObserver` on `.lightbox-content` recomputes it on async preview load, photo change and window resize. The backdrop is applied on mobile only — on desktop it would dim the very photo being kept visible — and `.lightbox-next` moves to `right: 320px` so it stays clickable.
