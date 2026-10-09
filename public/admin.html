@@ -5498,40 +5498,90 @@
                 return;
             }
             const placeholderSvg = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>`;
-            grid.innerHTML = c.galleryIds.map(gid => {
-                const g = (_galleriesData || []).find(x => x.id === gid);
-                const name = g ? escapeHtml(g.eventName) : gid.slice(0, 8) + '…';
-                const cover = g && g.hasBackground
-                    ? `<img src="/api/gallery/${gid}/background?card=1&v=${g.bgVersion || 0}" alt="" loading="lazy">`
-                    : `<span class="cgc-placeholder">${placeholderSvg}</span>`;
-                const meta = g
-                    ? `${g.fileCount} ${g.fileCount === 1 ? t.photoSingular : t.photoPlural} · ${formatAdminDate(g.created, false)}${renderGalleryStatusIconsHtml(g)}`
-                    : '';
-                return `
-                <div class="collection-gallery-card" draggable="true" data-gid="${gid}"
-                     onclick="handleCollectionCardClick(event, '${gid}')"
-                     ondragstart="handleCollectionCardDragStart(event)"
-                     ondragover="handleCollectionCardDragOver(event)"
-                     ondrop="event.preventDefault()"
-                     ondragend="handleCollectionCardDragEnd()">
-                    <div class="cgc-cover">${cover}</div>
-                    <div class="cgc-body">
-                        <div class="cgc-name">${name}</div>
-                        <div class="cgc-meta">${meta}</div>
-                    </div>
-                    <div class="cgc-tools">
-                        <button class="cgc-btn cgc-move" onclick="moveCollectionCard('${gid}', -1)" title="${t.moveLeft}">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
-                        </button>
-                        <button class="cgc-btn cgc-move" onclick="moveCollectionCard('${gid}', 1)" title="${t.moveRight}">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
-                        </button>
-                        <button class="cgc-btn cgc-remove" onclick="removeFromCollection('${id}', '${gid}')" title="${t.removeFromThisCollection}">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-                        </button>
-                    </div>
+            // Built through the DOM: the card's markup is fixed, and the gallery's id,
+            // name, cover URL and meta line are set as properties and listeners, never
+            // written into HTML (the template used to interpolate them; CodeQL js/xss).
+            const cardHtml = `
+                <div class="cgc-cover"></div>
+                <div class="cgc-body"><div class="cgc-name"></div><div class="cgc-meta"></div></div>
+                <div class="cgc-tools">
+                    <button class="cgc-btn cgc-move" data-step="-1">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+                    </button>
+                    <button class="cgc-btn cgc-move" data-step="1">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+                    </button>
+                    <button class="cgc-btn cgc-remove">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                    </button>
                 </div>`;
-            }).join('');
+            grid.replaceChildren(...c.galleryIds.map(gid => {
+                const g = (_galleriesData || []).find(x => x.id === gid);
+                const card = document.createElement('div');
+                card.className = 'collection-gallery-card';
+                card.draggable = true;
+                card.dataset.gid = gid;
+                card.innerHTML = cardHtml;
+                card.addEventListener('click', e => handleCollectionCardClick(e, gid));
+                card.addEventListener('dragstart', handleCollectionCardDragStart);
+                card.addEventListener('dragover', handleCollectionCardDragOver);
+                card.addEventListener('drop', e => e.preventDefault());
+                card.addEventListener('dragend', () => handleCollectionCardDragEnd());
+
+                const coverBox = card.querySelector('.cgc-cover');
+                if (g && g.hasBackground) {
+                    const img = document.createElement('img');
+                    img.alt = '';
+                    img.loading = 'lazy';
+                    img.src = `/api/gallery/${encodeURIComponent(gid)}/background?card=1&v=${encodeURIComponent(g.bgVersion || 0)}`;
+                    coverBox.appendChild(img);
+                } else {
+                    const ph = document.createElement('span');
+                    ph.className = 'cgc-placeholder';
+                    ph.innerHTML = placeholderSvg;
+                    coverBox.appendChild(ph);
+                }
+                card.querySelector('.cgc-name').textContent = g ? g.eventName : gid.slice(0, 8) + '…';
+                if (g) {
+                    const meta = card.querySelector('.cgc-meta');
+                    meta.textContent = `${g.fileCount} ${g.fileCount === 1 ? t.photoSingular : t.photoPlural} · ${formatAdminDate(g.created, false)}`;
+                    const icons = galleryStatusIconsNode(g);
+                    if (icons) meta.appendChild(icons);
+                }
+                const [left, right] = card.querySelectorAll('.cgc-move');
+                left.title = t.moveLeft;
+                right.title = t.moveRight;
+                left.addEventListener('click', () => moveCollectionCard(gid, -1));
+                right.addEventListener('click', () => moveCollectionCard(gid, 1));
+                const remove = card.querySelector('.cgc-remove');
+                remove.title = t.removeFromThisCollection;
+                remove.addEventListener('click', () => removeFromCollection(id, gid));
+                return card;
+            }));
+        }
+
+        // The status icons of renderGalleryStatusIconsHtml(), as DOM nodes with their
+        // tooltips set as properties (they can name a collection), for the cards above.
+        function galleryStatusIconsNode(g) {
+            const p = galleryProtection(g);
+            const lockSvg = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>`;
+            const clockSvg = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>`;
+            const wrap = document.createElement('span');
+            wrap.className = 'gallery-status-icons';
+            const add = (cls, svg, title) => {
+                const s = document.createElement('span');
+                s.className = 'gallery-status-icon' + (cls ? ' ' + cls : '');
+                s.innerHTML = svg;
+                s.title = title;
+                wrap.appendChild(s);
+            };
+            if (p.hasPassword) add('gallery-status-locked', lockSvg, p.passwordFrom ? t.statusLockedByCollection(p.passwordFrom.name) : t.galleryStatusLocked);
+            if (p.expiresAt) {
+                let title = p.isExpired ? t.galleryStatusExpired : t.galleryStatusExpires(formatExpirationDate(p.expiresAt));
+                if (p.expiryFrom) title = t.statusFromCollection(title, p.expiryFrom.name);
+                add(p.isExpired ? 'gallery-status-expired' : '', clockSvg, title);
+            }
+            return wrap.children.length ? wrap : null;
         }
 
         function handleCollectionCardClick(event, galleryId) {
