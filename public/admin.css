@@ -2019,8 +2019,11 @@ html:not(.light) .settings-inline input[type="date"]::-webkit-calendar-picker-in
    Overrides the earlier rules. The source switches from ?thumb=1 (a 200px
    server-side *square crop*) to ?card=1 (800px, fit:inside) so the real
    aspect ratio survives, and object-fit:contain shows the whole frame. */
+.gallery-picker-card { max-width: 760px; }
+/* Three tiles per row (two on a phone, below): auto-fill at 220px gave only two
+   in the card, which wasted half its height on a short list. */
 .gallery-picker-list {
-    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 10px;
     /* The list scrolls inside the card; align rows to the start so they keep
        their natural height instead of being stretched or squeezed. */

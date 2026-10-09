@@ -1163,9 +1163,12 @@ function isPastExpiry(expiresAt) {
 }
 
 // Collection protection. A collection's password and expiration cover its index
-// AND every member gallery, wherever the gallery is opened from (the collection
-// page or its own /preview/:id link): one unlock of the collection opens all of
-// them. A gallery with its own password additionally asks for that one.
+// and, BY DEFAULT, every member gallery, wherever the gallery is opened from (the
+// collection page or its own /preview/:id link): one unlock of the collection
+// opens all of them. A gallery's own password or own date REPLACES the
+// collection's for that gallery ("most specific wins", like the client language):
+// a gallery with its own password asks for that one only, and a gallery with its
+// own date expires on that date, earlier or later than the collection's.
 
 // The collection a gallery belongs to (at most one, UNIQUE(gallery_id)), with
 // its protection columns, or undefined.
@@ -1186,6 +1189,13 @@ function hasCollectionUnlock(req, collectionId, passwordHash) {
     return verifyGalleryUnlockToken(token, `collection:${collectionId}`, passwordHash);
 }
 
+// The expiration that applies to a gallery: its own date, else its collection's.
+function effectiveGalleryExpiry(galleryId, ownExpiresAt) {
+    if (ownExpiresAt) return ownExpiresAt;
+    const coll = collectionProtectionOf(galleryId);
+    return coll ? coll.expires_at : null;
+}
+
 // True when the gallery's OWN settings make its photos private (its own password,
 // or its own expiration passed), whatever its collection says. The collection ZIP
 // uses this one: by the time it runs, the collection's own gates have passed.
@@ -1196,57 +1206,58 @@ function galleryOwnPhotosArePrivate(galleryId) {
 }
 
 // True when a gallery's PHOTOS must not reach anyone but its unlocked visitors:
-// it, or its collection, has a password or an expired link. Used by the gallery
-// OG image, which can expose a photo WITHOUT going through the gates below (its
-// fallback to a first photo). Covers are not covered by this; they stay public on
-// purpose (see the background route's comment).
+// a password applies to it (its own or its collection's), or its effective
+// expiration has passed. Used by the gallery OG image, which can expose a photo
+// WITHOUT going through the gates below (its fallback to a first photo). Covers
+// are not covered by this; they stay public on purpose (see the background
+// route's comment).
 function galleryPhotosArePrivate(galleryId) {
-    if (galleryOwnPhotosArePrivate(galleryId)) return true;
+    const row = db.prepare(`SELECT password_hash, expires_at FROM galleries WHERE id = ?`).get(galleryId);
+    if (!row) return false;
     const coll = collectionProtectionOf(galleryId);
-    return !!coll && (!!coll.password_hash || isPastExpiry(coll.expires_at));
+    if (row.password_hash || (coll && coll.password_hash)) return true;
+    return isPastExpiry(row.expires_at || (coll ? coll.expires_at : null));
 }
 
-// 410 if the gallery's expires_at, or its collection's, is set and in the past.
-// A missing/deleted gallery falls through untouched so the route's own existence
-// check still produces its usual 404: this middleware only ever narrows, never
-// widens, what a request can reach.
+// 410 if the gallery's effective expiration (its own, else its collection's) is
+// in the past. A missing/deleted gallery falls through untouched so the route's
+// own existence check still produces its usual 404: this middleware only ever
+// narrows, never widens, what a request can reach.
 function checkGalleryExpiration(req, res, next) {
     // The admin's own gallery page loads photos, thumbnails and the ZIP through
     // these same public routes, so the photographer must never be locked out of
     // their own expired gallery.
     if (isAdminRequest(req)) return next();
-    const row = db.prepare(`SELECT expires_at FROM galleries WHERE id = ? AND deleted = 0`).get(req.params.galleryId);
-    if (row) {
-        const coll = collectionProtectionOf(req.params.galleryId);
-        if (isPastExpiry(row.expires_at) || (coll && isPastExpiry(coll.expires_at))) {
-            return res.status(410).json({ error: 'gallery_expired', clientLanguage: resolveGalleryClientLanguage(req.params.galleryId) });
-        }
+    const { galleryId } = req.params;
+    const row = db.prepare(`SELECT expires_at FROM galleries WHERE id = ? AND deleted = 0`).get(galleryId);
+    if (row && isPastExpiry(effectiveGalleryExpiry(galleryId, row.expires_at))) {
+        return res.status(410).json({ error: 'gallery_expired', clientLanguage: resolveGalleryClientLanguage(galleryId) });
     }
     next();
 }
 
-// 401 unless the visitor holds every unlock this gallery needs: its collection's
-// (delyvr_unlock_c_<collectionId>) when the collection has a password, then its
-// own (delyvr_unlock_<galleryId>) when it has one. The collection is asked for
-// first, and `scope` tells the client page which password form to show. With no
-// password on either, this is a pure no-op: the opt-in guarantee that keeps every
-// unprotected gallery's public routes behaving exactly as before.
+// 401 unless the visitor holds the unlock of the password that applies: the
+// gallery's own (delyvr_unlock_<galleryId>) when it has one, else its
+// collection's (delyvr_unlock_c_<collectionId>). `scope` tells the client page
+// which password form to show. With no password on either, this is a pure no-op:
+// the opt-in guarantee that keeps every unprotected gallery's public routes
+// behaving exactly as before.
 function requireGalleryUnlock(req, res, next) {
     if (isAdminRequest(req)) return next(); // same reason as checkGalleryExpiration above
     const { galleryId } = req.params;
     const row = db.prepare(`SELECT password_hash FROM galleries WHERE id = ? AND deleted = 0`).get(galleryId);
     if (!row) return next();
-    const coll = collectionProtectionOf(galleryId);
     // clientLanguage rides along so the password page can be shown in the
     // visitor's language: it is the only thing a locked visitor is told.
     const clientLanguage = resolveGalleryClientLanguage(galleryId);
-    if (coll && coll.password_hash && !hasCollectionUnlock(req, coll.id, coll.password_hash)) {
-        return res.status(401).json({ error: 'password_required', scope: 'collection', collectionId: coll.id, clientLanguage });
+    if (row.password_hash) {
+        const token = parseCookies(req.headers.cookie)[`delyvr_unlock_${galleryId}`];
+        if (verifyGalleryUnlockToken(token, galleryId, row.password_hash)) return next();
+        return res.status(401).json({ error: 'password_required', scope: 'gallery', clientLanguage });
     }
-    if (!row.password_hash) return next();
-    const token = parseCookies(req.headers.cookie)[`delyvr_unlock_${galleryId}`];
-    if (verifyGalleryUnlockToken(token, galleryId, row.password_hash)) return next();
-    res.status(401).json({ error: 'password_required', scope: 'gallery', clientLanguage });
+    const coll = collectionProtectionOf(galleryId);
+    if (!coll || !coll.password_hash || hasCollectionUnlock(req, coll.id, coll.password_hash)) return next();
+    res.status(401).json({ error: 'password_required', scope: 'collection', collectionId: coll.id, clientLanguage });
 }
 
 // The collection-route counterparts (the index, its ZIP, its montage), with the

@@ -233,8 +233,9 @@ The session token is a CSPRNG `uuidv4()`, so honouring it is safe.
 
 **Every path that can hand out photos outside the per-gallery gates checks the gallery's
 privacy**, through one of two helpers: `galleryOwnPhotosArePrivate(galleryId)` (its own
-password set, or its own expiration passed) and `galleryPhotosArePrivate(galleryId)` (the
-same, **or** its collection's):
+password set, or its own expiration passed) and `galleryPhotosArePrivate(galleryId)` (a
+password applies to it, its own or its collection's, or its effective expiration, its own
+else its collection's, has passed):
 - the **collection ZIP** leaves a member gallery with its own protection out for visitors
   (`galleryOwnPhotosArePrivate`: the collection's own gates already ran on that route). In
   the first version it did not, so downloading the collection bypassed a member gallery's
@@ -273,14 +274,14 @@ withheld and re-prompt an already-unlocked visitor every time. `Max-Age` ~30 day
 independent of `expires_at`.
 
 **Two composable middlewares**, next to `validateGalleryId`/`validateFilename`:
-- `checkGalleryExpiration`: 410 `gallery_expired` if the gallery's `expires_at`, **or its
-  collection's**, is set and in the past.
-- `requireGalleryUnlock`: 401 `password_required` unless the visitor holds every unlock
-  the gallery needs: its collection's cookie first when the collection has a password
-  (`scope: 'collection'`, with `collectionId`), then its own (`scope: 'gallery'`). **No-ops
-  instantly when neither has a password**, which is the opt-in guarantee: a gallery with
-  nothing set, in a collection with nothing set, behaves exactly as before this feature
-  existed.
+- `checkGalleryExpiration`: 410 `gallery_expired` if the gallery's **effective** expiration
+  has passed: its own `expires_at`, else its collection's (`effectiveGalleryExpiry()`).
+- `requireGalleryUnlock`: 401 `password_required` unless the visitor holds the unlock of
+  the password that applies: the gallery's own cookie when it has a password
+  (`scope: 'gallery'`), else its collection's when the collection has one
+  (`scope: 'collection'`, with `collectionId`). **No-ops instantly when neither has a
+  password**, which is the opt-in guarantee: a gallery with nothing set, in a collection
+  with nothing set, behaves exactly as before this feature existed.
 
 Every 401/410 body also carries `clientLanguage` (the resolved one, as `/info` would send
 it): it is the only thing a locked visitor learns, and it lets the gate page speak their
@@ -308,8 +309,7 @@ the `/info` fetch's status instead: `401` → `showPasswordGate(kind, id, retry)
 `applyGateLocale()` first resolves the locale from the refusal's `clientLanguage`, so both
 screens are in the visitor's language (they used to be English only, since nothing was
 handed over before the unlock). After a successful unlock the gate calls `retry`, which
-for a gallery in a protected collection with its own password means a second gate, for the
-gallery's. `favorites.html` gets the same 401/410 branching but with plain, untranslated
+reloads what was refused. `favorites.html` gets the same 401/410 branching but with plain, untranslated
 text, consistent with that page's existing no-i18n posture (see "Comments" section below);
 its "open the gallery link first" message holds for a collection password too.
 
@@ -346,14 +346,25 @@ value format already *is* `YYYY-MM-DD`.
 #### Collection password and expiration
 
 `collections.password_hash` / `expires_at` (same formats, both `NULL` by default, added
-through `COLLECTIONS_ADDED_COLUMNS`) protect the collection **and every gallery in it**,
-wherever the gallery is opened from: the collection page, or its own `/preview/:id` link
-shared separately. **One unlock opens them all**: `POST /api/collection/:id/unlock` sets
-`delyvr_unlock_c_<collectionId>`, signed by the same HMAC helpers with the subject
-`collection:<id>` (the prefix keeps a gallery token and a collection token from ever being
-accepted for one another). A gallery with **its own** password inside a protected
-collection asks for both, the collection's first. A gallery expires when its own date or
-its collection's has passed. The admin bypass (`isAdminRequest()`) applies unchanged.
+through `COLLECTIONS_ADDED_COLUMNS`) protect the collection index and, **by default**,
+every gallery in it, wherever the gallery is opened from: the collection page, or its own
+`/preview/:id` link shared separately. **One unlock opens them all**:
+`POST /api/collection/:id/unlock` sets `delyvr_unlock_c_<collectionId>`, signed by the same
+HMAC helpers with the subject `collection:<id>` (the prefix keeps a gallery token and a
+collection token from ever being accepted for one another). The admin bypass
+(`isAdminRequest()`) applies unchanged.
+
+**A gallery's own value replaces the collection's** ("most specific wins", like the client
+language), separately for the password and the date:
+- a gallery with its own password asks for **that one only**, wherever it is opened; the
+  collection's unlock does not open it (the collection index itself still asks for the
+  collection's);
+- a gallery with its own date expires on **that date**, earlier or later than the
+  collection's. After the collection's date, its index answers 410, but such a gallery
+  stays reachable by its own link until its own date.
+
+There is no way to make one gallery of a protected collection **un**protected: a NULL
+column means "inherit". Take the gallery out of the collection for that.
 
 - **Collection routes**: `checkCollectionExpiration` (410 `collection_expired`) and
   `requireCollectionUnlock` (401 `password_required`, `scope: 'collection'`) gate
@@ -377,8 +388,17 @@ its collection's has passed. The admin bypass (`isAdminRequest()`) applies uncha
   collection's state lives in its `_collectionsData` entry (`hasPassword`/`expiresAt`, from
   `/api/collections`), so its row and page redraw their padlock/clock
   (`collectionStatusIconsHtml()`, built on `renderGalleryStatusIconsHtml()`) right after a
-  change. The gallery panel says when its collection adds a password or a date on top of
-  its own (`syncCollectionProtectionNotes()`).
+  change. `refreshProtectionViews(kind)` redraws everything a change shows on, the
+  gallery rows included.
+- **Inheritance in the admin**: `galleryProtection(g)` applies the server's rule from the
+  caches (own value, else the collection's, with `passwordFrom`/`expiryFrom` naming the
+  collection when inherited). `renderGalleryStatusIconsHtml()` goes through it, so a
+  gallery row and a collection page card show the padlock and clock their collection gives
+  them, the tooltip saying which collection they come from. In the gallery panel the status
+  pills say the same ("The collection's", "Expires … (collection «name»)"; the date field
+  stays empty, since filling it gives the gallery its own date), and
+  `syncCollectionProtectionNotes()` explains under each control whether the gallery uses the
+  collection's value or replaces it.
 
 ### Path safety
 
@@ -1053,7 +1073,7 @@ Loaded by all client pages via `<script src="/shared.js">` before their inline `
     2px `var(--accent)` top edge and a `0 -6px 24px` lift shadow, so it registers as it
     slides up without drawing the eye the rest of the time.
 - **Trash modal:** opened via trash icon button (with count badge) in gallery section header. Shows trashed galleries with daysLeft, Restore and "Delete now" buttons, Empty trash button. **`emptyTrash()` drives the progress toast**: `DELETE /api/galleries/trash` loops server-side, deleting each gallery's uploads, thumbnails, previews, cover, OG cache and audio from disk, so a full trash takes a long while with nothing on screen and reads as frozen. There is no per-item progress to report without streaming the response, so it shows a spinner (`t.emptyingTrash`) and then the route's own `purged` count (`t.trashEmptied(n)`).
-- **Progress toast helpers** (`showProgressToast` / `updateProgressToast` / `finishProgressToast`), next to `showError()`: the shared driver for any multi-step admin action, reusing the single `#uploadToast` element and its `#toastSpinner`/`#toastSuccess`/`#toastError`/`#toastMessage` children. `finishProgressToast(msg, isError)` swaps the icon, applies `.success`/`.error` for the border colour and auto-dismisses (3s / 5s for an error) through the shared `_errorToastTimer`. Used by `runBulk()` and `emptyTrash()`; `deleteSelectedPhotos()` predates them and still drives the same element inline.
+- **Progress toast helpers** (`showProgressToast` / `updateProgressToast` / `finishProgressToast`), next to `showError()`: the shared driver for any multi-step admin action, reusing the single `#uploadToast` element and its `#toastSpinner`/`#toastSuccess`/`#toastError`/`#toastMessage` children. `finishProgressToast(msg, isError)` swaps the icon, applies `.success`/`.error` for the border colour and auto-dismisses (3s / 5s for an error) through the shared `_errorToastTimer`. Used by `runBulk()` and `emptyTrash()`; `deleteSelectedPhotos()` predates them and still drives the same element inline. Copying a client or critique link (gallery or collection, from a row or a page) and regenerating a share preview confirm through `finishProgressToast()` as well (`t.clientLinkCopied`, `t.critiqueLinkCopied`, `t.sharePreviewRegenerated`).
 - **Gallery detail page** (`#/gallery/:id`, view `view-gallery-detail`): **replaces the old
   "photos modal" overlay entirely**; `openPhotosModal`/`closePhotosModal`/`#photosModal` are
   gone, not kept as a secondary path (this project has no other precedent for two ways to
@@ -1253,7 +1273,7 @@ Loaded by all client pages via `<script src="/shared.js">` before their inline `
   **Every pill of a listed collection is still rendered**, never just the matching ones:
   `movePill()` saves the order it reads back from the DOM, so a hidden pill would be
   dropped from the collection on the next reorder.
-- **Gallery picker (for collections):** multi-select. Toggling a gallery adds/removes it from `_pickerSelected` Set. Confirm button shows count and adds all at once.
+- **Gallery picker (for collections):** multi-select. Toggling a gallery adds/removes it from `_pickerSelected` Set. Confirm button shows count and adds all at once. Three tiles per row (`repeat(3, minmax(0, 1fr))` in a 760px card), two on a phone.
 - **Collections list: clickable rows, built like the gallery rows** (`renderCollections()`,
   same `.gallery-item` / `.gallery-cover` / `.gallery-info` / `.gallery-actions` classes): cover
   (click or drop to change), name (double-click or pencil to rename), "n galleries · date",

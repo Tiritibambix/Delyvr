@@ -2895,17 +2895,42 @@
         // nothing, since being reachable by its link is the normal state, not
         // a status worth an icon on every row. Collection rows and the collection
         // page use it too (collectionStatusIconsHtml()), with the same fields.
+        // A gallery in a collection shows what it inherits as well (see
+        // galleryProtection()), the tooltip naming the collection it comes from.
         function renderGalleryStatusIconsHtml(g) {
             const lockSvg = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>`;
             const clockSvg = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>`;
+            const p = galleryProtection(g);
             const icons = [];
-            if (g.hasPassword) {
-                icons.push(`<span class="gallery-status-icon gallery-status-locked" title="${t.galleryStatusLocked}">${lockSvg}</span>`);
+            if (p.hasPassword) {
+                const title = p.passwordFrom ? t.statusLockedByCollection(p.passwordFrom.name) : t.galleryStatusLocked;
+                icons.push(`<span class="gallery-status-icon gallery-status-locked" title="${escapeAttr(title)}">${lockSvg}</span>`);
             }
-            if (g.expiresAt) {
-                icons.push(`<span class="gallery-status-icon${g.isExpired ? ' gallery-status-expired' : ''}" title="${g.isExpired ? t.galleryStatusExpired : t.galleryStatusExpires(formatExpirationDate(g.expiresAt))}">${clockSvg}</span>`);
+            if (p.expiresAt) {
+                let title = p.isExpired ? t.galleryStatusExpired : t.galleryStatusExpires(formatExpirationDate(p.expiresAt));
+                if (p.expiryFrom) title = t.statusFromCollection(title, p.expiryFrom.name);
+                icons.push(`<span class="gallery-status-icon${p.isExpired ? ' gallery-status-expired' : ''}" title="${escapeAttr(title)}">${clockSvg}</span>`);
             }
             return icons.length ? `<span class="gallery-status-icons">${icons.join('')}</span>` : '';
+        }
+
+        // The password and expiration that apply to a gallery: its own, else its
+        // collection's (the server's rule, requireGalleryUnlock() and
+        // checkGalleryExpiration()). passwordFrom / expiryFrom name the collection
+        // when the value is inherited, null when it is the gallery's own. An object
+        // without collectionId (a collection's own icons) is taken as is.
+        function galleryProtection(g) {
+            const col = g.collectionId ? (_collectionsData || []).find(c => c.id === g.collectionId) : null;
+            const inheritPw = !g.hasPassword && !!(col && col.hasPassword);
+            const inheritExp = !g.expiresAt && !!(col && col.expiresAt);
+            const expiresAt = g.expiresAt || (inheritExp ? col.expiresAt : null);
+            return {
+                hasPassword: !!g.hasPassword || inheritPw,
+                passwordFrom: inheritPw ? col : null,
+                expiresAt,
+                expiryFrom: inheritExp ? col : null,
+                isExpired: !!expiresAt && expiresAt < new Date().toISOString()
+            };
         }
 
         // /api/collections sends hasPassword and expiresAt but no isExpired (the
@@ -3445,6 +3470,7 @@
             copyToClipboard(url);
             btn.classList.add('copied');
             setTimeout(() => btn.classList.remove('copied'), 1800);
+            finishProgressToast(t.clientLinkCopied);
         }
 
         function copyCritiqueLink(id, btn) {
@@ -3452,6 +3478,7 @@
             copyToClipboard(url);
             btn.classList.add('copied');
             setTimeout(() => btn.classList.remove('copied'), 1800);
+            finishProgressToast(t.critiqueLinkCopied);
         }
 
         function startEditGalleryName(galleryId, element) {
@@ -3672,16 +3699,19 @@
             // Full admin-shape object: gives the title.
             try {
                 const res = await fetch(`/api/gallery/${galleryId}`);
-                if (!res.ok) throw new Error('Gallery not found');
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
                 const g = await res.json();
                 if (_galleryDetailId !== galleryId) return; // navigated to another gallery meanwhile
                 document.getElementById('galleryDetailTitle').textContent = g.eventName;
                 document.title = `${g.eventName} - Delyvr`;
-                syncGalleryDetailExtras(); // after an await: see its comment
             } catch (err) {
                 if (_galleryDetailId !== galleryId) return;
+                console.error('[gallery page] could not load the gallery:', err);
                 document.getElementById('galleryDetailTitle').textContent = t.couldNotLoadGallery;
             }
+            // Outside the try above: a failure in the side buttons must not replace
+            // the gallery's name with "could not load". After an await: see its comment.
+            try { syncGalleryDetailExtras(); } catch (err) { console.error('[gallery page]', err); }
 
             await refreshPhotosGrid(galleryId);
         }
@@ -3863,30 +3893,47 @@
 
         // The gallery and collection settings panels share their protection
         // controls (password, expiration date). `kind` picks the element ids (gs*
-        // or cs*), the owner, its API path and the state object kept in sync: the
-        // gallery panel's _gallerySettings, or the collection's _collectionsData
-        // entry (which the collection rows and page also render from).
+        // or cs*), the owner, its API path and the state objects kept in sync: the
+        // gallery panel's _gallerySettings plus the gallery's _galleriesData entry,
+        // or the collection's _collectionsData entry (the rows and pages render
+        // from those caches). For a gallery, `col` is its collection, whose
+        // password and date apply to it unless it has its own.
         function protectionTarget(kind) {
             if (kind === 'collection') {
                 const id = _collectionDetailId;
-                return { prefix: 'cs', api: 'collection', id, state: (_collectionsData || []).find(c => c.id === id) || null };
+                const state = (_collectionsData || []).find(c => c.id === id) || null;
+                return { prefix: 'cs', api: 'collection', id, states: state ? [state] : [], col: null };
             }
-            return { prefix: 'gs', api: 'gallery', id: _galleryDetailId, state: _gallerySettings };
+            const id = _galleryDetailId;
+            const listEntry = (_galleriesData || []).find(g => g.id === id) || null;
+            const colId = (_gallerySettings && _gallerySettings.collectionId) || (listEntry && listEntry.collectionId);
+            const col = colId ? (_collectionsData || []).find(c => c.id === colId) || null : null;
+            return { prefix: 'gs', api: 'gallery', id, states: [_gallerySettings, listEntry].filter(Boolean), col };
         }
 
-        // After a collection's protection changed: its row and page show it.
-        function refreshCollectionProtectionViews(kind) {
-            if (kind !== 'collection') return;
-            if (_collectionsData) renderCollections(_collectionsData);
-            renderCollectionDetailPage();
+        // After a protection change, everything that shows it: the gallery rows
+        // (a collection's protection shows on its galleries too), the collection
+        // rows and page, and the gallery panel's notes.
+        function refreshProtectionViews(kind) {
+            if (kind === 'collection') {
+                if (_collectionsData) renderCollections(_collectionsData);
+                renderCollectionDetailPage();
+            } else {
+                syncCollectionProtectionNotes(protectionTarget('gallery').col);
+            }
+            const search = document.getElementById('gallerySearch');
+            filterGalleries(search ? search.value : '');
         }
 
+        // The status pill. A gallery without a password of its own, in a
+        // collection that has one, says it uses the collection's.
         function syncPasswordStatus(hasPassword, kind = 'gallery') {
-            const { prefix, state } = protectionTarget(kind);
-            if (state) state.hasPassword = hasPassword;
+            const { prefix, states, col } = protectionTarget(kind);
+            states.forEach(s => { s.hasPassword = hasPassword; });
+            const inherited = !hasPassword && !!(col && col.hasPassword);
             const status = document.getElementById(`${prefix}PasswordStatus`);
-            status.textContent = hasPassword ? t.passwordIsSet : t.passwordNotSet;
-            status.className = 'settings-status' + (hasPassword ? ' is-on' : '');
+            status.textContent = hasPassword ? t.passwordIsSet : (inherited ? t.passwordFromCollection : t.passwordNotSet);
+            status.className = 'settings-status' + (hasPassword || inherited ? ' is-on' : '');
             document.getElementById(`${prefix}PasswordClearBtn`).style.display = hasPassword ? '' : 'none';
         }
 
@@ -3904,7 +3951,7 @@
                 if (!res.ok) throw new Error('Failed');
                 input.value = '';
                 syncPasswordStatus(true, kind);
-                refreshCollectionProtectionViews(kind);
+                refreshProtectionViews(kind);
             } catch (err) {
                 showError(t.couldNotUpdatePassword);
             }
@@ -3921,14 +3968,14 @@
                 if (!res.ok) throw new Error('Failed');
                 document.getElementById(`${prefix}PasswordInput`).value = '';
                 syncPasswordStatus(false, kind);
-                refreshCollectionProtectionViews(kind);
+                refreshProtectionViews(kind);
             } catch (err) {
                 showError(t.couldNotUpdatePassword);
             }
         }
 
         async function saveExpiration(kind, value) {
-            const { api, id, state } = protectionTarget(kind);
+            const { api, id, states } = protectionTarget(kind);
             // Same bounds the server enforces, checked first so a half-typed year
             // is caught here with a clear message instead of a round trip.
             if (value) {
@@ -3949,9 +3996,12 @@
                     throw new Error('Failed');
                 }
                 const data = await res.json();
-                if (state) state.expiresAt = data.expiresAt;
+                states.forEach(s => {
+                    s.expiresAt = data.expiresAt;
+                    s.isExpired = !!data.expiresAt && data.expiresAt < new Date().toISOString();
+                });
                 syncExpirationField(data.expiresAt, kind);
-                refreshCollectionProtectionViews(kind);
+                refreshProtectionViews(kind);
             } catch (err) {
                 showError(t.couldNotUpdateExpiration);
             }
@@ -3970,38 +4020,48 @@
 
         // Fills the expiration field and its status pill from a stored expires_at
         // (or null). The input reads expiresAt.slice(0, 10) directly: no Date
-        // object, so no timezone shift (see formatExpirationDate()).
+        // object, so no timezone shift (see formatExpirationDate()). A gallery
+        // without a date of its own, in a collection that has one, shows the
+        // collection's date in its pill; the field stays empty, since filling it
+        // is what gives the gallery its own date.
         function syncExpirationField(expiresAt, kind = 'gallery') {
-            const { prefix } = protectionTarget(kind);
+            const { prefix, col } = protectionTarget(kind);
             const input = document.getElementById(`${prefix}ExpirationInput`);
             const { min, max } = expirationBounds();
             input.min = min;
             input.max = max;
             input.value = expiresAt ? expiresAt.slice(0, 10) : '';
             document.getElementById(`${prefix}ExpirationClearBtn`).style.display = expiresAt ? '' : 'none';
+            const inherited = !expiresAt && !!(col && col.expiresAt);
+            const shown = expiresAt || (inherited ? col.expiresAt : null);
             const status = document.getElementById(`${prefix}ExpirationStatus`);
-            const expired = !!expiresAt && expiresAt < new Date().toISOString();
-            if (!expiresAt) status.textContent = t.noExpiration;
-            else if (expired) status.textContent = t.galleryStatusExpired;
-            else status.textContent = t.galleryStatusExpires(formatExpirationDate(expiresAt));
-            status.className = 'settings-status' + (expired ? ' is-expired' : (expiresAt ? ' is-on' : ''));
+            const expired = !!shown && shown < new Date().toISOString();
+            let text = !shown ? t.noExpiration
+                : (expired ? t.galleryStatusExpired : t.galleryStatusExpires(formatExpirationDate(shown)));
+            if (inherited) text = t.statusFromCollection(text, col.name);
+            status.textContent = text;
+            status.className = 'settings-status' + (expired ? ' is-expired' : (shown ? ' is-on' : ''));
         }
 
-        // In the gallery panel: what its collection's protection adds on top of the
-        // gallery's own (the collection's password is asked first; its expiration
-        // closes the gallery too). Hidden when the collection sets neither.
+        // In the gallery panel: how its collection's password and date relate to
+        // its own. Without its own, the gallery uses the collection's; its own
+        // replaces the collection's for this gallery. Hidden when the collection
+        // sets neither.
         function syncCollectionProtectionNotes(col) {
+            const g = _gallerySettings || {};
             const pwNote = document.getElementById('gsPasswordCollectionNote');
             const expNote = document.getElementById('gsExpirationCollectionNote');
             const hasPw = !!(col && col.hasPassword);
             pwNote.style.display = hasPw ? '' : 'none';
-            pwNote.textContent = hasPw ? t.gsCollectionPasswordNote(col.name) : '';
+            pwNote.textContent = !hasPw ? ''
+                : (g.hasPassword ? t.gsPasswordOverridesCollection(col.name) : t.gsPasswordFromCollection(col.name));
             const exp = col && col.expiresAt;
             expNote.style.display = exp ? '' : 'none';
             expNote.textContent = !exp ? ''
-                : (exp < new Date().toISOString()
-                    ? t.gsCollectionExpiredNote(col.name)
-                    : t.gsCollectionExpirationNote(col.name, formatExpirationDate(exp)));
+                : (g.expiresAt ? t.gsExpirationOverridesCollection(col.name)
+                    : (exp < new Date().toISOString()
+                        ? t.gsExpirationFromExpiredCollection(col.name)
+                        : t.gsExpirationFromCollection(col.name, formatExpirationDate(exp))));
         }
 
         function onGalleryAppearanceChange() {
@@ -5936,6 +5996,7 @@
             copyToClipboard(url);
             btn.classList.add('copied');
             setTimeout(() => btn.classList.remove('copied'), 1800);
+            finishProgressToast(t.clientLinkCopied);
         }
 
         function copyCollectionCritiqueLink(collectionId, btn) {
@@ -5943,6 +6004,7 @@
             copyToClipboard(url);
             btn.classList.add('copied');
             setTimeout(() => btn.classList.remove('copied'), 1800);
+            finishProgressToast(t.critiqueLinkCopied);
         }
 
         async function removeFromCollection(collectionId, galleryId) {
@@ -6306,17 +6368,7 @@
         async function regenerateOG(galleryId) {
             try {
                 await fetch(`/api/gallery/${galleryId}/og-image`, { method: 'DELETE' });
-                // Show brief confirmation via toast reuse
-                const toast = document.getElementById('uploadToast');
-                const spinner = document.getElementById('toastSpinner');
-                const successIcon = document.getElementById('toastSuccess');
-                const errorIcon = document.getElementById('toastError');
-                const message = document.getElementById('toastMessage');
-                spinner.style.display = 'none'; errorIcon.style.display = 'none';
-                successIcon.style.display = 'block';
-                message.textContent = t.sharePreviewRegenerated;
-                toast.className = 'upload-toast visible success';
-                setTimeout(() => toast.classList.remove('visible', 'success'), 3000);
+                finishProgressToast(t.sharePreviewRegenerated);
             } catch (err) {
                 showError(t.couldNotResetSharePreview);
             }
@@ -6325,16 +6377,7 @@
         async function regenerateCollectionOG(collectionId) {
             try {
                 await fetch(`/api/collection/${collectionId}/og-image`, { method: 'DELETE' });
-                const toast = document.getElementById('uploadToast');
-                const spinner = document.getElementById('toastSpinner');
-                const successIcon = document.getElementById('toastSuccess');
-                const errorIcon = document.getElementById('toastError');
-                const message = document.getElementById('toastMessage');
-                spinner.style.display = 'none'; errorIcon.style.display = 'none';
-                successIcon.style.display = 'block';
-                message.textContent = t.sharePreviewRegenerated;
-                toast.className = 'upload-toast visible success';
-                setTimeout(() => toast.classList.remove('visible', 'success'), 3000);
+                finishProgressToast(t.sharePreviewRegenerated);
             } catch (err) {
                 showError(t.couldNotResetSharePreview);
             }
