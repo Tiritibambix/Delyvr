@@ -545,7 +545,7 @@
                  overlay chrome (header with a × close, the backdrop) is gone. -->
             <section class="view" id="view-gallery-detail">
                 <div class="view-header">
-                    <a class="client-btn accent" href="#/galleries" id="galleryDetailBackBtn">Back to galleries</a>
+                    <a class="client-btn accent" href="#/galleries" id="galleryDetailBackBtn">← Back</a>
                     <h1 class="view-title" id="galleryDetailTitle"></h1>
                 </div>
                 <div class="gallery-detail-layout">
@@ -620,20 +620,8 @@
 
                         <input type="file" id="photosAddInput" multiple accept="image/*,video/mp4,video/quicktime,video/webm,video/x-m4v" style="display:none" onchange="handlePhotosAddInput(event)">
 
-                        <!-- Upload queue (files picked or dropped, not yet sent). Files are
-                             dropped anywhere on this page: see setupPhotosDropZone(). -->
-                        <div class="photos-upload-panel" id="photosQueueWrap" style="display:none">
-                            <div class="photos-upload-panel-head">
-                                <span class="photos-upload-panel-title" id="photosQueueCount"></span>
-                                <div class="photos-upload-panel-actions">
-                                    <button class="btn-secondary" id="photosQueueClearBtn" onclick="clearUploadQueue()">Cancel</button>
-                                    <button class="btn-primary" id="photosUploadBtn" onclick="uploadQueuedPhotos()">Upload</button>
-                                </div>
-                            </div>
-                            <div class="file-pills" id="photosQueuePills"></div>
-                        </div>
-
-                        <!-- Upload progress -->
+                        <!-- Upload progress. Files dropped anywhere on this page, or picked
+                             with "Add files", are sent at once: see enqueuePhotoUploads(). -->
                         <div class="photos-upload-panel" id="photosUploadWrap" style="display:none">
                             <div class="photos-upload-text" id="photosUploadText"></div>
                             <div class="photos-upload-bar"><div class="photos-upload-fill" id="photosUploadFill"></div></div>
@@ -756,8 +744,6 @@
             byId('photosDeselectAllBtn', t.deselectAll);
             byId('photosCancelSelectBtn', t.cancel);
             byId('photosDeleteSelectedBtn', t.deleteSelected);
-            byId('photosQueueClearBtn', t.cancel);
-            byId('photosUploadBtn', t.upload);
             byId('photosDropOverlayText', t.dropToAddFiles);
 
             byId('favoritesModalTitle', t.clientFavorites);
@@ -767,14 +753,13 @@
             byId('commentsBackBtn', t.backToGalleries);
             byId('commentsPageClearBtn', t.clearAll);
 
-            // The owning collection's name when the gallery has one, else "Galleries".
-            syncGalleryDetailBackLink();
+            byId('galleryDetailBackBtn', t.backLink);
             byId('galleryDetailSettingsBtnText', t.headerProfile);
             byId('galleryDetailPreviewText', t.galleryDetailPreview);
             byId('galleryDetailCopyLinkText', t.copyClientLink);
             byId('galleryDetailCopyCritiqueText', t.galleryDetailCopyCritique);
             const critiqueBtn = document.getElementById('galleryDetailCopyCritiqueBtn');
-            if (critiqueBtn) critiqueBtn.title = t.copyCritiqueLink; // the long form explains "numbered photos"
+            if (critiqueBtn) critiqueBtn.title = t.critiqueLinkHint;
             byId('galleryDetailAddFilesText', t.galleryDetailAddFiles);
             byId('galleryDetailDownloadText', t.galleryDetailDownloadZip);
             byId('filterFavoritedText', t.filterFavorited);
@@ -979,19 +964,21 @@
         // before that call, not down with the rest of the gallery-detail-page code:
         // a `let` read before its declaration throws (temporal dead zone). Only
         // _galleryDetailId/_photosResizeObs were up here at first, and a reload of
-        // a gallery page then died on _pendingUploadFiles and stayed blank.
+        // a gallery page then died on the first later `let` it wrote and stayed blank.
         let _galleryDetailId = null;
         let _photosResizeObs = null;
         let _photosSelectionMode = false;
         let _photosSelected = new Set();
-        let _pendingUploadFiles = [];
+        // Files dropped or picked on a gallery page, waiting to be sent: { galleryId, file }.
+        // See enqueuePhotoUploads().
+        let _photosUploadQueue = [];
+        let _photosUploading = false;
         // Proofing filters, AND'd together. _photoFlagFilter is a Set of active
         // colors (empty = no color filter); the other two are plain booleans.
         let _photoFlagFilter = new Set();
         let _photoFavoritedFilter = false;
         let _photoCommentsFilter = false;
         let _galleryDetailPhotos = []; // last fetched, unfiltered: filters re-render from this without a refetch
-        let _galleryDetailCollectionId = null; // for the back link, see syncGalleryDetailBackLink()
         const DEFAULT_DOCUMENT_TITLE = document.title;
 
         // Upload-activity state. Declared here — before the initial renderRoute() call
@@ -1010,8 +997,9 @@
         // Warn before leaving the tab/reloading while an upload is running — closing the
         // page kills the in-flight XHR and leaves a partial gallery. Browsers show their
         // own generic dialog; the custom text is ignored but returnValue must be set.
+        // Same for files being added from a gallery page (_photosUploading).
         window.addEventListener('beforeunload', (e) => {
-            if (!_uploadInProgress) return;
+            if (!_uploadInProgress && !_photosUploading) return;
             e.preventDefault();
             e.returnValue = '';
         });
@@ -1131,27 +1119,22 @@
             addFiles(files);
         }
 
+        // Collects every media file under a dropped FileSystemEntry. A directory
+        // is read until readEntries() returns an empty batch: Chrome hands back at
+        // most 100 entries per call, so a single call silently dropped everything
+        // after the 100th photo of a folder. Errors resolve instead of hanging.
         async function traverseFileTree(item, files) {
-            return new Promise((resolve) => {
-                if (item.isFile) {
-                    item.file((file) => {
-                        if (isMediaFile(file)) {
-                            files.push(file);
-                        }
-                        resolve();
-                    });
-                } else if (item.isDirectory) {
-                    const reader = item.createReader();
-                    reader.readEntries(async (entries) => {
-                        for (const entry of entries) {
-                            await traverseFileTree(entry, files);
-                        }
-                        resolve();
-                    });
-                } else {
-                    resolve();
+            if (item.isFile) {
+                const file = await new Promise(resolve => item.file(resolve, () => resolve(null)));
+                if (file && isMediaFile(file)) files.push(file);
+            } else if (item.isDirectory) {
+                const reader = item.createReader();
+                for (;;) {
+                    const batch = await new Promise(resolve => reader.readEntries(resolve, () => resolve([])));
+                    if (!batch.length) break;
+                    for (const entry of batch) await traverseFileTree(entry, files);
                 }
-            });
+            }
         }
 
         // ── MULTI-FOLDER DROP → MULTIPLE GALLERIES ──
@@ -3041,9 +3024,7 @@
         // same reset-then-fetch shape, but against a page instead of an overlay.
         async function loadGalleryDetailPage(galleryId) {
             _galleryDetailId = galleryId;
-            _galleryDetailCollectionId = null;
             _galleryDetailPhotos = [];
-            _pendingUploadFiles = [];
             _photoFlagFilter = new Set();
             _photoFavoritedFilter = false;
             _photoCommentsFilter = false;
@@ -3054,16 +3035,15 @@
             document.getElementById('filterCommentsBtn').classList.remove('active');
             document.getElementById('photosModalMeta').textContent = '';
             document.getElementById('photosGrid').innerHTML = `<p style="color:var(--muted);font-size:13px">${t.loading}</p>`;
+            // An upload still running for the gallery just left keeps going (see
+            // processPhotoUploads()); its progress is only shown on its own page.
             document.getElementById('photosUploadWrap').style.display = 'none';
-            document.getElementById('photosQueueWrap').style.display = 'none';
             document.getElementById('galleryDetailTitle').textContent = '';
             document.getElementById('galleryDetailPreviewBtn').href = `/preview/${galleryId}`;
             document.getElementById('galleryDetailDownloadBtn').href = `/api/gallery/${galleryId}/download`;
-            syncGalleryDetailBackLink();
             setupPhotosDropZone();
 
-            // Full admin-shape object: gives the title and the collection (for the
-            // back link).
+            // Full admin-shape object: gives the title.
             try {
                 const res = await fetch(`/api/gallery/${galleryId}`);
                 if (!res.ok) throw new Error('Gallery not found');
@@ -3071,32 +3051,12 @@
                 if (_galleryDetailId !== galleryId) return; // navigated to another gallery meanwhile
                 document.getElementById('galleryDetailTitle').textContent = g.eventName;
                 document.title = `${g.eventName} - Delyvr`;
-                _galleryDetailCollectionId = g.collectionId || null;
-                syncGalleryDetailBackLink();
             } catch (err) {
                 if (_galleryDetailId !== galleryId) return;
                 document.getElementById('galleryDetailTitle').textContent = t.couldNotLoadGallery;
             }
 
             await refreshPhotosGrid(galleryId);
-        }
-
-        // Most-specific-wins, same precedence as resolveGalleryClientLanguage
-        // server-side: a gallery that belongs to a collection always shows that
-        // collection as its parent, regardless of how this page was reached.
-        // Called again by loadCollections() and applyAdminTranslations(): on a
-        // direct load of '#/gallery/:id' the collections may arrive after the
-        // gallery, and a language change must not overwrite the collection name.
-        // t.backToGalleries already carries its own arrow.
-        function syncGalleryDetailBackLink() {
-            const backBtn = document.getElementById('galleryDetailBackBtn');
-            if (!backBtn) return;
-            const collection = _galleryDetailCollectionId
-                ? (_collectionsData || []).find(c => c.id === _galleryDetailCollectionId)
-                : null;
-            // Same hardcoded-English fallback already used everywhere else an
-            // unnamed collection is displayed (e.g. the collection picker).
-            backBtn.textContent = collection ? `← ${collection.name || 'Untitled Collection'}` : t.backToGalleries;
         }
 
         // Called from renderRoute() whenever the hash navigates AWAY from
@@ -3110,7 +3070,6 @@
             hidePhotosDropOverlay();
             if (_galleryDetailId) {
                 _galleryDetailId = null;
-                _galleryDetailCollectionId = null;
                 closeGallerySettingsPanel();
                 document.title = DEFAULT_DOCUMENT_TITLE;
                 loadGalleries();
@@ -3263,107 +3222,117 @@
             }
         }
 
-        // ── Upload queue (list with × like gallery creation) ──────────────
+        // ── Adding files: sent as soon as they are dropped or picked ───────
+        // Dropping files on the page, or picking them with "Add files", is
+        // already the decision to add them, so there is no second "Upload" step.
+        // Files join _photosUploadQueue tagged with the gallery they were added
+        // to, and processPhotoUploads() sends them one batch at a time. Leaving
+        // the page does not cancel anything: the remaining batches still go to
+        // that gallery, and closing the tab meanwhile asks for confirmation (the
+        // beforeunload guard reads _photosUploading).
+
+        const PHOTO_UPLOAD_BATCH = 20;
 
         function handlePhotosAddInput(event) {
             const files = Array.from(event.target.files).filter(isMediaFile);
             event.target.value = '';
-            if (files.length) addToUploadQueue(files);
+            if (files.length) enqueuePhotoUploads(files);
         }
 
-        function addToUploadQueue(files) {
-            _pendingUploadFiles = [..._pendingUploadFiles, ...files];
-            renderUploadQueue();
-            // The panel sits above the grid; after a drop deep in a long gallery
-            // it would otherwise appear off-screen.
-            document.getElementById('photosQueueWrap').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        function enqueuePhotoUploads(files, galleryId = _galleryDetailId) {
+            if (!galleryId) return;
+            files.forEach(file => _photosUploadQueue.push({ galleryId, file }));
+            processPhotoUploads();
         }
 
-        function removeFromUploadQueue(index) {
-            _pendingUploadFiles.splice(index, 1);
-            renderUploadQueue();
-        }
-
-        function clearUploadQueue() {
-            _pendingUploadFiles = [];
-            renderUploadQueue();
-        }
-
-        function renderUploadQueue() {
-            const wrap = document.getElementById('photosQueueWrap');
-            const count = document.getElementById('photosQueueCount');
-            const pills = document.getElementById('photosQueuePills');
-            const btn = document.getElementById('photosUploadBtn');
-            if (_pendingUploadFiles.length === 0) { wrap.style.display = 'none'; return; }
-            wrap.style.display = 'block';
-            count.textContent = t.uploadQueueTitle(_pendingUploadFiles.length);
-            btn.textContent = t.upload;
-            pills.innerHTML = _pendingUploadFiles.map((f, i) =>
-                `<span class="file-pill">
-                    <span class="file-pill-name">${escapeAttr(f.name)}</span>
-                    <button class="file-pill-remove" onclick="removeFromUploadQueue(${i})">×</button>
-                </span>`
-            ).join('');
-        }
-
-        async function uploadQueuedPhotos() {
-            const galleryId = _galleryDetailId;
-            const files = [..._pendingUploadFiles];
-            if (!files.length || !galleryId) return;
-            _pendingUploadFiles = [];
-            renderUploadQueue();
-
-            const BATCH = 20;
-            const total = files.length;
+        // Shown only on the page of the gallery being filled, and scrolled
+        // into view: the block sits above the grid, so after a drop deep in a
+        // long gallery it would otherwise appear off-screen.
+        function renderPhotosUploadProgress(galleryId, done, total, scroll) {
             const wrap = document.getElementById('photosUploadWrap');
-            const fill = document.getElementById('photosUploadFill');
-            const text = document.getElementById('photosUploadText');
-            wrap.style.display = 'block';
-            fill.style.width = '0%';
-            text.textContent = t.uploadingCount(0, total);
+            const visible = galleryId === _galleryDetailId;
+            wrap.style.display = visible ? 'block' : 'none';
+            if (!visible) return;
+            document.getElementById('photosUploadFill').style.width = (total ? Math.round((done / total) * 100) : 0) + '%';
+            document.getElementById('photosUploadText').textContent = t.uploadingCount(Math.floor(done), total);
+            if (scroll) wrap.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }
 
+        // One POST of up to PHOTO_UPLOAD_BATCH files. Resolves with the server's
+        // JSON ({ fileCount, rejected }), reports upload progress as 0..1.
+        function sendPhotoBatch(galleryId, files, onProgress) {
+            return new Promise((resolve, reject) => {
+                const fd = new FormData();
+                files.forEach(f => fd.append('photos', f));
+                const xhr = new XMLHttpRequest();
+                xhr.open('POST', `/api/gallery/${galleryId}/upload`);
+                xhr.upload.onprogress = e => { if (e.lengthComputable) onProgress(e.loaded / e.total); };
+                xhr.onload = () => {
+                    let body = {};
+                    try { body = JSON.parse(xhr.responseText); } catch (_) {}
+                    if (xhr.status < 300) resolve(body);
+                    else reject(new Error(body.error || `HTTP ${xhr.status}`));
+                };
+                xhr.onerror = () => reject(new Error('Network error'));
+                xhr.send(fd);
+            });
+        }
+
+        async function processPhotoUploads() {
+            if (_photosUploading) return; // the running loop picks up what was just queued
+            _photosUploading = true;
+            let done = 0, rejected = 0, failure = null;
+            const touched = new Set();
+            let currentGallery = null;
             try {
-                let uploaded = 0;
-                for (let i = 0; i < files.length; i += BATCH) {
-                    const batch = files.slice(i, i + BATCH);
-                    const fd = new FormData();
-                    batch.forEach(f => fd.append('photos', f));
-                    await new Promise((resolve, reject) => {
-                        const xhr = new XMLHttpRequest();
-                        xhr.open('POST', `/api/gallery/${galleryId}/upload`);
-                        xhr.upload.onprogress = e => {
-                            if (!e.lengthComputable) return;
-                            const done = uploaded + batch.length * (e.loaded / e.total);
-                            fill.style.width = Math.round((done / total) * 100) + '%';
-                            text.textContent = t.uploadingCount(Math.floor(done), total);
-                        };
-                        xhr.onload = () => {
-                            if (xhr.status < 300) resolve();
-                            else { let msg = 'Upload failed'; try { msg = JSON.parse(xhr.responseText).error || msg; } catch {} reject(new Error(msg)); }
-                        };
-                        xhr.onerror = () => reject(new Error('Network error'));
-                        xhr.send(fd);
+                while (_photosUploadQueue.length) {
+                    // A batch never mixes galleries.
+                    const galleryId = _photosUploadQueue[0].galleryId;
+                    if (galleryId !== currentGallery) { currentGallery = galleryId; done = 0; }
+                    const batch = [];
+                    while (batch.length < PHOTO_UPLOAD_BATCH && _photosUploadQueue.length && _photosUploadQueue[0].galleryId === galleryId) {
+                        batch.push(_photosUploadQueue.shift().file);
+                    }
+                    const remaining = () => _photosUploadQueue.filter(q => q.galleryId === galleryId).length;
+                    renderPhotosUploadProgress(galleryId, done, done + batch.length + remaining(), done === 0);
+                    const result = await sendPhotoBatch(galleryId, batch, frac => {
+                        renderPhotosUploadProgress(galleryId, done + batch.length * frac, done + batch.length + remaining(), false);
                     });
-                    uploaded += batch.length;
+                    rejected += Array.isArray(result.rejected) ? result.rejected.length : 0;
+                    done += batch.length;
+                    touched.add(galleryId);
+                    renderPhotosUploadProgress(galleryId, done, done + remaining(), false);
                 }
-                fill.style.width = '100%';
-                text.textContent = t.uploadingCount(total, total);
-                setTimeout(() => { wrap.style.display = 'none'; }, 1800);
-                if (_photosResizeObs) { _photosResizeObs.disconnect(); _photosResizeObs = null; }
-                await refreshPhotosGrid(galleryId);
-                loadGalleries();
             } catch (err) {
-                wrap.style.display = 'none';
-                showError(t.uploadFailedMsg(err.message));
+                failure = err;
+                _photosUploadQueue = [];
+            } finally {
+                _photosUploading = false;
             }
+            setTimeout(() => {
+                if (!_photosUploading) document.getElementById('photosUploadWrap').style.display = 'none';
+            }, failure ? 0 : 1500);
+            if (failure) showError(t.uploadFailedMsg(failure.message));
+            else if (rejected) showError(t.filesRejectedTooLarge(rejected));
+            if (_galleryDetailId && touched.has(_galleryDetailId)) {
+                if (_photosResizeObs) { _photosResizeObs.disconnect(); _photosResizeObs = null; }
+                await refreshPhotosGrid(_galleryDetailId);
+            }
+            if (touched.size) loadGalleries();
         }
 
         // ── Drop files anywhere on the gallery page ───────────────────────
         // Replaces the thin "drop photos here" strip that sat above the grid.
-        // Dragging files over any part of #view-gallery-detail shows
-        // #photosDropOverlay over the grid column, and a drop anywhere on the page
-        // queues the files. Only real file drags count (dataTransfer.types has
-        // 'Files'), so dragging text or an image from the page itself does nothing.
+        // The listeners sit on .admin-main, the whole content area right of the
+        // sidebar, and act only while a gallery page is shown. While files are
+        // dragged over it, #photosDropOverlay covers that same area, so the drop
+        // target is always under the cursor, whatever it is over (the first
+        // version covered the grid column only and listened on the view, whose
+        // box ends with its content). Only real file drags count
+        // (dataTransfer.types has 'Files'), so dragging text or an image from
+        // the page itself does nothing. Folders are walked like on the Create
+        // page (traverseFileTree()); dataTransfer.files alone lists a dropped
+        // folder as one non-media entry, which used to be discarded in silence.
         //
         // The enter/leave depth counter lives on the overlay element, not in a
         // module `let`: hidePhotosDropOverlay() runs from teardownGalleryDetailPage(),
@@ -3373,18 +3342,20 @@
             return !!e.dataTransfer && Array.from(e.dataTransfer.types || []).includes('Files');
         }
 
+        function galleryDetailPageShown() {
+            return !!_galleryDetailId && document.getElementById('view-gallery-detail').classList.contains('active');
+        }
+
         function showPhotosDropOverlay() {
             const overlay = document.getElementById('photosDropOverlay');
-            const main = document.querySelector('#view-gallery-detail .gallery-detail-main');
+            const main = document.querySelector('.admin-main');
             if (!overlay || !main) return;
-            // Visible part of the grid column, down to the bottom of the window:
-            // the column can be far taller than the screen, or shorter than it.
             const r = main.getBoundingClientRect();
-            const top = Math.max(r.top, 12);
-            overlay.style.left = r.left + 'px';
-            overlay.style.width = r.width + 'px';
-            overlay.style.top = top + 'px';
-            overlay.style.height = Math.max(window.innerHeight - 12 - top, 120) + 'px';
+            const inset = 10;
+            overlay.style.left = (r.left + inset) + 'px';
+            overlay.style.top = (r.top + inset) + 'px';
+            overlay.style.width = Math.max(r.width - 2 * inset, 0) + 'px';
+            overlay.style.height = Math.max(Math.min(r.bottom, window.innerHeight) - r.top - 2 * inset, 0) + 'px';
             overlay.classList.add('visible');
         }
 
@@ -3395,35 +3366,48 @@
             overlay.classList.remove('visible');
         }
 
+        // The DataTransferItemList is emptied once the drop handler yields, so
+        // the entries are captured synchronously, before any await.
+        async function collectDroppedMedia(dataTransfer) {
+            const items = Array.from(dataTransfer.items || []);
+            const entries = items.map(it => (it.webkitGetAsEntry ? it.webkitGetAsEntry() : null)).filter(Boolean);
+            if (!entries.length) return Array.from(dataTransfer.files || []).filter(isMediaFile);
+            const files = [];
+            for (const entry of entries) await traverseFileTree(entry, files);
+            return files;
+        }
+
         function setupPhotosDropZone() {
-            const view = document.getElementById('view-gallery-detail');
+            const main = document.querySelector('.admin-main');
             const overlay = document.getElementById('photosDropOverlay');
-            if (!view || !overlay || view._dropInitialized) return;
-            view._dropInitialized = true;
-            view.addEventListener('dragenter', e => {
-                if (!isFileDrag(e)) return;
+            if (!main || !overlay || main._photosDropInitialized) return;
+            main._photosDropInitialized = true;
+            main.addEventListener('dragenter', e => {
+                if (!galleryDetailPageShown() || !isFileDrag(e)) return;
                 e.preventDefault();
                 overlay._depth = (overlay._depth || 0) + 1;
                 if (overlay._depth === 1) showPhotosDropOverlay();
             });
-            view.addEventListener('dragover', e => {
-                if (!isFileDrag(e)) return;
+            main.addEventListener('dragover', e => {
+                if (!galleryDetailPageShown() || !isFileDrag(e)) return;
                 e.preventDefault();
                 e.dataTransfer.dropEffect = 'copy';
             });
-            view.addEventListener('dragleave', e => {
-                if (!isFileDrag(e)) return;
+            main.addEventListener('dragleave', e => {
+                if (!galleryDetailPageShown() || !isFileDrag(e)) return;
                 overlay._depth = Math.max((overlay._depth || 0) - 1, 0);
                 if (overlay._depth === 0) hidePhotosDropOverlay();
             });
-            view.addEventListener('drop', e => {
-                if (!isFileDrag(e)) return;
+            main.addEventListener('drop', async e => {
+                if (!galleryDetailPageShown() || !isFileDrag(e)) return;
                 e.preventDefault();
                 hidePhotosDropOverlay();
-                const files = Array.from(e.dataTransfer.files).filter(isMediaFile);
-                if (files.length) addToUploadQueue(files);
+                const galleryId = _galleryDetailId; // walking a big folder takes a while
+                const files = await collectDroppedMedia(e.dataTransfer);
+                if (files.length) enqueuePhotoUploads(files, galleryId);
+                else showError(t.noMediaInDrop);
             });
-            // A file dropped outside the view (the sidebar) needs nothing here:
+            // A file dropped outside .admin-main (the sidebar) needs nothing here:
             // the document.body listeners near login() already cancel every drag
             // event, so the browser never navigates away to open the file.
         }
@@ -4083,7 +4067,6 @@
                 _collectionsData = await res.json();
                 renderCollections(_collectionsData);
                 populateCollectionSelect();
-                if (_galleryDetailId) syncGalleryDetailBackLink();
                 if (_galleriesData && _galleriesData.length) {
                     filterGalleries(document.getElementById('gallerySearch').value);
                 }

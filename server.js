@@ -1007,6 +1007,30 @@ const uploadLogo = multer({
 // Serve static files
 app.use(express.static(path.join(__dirname, 'public')));
 
+// Versioned URLs for the stylesheet and scripts the HTML pages load, so a deploy
+// can never pair a new page with an old script or stylesheet. express.static only
+// allows a revalidated cache, but a reverse proxy may cache .js/.css on its own
+// terms and ignore those headers (Nginx Proxy Manager's "Cache Assets" does, for
+// 30 minutes). A new admin.html running an old admin-i18n.js then shows empty
+// labels and throws on any missing translation function. The token is a hash of
+// each file's content, computed once at startup (a deploy restarts the process),
+// so it changes exactly when the file does. withAssetVersions() rewrites the
+// quoted "/admin.css", "/admin-i18n.js" and "/shared.js" references into
+// "/admin.css?v=<hash>"; express.static ignores the query string.
+const VERSIONED_ASSETS = ['admin.css', 'admin-i18n.js', 'shared.js'];
+const ASSET_VERSIONS = Object.fromEntries(VERSIONED_ASSETS.map(name => {
+    try {
+        const content = fs.readFileSync(path.join(__dirname, 'public', name));
+        return [name, crypto.createHash('sha256').update(content).digest('hex').slice(0, 12)];
+    } catch (_) {
+        return [name, String(Date.now())];
+    }
+}));
+function withAssetVersions(html) {
+    return html.replace(/(["'])\/(admin\.css|admin-i18n\.js|shared\.js)\1/g,
+        (match, quote, name) => `${quote}/${name}?v=${ASSET_VERSIONS[name]}${quote}`);
+}
+
 function validateGalleryId(req, res, next) {
     if (!UUID_V4_REGEX.test(req.params.galleryId)) {
         return res.status(400).json({ error: 'Invalid gallery ID' });
@@ -1284,7 +1308,12 @@ app.post('/api/auth/logout', publicWriteLimiter, (req, res) => {
 
 // Admin interface - photographer uploads photos here
 app.get('/', publicReadLimiter, (req, res) => {
-    res.sendFile(path.join(__dirname, 'public', 'admin.html'));
+    // Read per request like preview.html below, so editing it needs no restart.
+    // no-cache: the page itself is always revalidated, so it always carries the
+    // current asset versions (see withAssetVersions()).
+    const html = fs.readFileSync(path.join(__dirname, 'public', 'admin.html'), 'utf8');
+    res.set('Cache-Control', 'no-cache');
+    res.type('html').send(withAssetVersions(html));
 });
 
 // Serve the logo — custom file in DATA_DIR takes precedence over the bundled logo.svg
@@ -2226,7 +2255,7 @@ app.get('/preview/:galleryId', publicReadLimiter, validateGalleryId, (req, res) 
     ].join('\n    ');
 
     const html = fs.readFileSync(path.join(__dirname, 'public', 'preview.html'), 'utf8');
-    res.send(html.replace('<head>', `<head>\n    ${ogTags}`));
+    res.send(withAssetVersions(html).replace('<head>', `<head>\n    ${ogTags}`));
 });
 
 // Get gallery info (for customer and preview pages)
@@ -2450,7 +2479,7 @@ app.get('/favorites/:galleryId', publicReadLimiter, validateGalleryId, (req, res
         `<meta property="og:url" content="${escapeHtml(baseUrl)}/favorites/${escapeHtml(galleryId)}">`
     ].join('\n    ');
     const html = fs.readFileSync(path.join(__dirname, 'public', 'favorites.html'), 'utf8');
-    res.send(html.replace('<head>', `<head>\n    ${ogTags}`));
+    res.send(withAssetVersions(html).replace('<head>', `<head>\n    ${ogTags}`));
 });
 
 // Public API: favorites sorted by vote count (used by favorites.html)
@@ -3180,7 +3209,7 @@ app.get('/collection/:collectionId', publicReadLimiter, validateCollectionId, (r
     // A separate collection page could not do that — navigating away would
     // destroy the <audio> element.
     const html = fs.readFileSync(path.join(__dirname, 'public', 'preview.html'), 'utf8');
-    res.send(html.replace('<head>', `<head>\n    ${ogTags}`));
+    res.send(withAssetVersions(html).replace('<head>', `<head>\n    ${ogTags}`));
 });
 
 // List all galleries (admin)

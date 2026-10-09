@@ -995,13 +995,13 @@ Loaded by all client pages via `<script src="/shared.js">` before their inline `
     restores `document.title` and refetches the gallery list so a rename/upload/delete made
     here is reflected back on `#/galleries`.
   - **All of this page's state is declared before the initial `renderRoute()` call**
-    (`_galleryDetailId`, `_photosResizeObs`, the selection, the filters, the upload queue,
-    `_galleryDetailPhotos`, `_galleryDetailCollectionId`), same temporal-dead-zone hazard
+    (`_galleryDetailId`, `_photosResizeObs`, the selection, the filters, the upload queue
+    `_photosUploadQueue`/`_photosUploading`, `_galleryDetailPhotos`), same temporal-dead-zone hazard
     as `_uploadInProgress`. On a direct load or reload of `#/gallery/:id`, that first
     `renderRoute()` runs `loadGalleryDetailPage()` while the script is still being
     evaluated, and it writes this state synchronously before its first `await`. The first
     version declared only `_galleryDetailId`/`_photosResizeObs` up there, so every reload
-    of a gallery page threw `Cannot access '_pendingUploadFiles' before initialization`
+    of a gallery page threw `Cannot access '<a later let>' before initialization`
     (inside an async function, so only as an unhandled rejection) and stayed blank. Anything
     else the synchronous part of `loadGalleryDetailPage()`/`teardownGalleryDetailPage()`
     touches must stay a function declaration or a DOM property, never a later `let`: the
@@ -1012,15 +1012,9 @@ Loaded by all client pages via `<script src="/shared.js">` before their inline `
     `login()` therefore reloads the current `gallery-detail`/`gallery-comments` page once the
     session exists. `loadGalleryDetailPage()` and `refreshPhotosGrid()` also drop a response
     that arrives after the user has moved to another gallery.
-  - **Back link**: a single link, not a breadcrumb bar. `syncGalleryDetailBackLink()` shows
-    "← `<collection name>`" when the gallery belongs to a collection, else
-    `t.backToGalleries` (which carries its own arrow: never prefix it with another one).
-    It reads `_galleryDetailCollectionId` (from `GET /api/gallery/:id`) against
-    `_collectionsData`, **always**, regardless of which link was clicked to arrive here.
-    Same "most specific wins" precedence as `resolveGalleryClientLanguage` server-side.
-    It is called again by `loadCollections()` and `applyAdminTranslations()`: on a direct
-    load the collections can arrive after the gallery, and a language switch used to
-    overwrite the collection name with "Galleries".
+  - **Back link**: a single "← Back" link (`t.backLink`) to `#/galleries`, the only list a
+    gallery page is reached from. It used to show the owning collection's name, which read
+    as a link to that collection while it led to the galleries list; don't bring that back.
   - **Left-panel actions**, in this order, in three groups separated by thin rules:
     Settings; Preview, Copy client link, Copy critique link; Add files, Download ZIP;
     Select. **Settings lives here, first**, not in the page header. Every one of them is a
@@ -1031,22 +1025,36 @@ Loaded by all client pages via `<script src="/shared.js">` before their inline `
     The column is 220px so the longest label of every locale fits on one line (checked:
     none truncated in en/fr/es/pt/it). Under 900px the panel becomes a two-column grid of
     44px buttons whose label may wrap to two lines, so every button keeps the same size.
-    The critique button reuses `copyCritiqueLink()` with the short label
-    `t.galleryDetailCopyCritique` and the long `t.copyCritiqueLink` as its tooltip.
-  - **Adding files: drop anywhere on the page**, no drop strip. `setupPhotosDropZone()`
-    listens on the whole view; a drag that carries files (`dataTransfer.types` includes
-    `'Files'`, so dragging text or an image of the page does nothing) shows
-    `#photosDropOverlay`, `position: fixed` and sized by `showPhotosDropOverlay()` to the
-    visible part of the grid column, so its message is on screen however far the grid is
-    scrolled. Enter/leave are counted (`overlay._depth`) because each child element fires its
-    own pair; the overlay's children have `pointer-events: none`. Nothing is needed against a
-    file dropped outside the view: the `document.body` listeners near `login()` already
-    cancel every drag event, so the browser never navigates away to open it. An **empty**
-    gallery shows one large clickable drop box (`.photos-empty-drop`) instead of a message.
-    The queue (`#photosQueueWrap`, with Cancel and Upload) and the progress
-    (`#photosUploadWrap`) are framed `.photos-upload-panel` blocks above the grid, and
-    `addToUploadQueue()` scrolls the queue into view, since a drop deep in a long gallery
-    would otherwise create it off-screen.
+    The critique button reuses `copyCritiqueLink()` with the label
+    `t.galleryDetailCopyCritique` and the short tooltip `t.critiqueLinkHint` ("Numbered
+    photos"). The gallery row's icon-only critique button keeps the long `t.copyCritiqueLink`.
+  - **Adding files: dropped anywhere, sent at once.** No drop strip and no "Upload" step:
+    dropping files, or picking them with "Add files", is the decision to add them.
+    - `setupPhotosDropZone()` listens on `.admin-main`, the whole content area right of the
+      sidebar, gated by `galleryDetailPageShown()`. A drag that carries files
+      (`dataTransfer.types` includes `'Files'`, so dragging text or an image of the page
+      does nothing) shows `#photosDropOverlay`, `position: fixed` and sized by
+      `showPhotosDropOverlay()` to that same area, so the drop target is always under the
+      cursor. The first version listened on the view (whose box ends with its content) and
+      covered only the grid column, which read as "drop only works over a photo".
+      Enter/leave are counted (`overlay._depth`) because each child element fires its own
+      pair; the overlay's children have `pointer-events: none`. A file dropped on the
+      sidebar needs nothing: the `document.body` listeners near `login()` already cancel
+      every drag event, so the browser never navigates away to open it.
+    - **Folders**: `collectDroppedMedia()` captures `webkitGetAsEntry()` synchronously and
+      walks them with `traverseFileTree()`, like the Create page. `dataTransfer.files` alone
+      lists a dropped folder as one non-media entry, which the first version discarded in
+      silence. A drop with no photo or video in it says so (`t.noMediaInDrop`).
+    - **Queue**: `enqueuePhotoUploads()` tags each file with the gallery it was added to,
+      and `processPhotoUploads()` sends `_photosUploadQueue` in batches of 20, one at a
+      time, never mixing galleries in a batch. Leaving the page does not cancel anything:
+      the remaining batches still go to their gallery, the progress block
+      (`#photosUploadWrap`) is shown only on that gallery's own page, and the
+      `beforeunload` guard reads `_photosUploading` as well as `_uploadInProgress`. Files
+      the server refuses for size (`rejected` in the upload response) are reported
+      (`t.filesRejectedTooLarge`) instead of vanishing.
+    - An **empty** gallery shows one large clickable drop box (`.photos-empty-drop`)
+      instead of a message.
   - **Selection**: `setPhotoSelectionMode(on)` is the only way in or out (the Select button,
     Cancel, a successful bulk delete, and loading another gallery), and it always clears both
     `_photosSelected` **and** every card's `.photo-selected`. The first version reset the Set
@@ -1091,7 +1099,7 @@ Loaded by all client pages via `<script src="/shared.js">` before their inline `
 
 ### Gallery creation — multi-folder drop and collection assignment
 
-`#dropZone`'s `handlePhotoDrop` inspects the dropped `DataTransferItemList` synchronously (entries must be captured via `webkitGetAsEntry()` before any `await`, since the list is cleared afterwards). If **2 or more top-level folders** are dropped, `handleMultiFolderDrop` traverses each folder separately with `traverseFileTree` and switches the UI into multi-gallery mode; loose files dropped alongside folders are ignored with an inline note. A single dropped folder (or loose files) keeps the existing single-gallery flow, auto-filling `#eventName` from the folder name.
+`#dropZone`'s `handlePhotoDrop` inspects the dropped `DataTransferItemList` synchronously (entries must be captured via `webkitGetAsEntry()` before any `await`, since the list is cleared afterwards). If **2 or more top-level folders** are dropped, `handleMultiFolderDrop` traverses each folder separately with `traverseFileTree` and switches the UI into multi-gallery mode; loose files dropped alongside folders are ignored with an inline note. A single dropped folder (or loose files) keeps the existing single-gallery flow, auto-filling `#eventName` from the folder name. **`traverseFileTree()` calls `readEntries()` until it returns an empty batch**: Chrome hands back at most 100 entries per call, and the first version called it once, so a dropped folder silently lost every photo after its 100th. The gallery page's drop zone uses the same helper.
 
 - **Single-gallery mode** — `selectedFiles`/`selectedBgFile` state, `createGallery()`.
 - **Multi-gallery mode** — `_multiGalleryGroups` array (`{ name, files, bgFile, bgPreviewUrl }`), one entry per dropped folder. `enterMultiGalleryMode()` hides the single-gallery inputs and shows `#multiGalleryPanel`, rendered by `renderMultiGalleryPanel()`: each row has an editable name, a photo count, a per-row `.drop-zone-mini` cover drop/browse zone (`handleMultiBgDrop`/`handleMultiBgSelect`/`setMultiGalleryBgFile`), and a remove button (`removeMultiGalleryGroup`). `cancelMultiGalleryMode()` discards the batch and restores the single-gallery form. `createMultipleGalleries()` creates the galleries sequentially — one `POST /api/gallery/create` plus paginated `/upload` calls per folder, then an optional per-gallery background upload — with one overall progress bar, then shows a success toast via `showMultiGallerySuccess(n)`.
@@ -1239,3 +1247,4 @@ resolved from `data.clientLanguage` via `resolveClientLocale()`, gallery covers 
   fullscreen. Anything else that must be usable in fullscreen has to live **inside** the
   fullscreened element (see `placeAudioButton()` / `audioHostFor()`).
 - **`public/shared.js`** is loaded by all client pages via `<script src="/shared.js">`. It provides `SOCIAL_ICONS`, `getSiteSettings()`, `applyTheme()`, `renderSocialFooter()` and `resolveClientLocale()`. `admin.html` loads it but overrides `applyTheme()` locally to also update the theme toggle button text. Do not duplicate these functions into individual HTML files, and read settings through `getSiteSettings()` rather than adding another `fetch('/api/settings')`.
+- **The HTML pages load `/admin.css`, `/admin-i18n.js` and `/shared.js` through versioned URLs.** `server.js` hashes each file at startup (`ASSET_VERSIONS`) and `withAssetVersions()` rewrites the quoted references in `admin.html` (served by `GET /` with `Cache-Control: no-cache`), `preview.html` and `favorites.html` into `/admin.css?v=<hash>`. A reverse proxy may cache `.js`/`.css` while ignoring the server's headers (Nginx Proxy Manager's "Cache Assets" does, for 30 minutes): a deploy then paired the new `admin.html` with the old `admin-i18n.js`, which left new labels empty and threw on the first missing translation function, so an upload did nothing at all. Keep the references plain quoted absolute paths so the rewrite matches, and add any new shared asset to `VERSIONED_ASSETS`.
