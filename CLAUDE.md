@@ -1024,19 +1024,35 @@ Loaded by all client pages via `<script src="/shared.js">` before their inline `
     a drawn arrow 8px from the word. They were a `.client-btn.accent` (40px tall beside
     the title) with a literal "←" in the label, glued to the word; the label no longer
     carries an arrow, the SVG does.
-  - **Left-panel actions**, in this order, in three groups separated by thin rules:
-    Settings; Preview, Copy client link, Copy critique link; Add files, Download ZIP;
-    Select. **Settings lives here, first**, not in the page header. Every one of them is a
+  - **Left-panel actions**, in this order, in four groups separated by thin rules:
+    Settings; Preview, Copy client link, Copy critique link, Regenerate share preview;
+    Add files, audio file, collection, Download ZIP; Select. The page offers everything
+    the gallery's row in the list offers. **Settings lives here, first**, not in the page
+    header. Every one of them is a
     `.gallery-detail-action`, `<a>` (Preview, Download ZIP) and `<button>` alike, and that
     class declares its own height, font and line-height instead of borrowing `.client-btn`
     or `.section-select-btn`: an `<a>` inherits the body's `line-height: 1.5` while a
     `<button>` does not, which is what made the first version's buttons different heights.
-    The column is 220px so the longest label of every locale fits on one line (checked:
-    none truncated in en/fr/es/pt/it). Under 900px the panel becomes a two-column grid of
+    The column is 240px so the longest label of every locale fits on one line (measured:
+    none truncated in en/fr/es/pt/it; `t.galleryDetailRegenerateOg` and `t.replaceAudio`
+    are deliberately shorter than the list's tooltips for that, which is also why the
+    regenerate button keeps the long `t.ogTooltip` as its tooltip). Only a long collection
+    name is cut, with an ellipsis, and the button's tooltip carries it whole. Under 900px
+    the panel becomes a two-column grid of
     44px buttons whose label may wrap to two lines, so every button keeps the same size.
     The critique button reuses `copyCritiqueLink()` with the label
     `t.galleryDetailCopyCritique` and the short tooltip `t.critiqueLinkHint` ("Numbered
     photos"). The gallery row's icon-only critique button keeps the long `t.copyCritiqueLink`.
+  - **Audio file and collection buttons show the gallery's state**
+    (`syncGalleryDetailExtras()`): "Add an audio file" or, once there is one, a gold
+    "Replace audio" (tooltip: file, duration, size) with a remove button beside it; "Add to
+    collection…" or a gold "Collection: <name>". They reuse the list's own code
+    (`uploadOwnerAudio()`, `removeOwnerAudio()`, `openCollectionPicker()`), all of which end
+    with `loadGalleries()`, and `loadGalleries()`/`loadCollections()` call
+    `syncGalleryDetailExtras()` back while a gallery page is shown, so the page keeps no
+    state of its own for either. It reads `_galleriesData`/`_collectionsData`, `let`s
+    declared far below the initial `renderRoute()`: `loadGalleryDetailPage()` calls it only
+    after its first `await` (the reload trap described above).
   - **Adding files: dropped anywhere, sent at once.** No drop strip and no "Upload" step:
     dropping files, or picking them with "Add files", is the decision to add them.
     - `setupPhotosDropZone()` listens on `.admin-main`, the whole content area right of the

@@ -685,10 +685,32 @@
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="10" y1="6" x2="21" y2="6"/><line x1="10" y1="12" x2="21" y2="12"/><line x1="10" y1="18" x2="21" y2="18"/><path d="M4 6h1v4M4 10h2M6 18H4c0-1 2-2 2-3s-1-1.5-2-1" stroke-linecap="round" stroke-linejoin="round"/></svg>
                             <span id="galleryDetailCopyCritiqueText">Copy critique link</span>
                         </button>
+                        <button class="gallery-detail-action" id="galleryDetailRegenerateOgBtn" onclick="regenerateOG(_galleryDetailId)">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
+                            <span id="galleryDetailRegenerateOgText">Regenerate share preview</span>
+                        </button>
                         <span class="gallery-detail-actions-sep" aria-hidden="true"></span>
                         <button class="gallery-detail-action" onclick="document.getElementById('photosAddInput').click()">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
                             <span id="galleryDetailAddFilesText">Add files</span>
+                        </button>
+                        <!-- The gallery's own audio montage: add, or replace + remove once
+                             there is one (syncGalleryDetailExtras()). Same upload and
+                             removal as the gallery list's music-note button. -->
+                        <div class="gallery-detail-action-split">
+                            <button class="gallery-detail-action" id="galleryDetailAudioBtn" onclick="document.getElementById('galleryDetailAudioInput').click()">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
+                                <span id="galleryDetailAudioText">Add an audio file</span>
+                            </button>
+                            <button class="gallery-detail-action gallery-detail-action-icon" id="galleryDetailAudioRemoveBtn" onclick="removeOwnerAudio('gallery', _galleryDetailId)" style="display:none">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/></svg>
+                            </button>
+                        </div>
+                        <input type="file" id="galleryDetailAudioInput" accept="audio/*,.mp3,.m4a,.aac,.ogg,.opus,.wav,.flac" style="display:none"
+                               onchange="uploadOwnerAudio('gallery', _galleryDetailId, this.files[0]); this.value='';">
+                        <button class="gallery-detail-action" id="galleryDetailCollectionBtn" onclick="openCollectionPicker(_galleryDetailId)">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2 2 7l10 5 10-5-10-5Z"/><path d="m2 17 10 5 10-5"/><path d="m2 12 10 5 10-5"/></svg>
+                            <span id="galleryDetailCollectionText">Add to collection</span>
                         </button>
                         <a class="gallery-detail-action" id="galleryDetailDownloadBtn" href="#">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
@@ -898,6 +920,9 @@
             byId('galleryDetailPreviewText', t.galleryDetailPreview);
             byId('galleryDetailCopyLinkText', t.copyClientLink);
             byId('galleryDetailCopyCritiqueText', t.galleryDetailCopyCritique);
+            byId('galleryDetailRegenerateOgText', t.galleryDetailRegenerateOg);
+            const ogBtn = document.getElementById('galleryDetailRegenerateOgBtn');
+            if (ogBtn) ogBtn.title = t.ogTooltip;
             const critiqueBtn = document.getElementById('galleryDetailCopyCritiqueBtn');
             if (critiqueBtn) critiqueBtn.title = t.critiqueLinkHint;
             byId('galleryDetailAddFilesText', t.galleryDetailAddFiles);
@@ -910,6 +935,7 @@
             const lbTitles = { adminLightboxClose: t.close, adminLightboxPrev: t.previousPhoto, adminLightboxNext: t.nextPhoto, adminLightboxFlag: t.cyclePhotoFlag };
             Object.entries(lbTitles).forEach(([id, title]) => { const el = document.getElementById(id); if (el) el.title = title; });
             if (_galleryDetailId) syncFilterActions();
+            if (_galleryDetailId) syncGalleryDetailExtras();
             ['red', 'orange', 'green', 'white'].forEach(color => {
                 const chip = document.querySelector(`.flag-filter-chip[data-flag="${color}"]`);
                 if (chip) chip.title = t['filterFlag' + color[0].toUpperCase() + color.slice(1)];
@@ -2402,6 +2428,7 @@
                 _galleriesData = galleries;
                 renderCollections(_collectionsData);
                 filterGalleries(document.getElementById('gallerySearch').value);
+                if (_galleryDetailId) syncGalleryDetailExtras();
 
             } catch (err) {
                 console.error('Error loading galleries:', err);
@@ -3283,6 +3310,7 @@
                 if (_galleryDetailId !== galleryId) return; // navigated to another gallery meanwhile
                 document.getElementById('galleryDetailTitle').textContent = g.eventName;
                 document.title = `${g.eventName} - Delyvr`;
+                syncGalleryDetailExtras(); // after an await: see its comment
             } catch (err) {
                 if (_galleryDetailId !== galleryId) return;
                 document.getElementById('galleryDetailTitle').textContent = t.couldNotLoadGallery;
@@ -3307,6 +3335,35 @@
                 document.title = DEFAULT_DOCUMENT_TITLE;
                 loadGalleries();
             }
+        }
+
+        // Collection and audio buttons of the gallery page, from the gallery list's
+        // cache (_galleriesData / _collectionsData). Every change to either ends with
+        // loadGalleries() (uploadOwnerAudio, removeOwnerAudio, the collection
+        // picker), which calls this back, so the page needs no state of its own.
+        // Never call it from the synchronous part of loadGalleryDetailPage(): both
+        // caches are `let`s declared far below the initial renderRoute() call, so on a
+        // reload of '#/gallery/:id' they are still in their temporal dead zone there.
+        function syncGalleryDetailExtras() {
+            const id = _galleryDetailId;
+            if (!id) return;
+            const g = (_galleriesData || []).find(x => x.id === id);
+            const col = g && g.collectionId ? (_collectionsData || []).find(c => c.id === g.collectionId) : null;
+            const colBtn = document.getElementById('galleryDetailCollectionBtn');
+            document.getElementById('galleryDetailCollectionText').textContent = col ? t.galleryDetailInCollection(col.name) : t.addToCollectionPlaceholder;
+            // A long collection name is cut with an ellipsis: the tooltip has it whole.
+            colBtn.title = col ? `${t.galleryDetailInCollection(col.name)} · ${t.changeCollection}` : '';
+            colBtn.classList.toggle('is-set', !!col);
+
+            const audio = g ? g.audio : null;
+            const audioBtn = document.getElementById('galleryDetailAudioBtn');
+            document.getElementById('galleryDetailAudioText').textContent = audio ? t.replaceAudio : t.addAudio;
+            const meta = audio ? [audio.filename || '', audio.duration != null ? formatAudioDuration(audio.duration) : '', audio.size != null ? formatFileSize(audio.size) : ''].filter(Boolean).join(' · ') : '';
+            audioBtn.title = meta;
+            audioBtn.classList.toggle('is-set', !!audio);
+            const removeBtn = document.getElementById('galleryDetailAudioRemoveBtn');
+            removeBtn.style.display = audio ? '' : 'none';
+            removeBtn.title = t.removeAudio;
         }
 
         function copyGalleryDetailLink(btn) {
@@ -4587,6 +4644,7 @@
                 _collectionsData = await res.json();
                 renderCollections(_collectionsData);
                 populateCollectionSelect();
+                if (_galleryDetailId) syncGalleryDetailExtras();
                 if (_galleriesData && _galleriesData.length) {
                     filterGalleries(document.getElementById('gallerySearch').value);
                 }

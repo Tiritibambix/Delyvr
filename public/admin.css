@@ -430,7 +430,7 @@ body { display: flex; flex-direction: column; height: 100%; }
 /* ── GALLERY DETAIL PAGE ── */
 .gallery-detail-layout {
     display: grid;
-    grid-template-columns: 220px 1fr;
+    grid-template-columns: 240px 1fr;
     gap: 22px;
     align-items: start;
 }
@@ -458,6 +458,16 @@ body { display: flex; flex-direction: column; height: 100%; }
 .gallery-detail-action.copied svg,
 .gallery-detail-action.active svg { color: var(--accent); }
 .gallery-detail-actions-sep { height: 1px; background: var(--border); margin: 4px 2px; }
+/* Something is attached (audio file, collection): gold, like the gallery
+   list's audio button once a file is there. */
+.gallery-detail-action.is-set { border-color: var(--accent); color: var(--accent); }
+.gallery-detail-action.is-set svg { color: var(--accent); }
+/* Audio: the main button plus, once a file is attached, a square remove button. */
+.gallery-detail-action-split { display: flex; gap: 6px; min-width: 0; }
+.gallery-detail-action-split > .gallery-detail-action:first-child { flex: 1; min-width: 0; }
+.gallery-detail-action-icon { width: 36px; flex-shrink: 0; padding: 0; justify-content: center; }
+.gallery-detail-action-icon:hover { color: var(--error); border-color: var(--error); }
+.gallery-detail-action-icon:hover svg { color: var(--error); }
 
 /* Under 900px the panel sits above the grid: two columns of equal buttons
    instead of seven full-width rows, and labels may wrap onto a second line
