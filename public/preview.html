@@ -3087,10 +3087,13 @@
             return 1;
         }
 
-        // Per-gallery lightbox appearance (galleries.lightbox_size/grid_spacing/
-        // corner_style, from GET /info). 'medium'/'square' are exact no-ops —
-        // the multipliers below are 1 and --photo-radius is left unset — so every
+        // Per-gallery photo GRID appearance (galleries.lightbox_size/grid_spacing/
+        // corner_style, from GET /info; the first column's name is historical, it
+        // sets the grid's row height, not the lightbox). 'medium'/'square' are exact
+        // no-ops: the multipliers below are 1 and --photo-radius is 0px, so every
         // gallery that predates this setting looks pixel-identical to before.
+        // admin.html's renderClientGridPreview() mirrors these tables and the
+        // getTargetRowHeight()/getRowGap() values: change them together.
         const GALLERY_SIZE_MULTIPLIER = { small: 0.75, medium: 1, large: 1.3 };
         const GALLERY_GAP_MULTIPLIER = { small: 0.5, medium: 1, large: 1.5 };
         let _gallerySizeMultiplier = 1;

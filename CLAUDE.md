@@ -832,7 +832,7 @@ Gallery names use `contenteditable="false"` by default. Double-clicking (or clic
 | `GET` | `/api/gallery/:id` | ✓ | Full admin-shape single-gallery object (title, collection, password/expiration/appearance state) |
 | `PATCH` | `/api/gallery/:id/password` | ✓ | Set or clear the gallery's password |
 | `PATCH` | `/api/gallery/:id/expiration` | ✓ | Set or clear the link expiration date |
-| `PATCH` | `/api/gallery/:id/appearance` | ✓ | Set lightbox size / grid spacing / corner style |
+| `PATCH` | `/api/gallery/:id/appearance` | ✓ | Set the client photo grid's row size, spacing and corners (columns `lightbox_size`/`grid_spacing`/`corner_style`) |
 | `POST` | `/api/gallery/:id/unlock` | | Submit a gallery password; sets the per-gallery unlock cookie |
 | `PATCH` | `/api/gallery/:id/photo/:filename/flag` | ✓ | Set or clear a photo's proofing flag |
 | `GET` | `/api/gallery/:id/info` | | Metadata + totalSizeBytes (410 if expired, 401 if password-protected and locked) |
@@ -1095,12 +1095,33 @@ Loaded by all client pages via `<script src="/shared.js">` before their inline `
     cursor. The download and ranking buttons reuse `handleFavDownloadSelect()` /
     `copyFavoritesRankingLink()` after pointing `_favGalleryId` at this gallery.
   - **Settings panel** (`#gallerySettingsModal`, opened from the left panel's first button):
-    same `.profile-*` markup/classes as the global Settings modal (`#profileModal`) for
-    visual consistency. Downloads/comments/client-language controls call the **same**
-    `toggleDownloads`/`toggleComments`/`setGalleryClientLanguage` already used on the gallery
-    card, relocated here, not reimplemented. Password, expiration and the three lightbox-
-    appearance selects are new (see "Per-gallery password and expiration" above and
-    "Lightbox appearance" in the `preview.html` section below).
+    a **side panel** sliding in from the right (`.side-panel-overlay` / `.side-panel`,
+    `width: min(440px, 100%)`, so a full-width sheet on a phone), not a centred modal: the
+    first version reused the global Settings modal's `.profile-*` layout and was cramped.
+    Its body scrolls on its own (`overscroll-behavior: contain`), Escape closes it, it
+    reopens scrolled to the top, and it sits at `z-index: 8050`, above the mobile sidebar
+    burger (8001) that otherwise covered its title, below the lightbox, toasts and confirm
+    dialog. Four sections, each setting a row with its label and a help line on the left and
+    its control on the right (`.settings-row`; a menu whose labels are long goes under its
+    label, `.settings-row-stacked`, and every menu does under 480px):
+    - **Access**: downloads and comments, calling the **same** `toggleDownloads` /
+      `toggleComments` as the gallery list. When the gallery's collection turns either off,
+      the help line says so in the accent color (`downloadsBlockedByCollection`), since
+      the switch alone would claim clients can download.
+    - **Language**: the same `setGalleryClientLanguage`.
+    - **Protection**: password and expiration, each with a status pill
+      (`syncPasswordStatus()`, `syncExpirationField()`: accent when set, red once expired),
+      a help line, the field with its own Save button (Enter saves the password), and a
+      "Remove" link. See "Per-gallery password and expiration" above.
+    - **Photo grid (client page)**: see "Photo grid appearance" in the `preview.html`
+      section below. The live preview is `renderClientGridPreview()`.
+    `syncGallerySettingsHelp()` rewrites the help lines and pills from `_gallerySettings`
+    (the panel's last `GET /api/gallery/:id`) on open and on a language switch.
+    **Section icons are stroked SVGs outside `.profile-field-icon`.** That class's
+    `svg { fill: currentColor }` exists for the filled social logos, and a CSS fill beats
+    an SVG's `fill="none"` attribute: it turned the stroked language globe into a plain
+    disc and the padlock, calendar and clock into solid blobs, in the global Settings
+    modal too. `.profile-field-icon svg[fill="none"] { fill: none; }` now restores them.
 - **Gallery rows: one layout, a click opens the gallery.** `renderGalleryItemHtml(g)` is
   the only gallery renderer. A compact "list" alternative with a view toggle was tried and
   removed: the existing row already is the list, and a second layout is only worth adding
@@ -1174,16 +1195,28 @@ Loaded by all client pages via `<script src="/shared.js">` before their inline `
   - **No extra height is needed, and `inset: 0` must stay.** Shifting down by `D = k · scrollY` with `k ≤ 1` keeps `D ≤ scrollY`, while the still-visible slice of the hero starts at `scrollY` — so the photo's top edge is always above it and no gap can open; the bottom overflow is clipped by `.hero`'s existing `overflow: hidden`. Leaving `inset: 0` alone also preserves the photographer's chosen framing exactly, at rest. `transform` is deliberately **absent** from `.hero-bg`'s `transition` list (opacity only), or every frame would lag behind the scroll.
 
   It hooks into the file's **single** scroll listener (`updateFooterVisibility`) and coalesces into one `requestAnimationFrame` write — which also keeps the write out of the handler that reads layout via `placeAudioButton()`, so there is no thrash. `scrollToGallery()`'s `behavior: 'smooth'` emits scroll events, so the button path gets the effect for free. This is the **first and only** `prefers-reduced-motion` guard in the file; the smooth scroll, the `fadeUp` title animation and the slideshow remain unguarded.
-- **Lightbox appearance is a per-gallery setting** (`galleries.lightbox_size`/
+- **Photo grid appearance is a per-gallery setting** (`galleries.lightbox_size`/
   `grid_spacing`/`corner_style`, default `'medium'`/`'medium'`/`'square'`, chosen so a
   default gallery looks pixel-identical to before this setting existed), set from the
-  gallery's Settings panel in `admin.html` and read from `GET /info`.
+  gallery's settings panel in `admin.html` and read from `GET /info`. **It shapes the
+  client page's photo grid, not its lightbox**: `lightbox_size` is a historical column
+  name for the grid's row height, and the admin UI calls the section "Photo grid (client
+  page)" with "Photo size / Spacing / Corners" rows (it was labelled "Lightbox appearance"
+  at first, which described nothing it does).
   `applyGalleryAppearance(info)` runs right after that fetch, before `renderGallery()`
   reads layout. Size and spacing are **multipliers** (`{small:0.75, medium:1, large:1.3}`
   and `{small:0.5, medium:1, large:1.5}`) applied inside `getTargetRowHeight()`/
   `getRowGap()`, so `'medium'` is an exact no-op against the existing breakpoint tables.
-  Corners are pure CSS: a `--photo-radius` custom property (`8px` or unset/`0px`) consumed
+  Corners are pure CSS: a `--photo-radius` custom property (`8px` or `0px`) consumed
   by `.photo-card`'s `border-radius`.
+  **The admin panel shows a live preview that mirrors these numbers**:
+  `renderClientGridPreview()` rebuilds the justified rows from the gallery's own
+  thumbnails with the values of a 1280px window (240px rows, 10px gaps, a 1232px grid
+  inside `.gallery-container`'s 24px padding), the same two multiplier tables
+  (`CLIENT_SIZE_MULTIPLIER`/`CLIENT_GAP_MULTIPLIER`) and the 8px radius, then scales the
+  block down to the panel with a CSS transform, so gaps and corners shrink in proportion.
+  An empty gallery gets placeholder ratios. **Change the tables, breakpoints or radius in
+  both files together**; a comment in each points at the other.
 - Justified/row-based gallery: photos grouped into `.gallery-row` flex rows built in JS, recomputed on resize.
 - Photos sorted server-side by filename stem (name without extension), extension as tiebreaker — see the preview.html layout section above.
 - Lightbox preloads N-1 and N+1 previews via `new Image()` on each navigation.

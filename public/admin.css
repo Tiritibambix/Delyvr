@@ -645,6 +645,11 @@ a.filter-chip { text-decoration: none; }
 .profile-field { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
 .profile-field-icon { flex-shrink: 0; width: 16px; height: 16px; color: var(--muted); display: flex; }
 .profile-field-icon svg { width: 16px; height: 16px; fill: currentColor; }
+/* fill: currentColor is for the filled social logos. A stroked icon declares
+   fill="none", and without this the CSS above (which beats an SVG attribute)
+   filled it in: the language globe rendered as a plain disc, the padlock,
+   calendar and clock as solid blobs. */
+.profile-field-icon svg[fill="none"] { fill: none; }
 
 .profile-field input {
     flex: 1; height: 32px;
@@ -674,6 +679,135 @@ a.filter-chip { text-decoration: none; }
 }
 .profile-save-btn:hover { background: var(--accent-h); }
 .profile-save-feedback { font-size: 12px; color: var(--success); text-align: center; margin-top: 6px; min-height: 18px; }
+
+/* ═══════════════════════════════
+   SIDE PANEL (gallery settings)
+   Slides in from the right over a light backdrop, so the gallery stays
+   visible beside it. min(440px, 100%) makes it a full-width sheet on a
+   phone; the body scrolls on its own and does not chain to the page.
+═══════════════════════════════ */
+/* 8050: above the mobile sidebar and its burger (8000/8001), which would
+   otherwise sit on the panel's title on a phone; below the admin lightbox
+   (8100), the toasts (8200) and the confirm dialog (8500). */
+.side-panel-overlay {
+    position: fixed; inset: 0; z-index: 8050;
+    background: rgba(0,0,0,0.45);
+    opacity: 0; pointer-events: none; transition: opacity 0.2s;
+}
+.side-panel-overlay.active { opacity: 1; pointer-events: auto; }
+.side-panel {
+    position: absolute; top: 0; right: 0; bottom: 0;
+    width: min(440px, 100%);
+    background: var(--bg2); border-left: 1px solid var(--border);
+    box-shadow: -12px 0 32px rgba(0,0,0,0.3);
+    display: flex; flex-direction: column;
+    transform: translateX(100%); transition: transform 0.22s ease;
+}
+.side-panel-overlay.active .side-panel { transform: none; }
+.side-panel-header {
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    padding: 14px 16px 14px 22px; border-bottom: 1px solid var(--border); flex-shrink: 0;
+}
+.side-panel-header h3 { font-family: 'Fraunces', serif; font-size: 20px; font-weight: 400; color: var(--text); }
+.side-panel-close {
+    width: 36px; height: 36px; flex-shrink: 0; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    background: none; border: 1px solid var(--border2); color: var(--muted); cursor: pointer;
+}
+.side-panel-close:hover { color: var(--text); border-color: var(--muted); }
+.side-panel-close svg { width: 16px; height: 16px; }
+.side-panel-body {
+    flex: 1; overflow-y: auto; overscroll-behavior: contain;
+    padding: 0 22px calc(28px + env(safe-area-inset-bottom, 0px));
+}
+
+.settings-section { padding: 22px 0; border-bottom: 1px solid var(--border); }
+.settings-section:last-child { border-bottom: none; }
+.settings-section-title {
+    display: flex; align-items: center; gap: 9px;
+    font-size: 11px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase;
+    color: var(--muted); margin-bottom: 12px;
+}
+.settings-section-title svg { width: 17px; height: 17px; flex-shrink: 0; color: var(--accent); }
+.settings-section-intro { font-size: 12px; color: var(--muted); line-height: 1.5; margin: -2px 0 14px; }
+
+/* One setting: label and help on the left, its control on the right. */
+.settings-row {
+    display: flex; align-items: center; justify-content: space-between; gap: 18px;
+    padding: 12px 0;
+}
+.settings-row + .settings-row { border-top: 1px solid var(--border); }
+label.settings-row { cursor: pointer; }
+.settings-row-text { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.settings-row-label { font-size: 13.5px; font-weight: 500; color: var(--text); }
+.settings-row-help { font-size: 12px; color: var(--muted); line-height: 1.45; }
+.settings-row-help:empty { display: none; }
+.settings-row-help.is-warning { color: var(--accent); }
+.settings-select {
+    flex-shrink: 0; width: 132px; height: 34px;
+    background: var(--bg3); border: 1px solid var(--border2); border-radius: 4px;
+    padding: 0 8px; font-size: 13px; color: var(--text); font-family: inherit;
+    cursor: pointer; outline: none;
+}
+.settings-select:focus { border-color: var(--accent); }
+/* The language menu's "Auto (visitor's browser)" is too long for the inline
+   width, so that row puts its menu under the label, full width. */
+.settings-row-stacked { flex-direction: column; align-items: stretch; gap: 10px; }
+.settings-row-stacked .settings-select { width: 100%; }
+
+/* Password / expiration: label and a status pill, help, then field + Save. */
+.settings-block { padding: 6px 0 16px; }
+.settings-block + .settings-block { border-top: 1px solid var(--border); padding-top: 16px; }
+.settings-block-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 4px; }
+.settings-status {
+    font-size: 11px; font-weight: 500; white-space: nowrap;
+    padding: 3px 9px; border-radius: 10px;
+    background: var(--bg3); color: var(--muted); border: 1px solid var(--border2);
+}
+.settings-status.is-on { color: var(--accent); border-color: var(--accent); }
+.settings-status.is-expired { color: var(--error); border-color: var(--error); }
+.settings-inline { display: flex; gap: 8px; margin-top: 10px; }
+.settings-inline input {
+    flex: 1; min-width: 0; height: 36px;
+    background: var(--bg3); border: 1px solid var(--border2); border-radius: 4px;
+    padding: 0 10px; font-size: 13px; color: var(--text); font-family: inherit; outline: none;
+    color-scheme: dark;
+}
+html.light .settings-inline input { color-scheme: light; }
+.settings-inline input:focus { border-color: var(--accent); }
+.settings-inline input::placeholder { color: var(--muted2); }
+.settings-btn {
+    flex-shrink: 0; height: 36px; padding: 0 16px;
+    background: var(--accent); color: #0c0c0e; border: none; border-radius: 4px;
+    font-size: 12.5px; font-weight: 600; font-family: inherit; cursor: pointer;
+}
+.settings-btn:hover { background: var(--accent-h); }
+.settings-link-btn {
+    margin-top: 10px; padding: 0;
+    background: none; border: none; cursor: pointer;
+    font-size: 12px; color: var(--muted); font-family: inherit; text-decoration: underline;
+}
+.settings-link-btn:hover { color: var(--error); }
+
+/* Client grid preview: built at the client's real size, scaled down to fit
+   (renderClientGridPreview()). The viewport's height is set from the scale. */
+.grid-preview {
+    background: var(--bg); border: 1px solid var(--border); border-radius: 6px;
+    padding: 10px; margin-bottom: 6px; overflow: hidden;
+}
+.grid-preview-viewport { position: relative; overflow: hidden; }
+.grid-preview-inner { transform-origin: top left; }
+.grid-preview-row { display: flex; }
+.grid-preview-cell { display: block; flex-shrink: 0; object-fit: cover; background: var(--bg3); }
+
+@media (max-width: 480px) {
+    .side-panel-body { padding-left: 16px; padding-right: 16px; }
+    .side-panel-header { padding-left: 16px; }
+    /* On a phone the grid menus go under their label too, rather than
+       squeezing the help text into a narrow column beside them. */
+    .settings-row-select { flex-direction: column; align-items: stretch; gap: 10px; }
+    .settings-row-select .settings-select { width: 100%; }
+}
 
 /* ═══════════════════════════════
    SITE HEADER

@@ -60,90 +60,162 @@
          now lives in the routed #view-gallery-detail section — see "VIEW: a
          single gallery's own page" further down this file. -->
 
-    <!-- Gallery Settings Modal — reached from the gallery detail page's header
-         button. Same .profile-* classes/layout as the global Settings modal
-         (#profileModal) for visual consistency; downloads/comments/language
-         controls here call the SAME toggleDownloads/toggleComments/
-         setGalleryClientLanguage functions already used on the gallery card —
-         they are relocated here, not reimplemented. -->
-    <div class="profile-modal" id="gallerySettingsModal" onclick="if(event.target===this) closeGallerySettingsPanel()">
-        <div class="profile-modal-card">
-            <div class="profile-modal-header">
+    <!-- Gallery settings: a panel sliding in from the right, opened from the
+         gallery page's first action. A side panel rather than a centred modal so
+         the page stays visible beside it; full width on a phone. Sections: access,
+         language, protection, client photo grid (with a live preview). The
+         downloads/comments/language controls call the SAME toggleDownloads/
+         toggleComments/setGalleryClientLanguage used on the gallery list:
+         relocated here, not reimplemented. Every stroked icon here sits outside
+         .profile-field-icon, whose fill rule is for the filled social logos. -->
+    <div class="side-panel-overlay" id="gallerySettingsModal" onclick="if(event.target===this) closeGallerySettingsPanel()">
+        <aside class="side-panel" role="dialog" aria-modal="true" aria-labelledby="gallerySettingsTitle">
+            <header class="side-panel-header">
                 <h3 id="gallerySettingsTitle">Gallery settings</h3>
-                <button class="profile-modal-close" onclick="closeGallerySettingsPanel()">&#x2715;</button>
-            </div>
-
-            <div class="profile-section-label" id="gsAccessLabel">Access</div>
-            <label class="downloads-toggle" id="gsDownloadsRow">
-                <span class="toggle-switch">
-                    <input type="checkbox" id="gsDownloadsCheckbox" onchange="toggleDownloads(_galleryDetailId, this.checked, this)">
-                    <span class="toggle-track"></span>
-                </span>
-                <span id="gsDownloadsLabel">Allow downloads</span>
-            </label>
-            <label class="downloads-toggle" id="gsCommentsRow">
-                <span class="toggle-switch">
-                    <input type="checkbox" id="gsCommentsCheckbox" onchange="toggleComments(_galleryDetailId, this.checked, this)">
-                    <span class="toggle-track"></span>
-                </span>
-                <span id="gsCommentsLabel">Allow comments</span>
-            </label>
-            <div class="profile-field">
-                <span class="profile-field-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg></span>
-                <select id="gsClientLanguage" onchange="setGalleryClientLanguage(_galleryDetailId, this.value)">
-                    <option value="auto" id="gsLangAutoOpt">Auto</option>
-                    <option value="en">English</option>
-                    <option value="fr">Français</option>
-                    <option value="es">Español</option>
-                    <option value="pt">Português</option>
-                    <option value="it">Italiano</option>
-                </select>
-            </div>
-
-            <div class="profile-section-label" id="gsSecurityLabel">Password &amp; expiration</div>
-            <div class="profile-field">
-                <span class="profile-field-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></span>
-                <input type="password" id="gsPasswordInput" placeholder="Leave blank for no password" autocomplete="new-password">
-                <button class="btn-nav" id="gsPasswordClearBtn" onclick="clearGalleryPassword()" style="display:none">
-                    <span id="gsPasswordClearBtnText">Clear</span>
+                <button class="side-panel-close" id="gallerySettingsCloseBtn" onclick="closeGallerySettingsPanel()" title="Close">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
                 </button>
-            </div>
-            <p class="logo-hint-sub" id="gsPasswordStatus"></p>
-            <button class="btn-primary" id="gsPasswordSaveBtn" onclick="saveGalleryPassword()" style="margin-bottom:8px">Save password</button>
+            </header>
+            <div class="side-panel-body">
 
-            <div class="profile-field">
-                <span class="profile-field-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg></span>
-                <!-- Saved only by the explicit button, never on `change`: while a date is
-                     typed on the keyboard, the field can hold intermediate valid dates (a
-                     year of 0002 on the way to 2026), and saving on every change risks
-                     storing one, which expires the gallery at once. The server also
-                     rejects past and implausibly distant dates as a backstop. -->
-                <input type="date" id="gsExpirationInput">
-                <button class="btn-nav" id="gsExpirationClearBtn" onclick="saveGalleryExpiration(null)" style="display:none">
-                    <span id="gsExpirationClearBtnText">Clear</span>
-                </button>
-            </div>
-            <p class="logo-hint-sub" id="gsExpirationStatus"></p>
-            <button class="btn-primary" id="gsExpirationSaveBtn" onclick="saveGalleryExpiration(document.getElementById('gsExpirationInput').value)" style="margin-bottom:8px">Save date</button>
+                <section class="settings-section">
+                    <h4 class="settings-section-title">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                        <span id="gsAccessLabel">Access</span>
+                    </h4>
+                    <label class="settings-row" for="gsDownloadsCheckbox">
+                        <span class="settings-row-text">
+                            <span class="settings-row-label" id="gsDownloadsLabel">Allow downloads</span>
+                            <span class="settings-row-help" id="gsDownloadsHelp"></span>
+                        </span>
+                        <span class="toggle-switch">
+                            <input type="checkbox" id="gsDownloadsCheckbox" onchange="toggleDownloads(_galleryDetailId, this.checked, this)">
+                            <span class="toggle-track"></span>
+                        </span>
+                    </label>
+                    <label class="settings-row" for="gsCommentsCheckbox">
+                        <span class="settings-row-text">
+                            <span class="settings-row-label" id="gsCommentsLabel">Allow comments</span>
+                            <span class="settings-row-help" id="gsCommentsHelp"></span>
+                        </span>
+                        <span class="toggle-switch">
+                            <input type="checkbox" id="gsCommentsCheckbox" onchange="toggleComments(_galleryDetailId, this.checked, this)">
+                            <span class="toggle-track"></span>
+                        </span>
+                    </label>
+                </section>
 
-            <div class="profile-section-label" id="gsAppearanceLabel">Lightbox appearance</div>
-            <div class="profile-field">
-                <select id="gsLightboxSize" onchange="saveGalleryAppearance()">
-                    <option value="small" id="gsSizeSmallOpt">Small</option>
-                    <option value="medium" id="gsSizeMediumOpt">Medium</option>
-                    <option value="large" id="gsSizeLargeOpt">Large</option>
-                </select>
-                <select id="gsGridSpacing" onchange="saveGalleryAppearance()">
-                    <option value="small" id="gsSpacingSmallOpt">Small</option>
-                    <option value="medium" id="gsSpacingMediumOpt">Medium</option>
-                    <option value="large" id="gsSpacingLargeOpt">Large</option>
-                </select>
-                <select id="gsCornerStyle" onchange="saveGalleryAppearance()">
-                    <option value="square" id="gsCornerSquareOpt">Square</option>
-                    <option value="rounded" id="gsCornerRoundedOpt">Rounded</option>
-                </select>
+                <section class="settings-section">
+                    <h4 class="settings-section-title">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m5 8 6 6"/><path d="m4 14 6-6 2-3"/><path d="M2 5h12"/><path d="M7 2h1"/><path d="m22 22-5-10-5 10"/><path d="M14 18h6"/></svg>
+                        <span id="gsLanguageSectionLabel">Language</span>
+                    </h4>
+                    <div class="settings-row settings-row-stacked">
+                        <span class="settings-row-text">
+                            <span class="settings-row-label" id="gsLanguageLabel">Client language</span>
+                            <span class="settings-row-help" id="gsLanguageHelp"></span>
+                        </span>
+                        <select class="settings-select" id="gsClientLanguage" onchange="setGalleryClientLanguage(_galleryDetailId, this.value)">
+                            <option value="auto" id="gsLangAutoOpt">Auto</option>
+                            <option value="en">English</option>
+                            <option value="fr">Français</option>
+                            <option value="es">Español</option>
+                            <option value="pt">Português</option>
+                            <option value="it">Italiano</option>
+                        </select>
+                    </div>
+                </section>
+
+                <section class="settings-section">
+                    <h4 class="settings-section-title">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="10" width="18" height="12" rx="2"/><path d="M7 10V7a5 5 0 0 1 10 0v3"/><circle cx="12" cy="16" r="1.5"/></svg>
+                        <span id="gsSecurityLabel">Protection</span>
+                    </h4>
+                    <div class="settings-block">
+                        <div class="settings-block-head">
+                            <span class="settings-row-label" id="gsPasswordLabel">Password</span>
+                            <span class="settings-status" id="gsPasswordStatus"></span>
+                        </div>
+                        <p class="settings-row-help" id="gsPasswordHelp"></p>
+                        <div class="settings-inline">
+                            <input type="password" id="gsPasswordInput" placeholder="New password" autocomplete="new-password"
+                                   onkeydown="if (event.key === 'Enter') saveGalleryPassword()">
+                            <button class="settings-btn" id="gsPasswordSaveBtn" onclick="saveGalleryPassword()">Save</button>
+                        </div>
+                        <button class="settings-link-btn" id="gsPasswordClearBtn" onclick="clearGalleryPassword()" style="display:none">
+                            <span id="gsPasswordClearBtnText">Remove the password</span>
+                        </button>
+                    </div>
+                    <div class="settings-block">
+                        <div class="settings-block-head">
+                            <span class="settings-row-label" id="gsExpirationLabel">Expiration date</span>
+                            <span class="settings-status" id="gsExpirationStatus"></span>
+                        </div>
+                        <p class="settings-row-help" id="gsExpirationHelp"></p>
+                        <!-- Saved only by the explicit button, never on `change`: while a date is
+                             typed on the keyboard, the field can hold intermediate valid dates (a
+                             year of 0002 on the way to 2026), and saving on every change risks
+                             storing one, which expires the gallery at once. The server also
+                             rejects past and implausibly distant dates as a backstop. -->
+                        <div class="settings-inline">
+                            <input type="date" id="gsExpirationInput">
+                            <button class="settings-btn" id="gsExpirationSaveBtn" onclick="saveGalleryExpiration(document.getElementById('gsExpirationInput').value)">Save</button>
+                        </div>
+                        <button class="settings-link-btn" id="gsExpirationClearBtn" onclick="saveGalleryExpiration(null)" style="display:none">
+                            <span id="gsExpirationClearBtnText">Remove the date</span>
+                        </button>
+                    </div>
+                </section>
+
+                <!-- Stored as galleries.lightbox_size / grid_spacing / corner_style for
+                     history, but these drive the CLIENT page's photo grid (row height,
+                     gaps, corners), not its lightbox: see renderClientGridPreview(). -->
+                <section class="settings-section">
+                    <h4 class="settings-section-title">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/></svg>
+                        <span id="gsAppearanceLabel">Photo grid (client page)</span>
+                    </h4>
+                    <p class="settings-section-intro" id="gsAppearanceIntro"></p>
+                    <div class="grid-preview" id="gsGridPreview" aria-hidden="true">
+                        <div class="grid-preview-viewport" id="gsGridPreviewViewport">
+                            <div class="grid-preview-inner" id="gsGridPreviewInner"></div>
+                        </div>
+                    </div>
+                    <div class="settings-row settings-row-select">
+                        <span class="settings-row-text">
+                            <span class="settings-row-label" id="gsSizeLabel">Photo size</span>
+                            <span class="settings-row-help" id="gsSizeHelp"></span>
+                        </span>
+                        <select class="settings-select" id="gsLightboxSize" onchange="onGalleryAppearanceChange()">
+                            <option value="small" id="gsSizeSmallOpt">Small</option>
+                            <option value="medium" id="gsSizeMediumOpt">Medium</option>
+                            <option value="large" id="gsSizeLargeOpt">Large</option>
+                        </select>
+                    </div>
+                    <div class="settings-row settings-row-select">
+                        <span class="settings-row-text">
+                            <span class="settings-row-label" id="gsSpacingLabel">Spacing</span>
+                            <span class="settings-row-help" id="gsSpacingHelp"></span>
+                        </span>
+                        <select class="settings-select" id="gsGridSpacing" onchange="onGalleryAppearanceChange()">
+                            <option value="small" id="gsSpacingSmallOpt">Tight</option>
+                            <option value="medium" id="gsSpacingMediumOpt">Normal</option>
+                            <option value="large" id="gsSpacingLargeOpt">Wide</option>
+                        </select>
+                    </div>
+                    <div class="settings-row settings-row-select">
+                        <span class="settings-row-text">
+                            <span class="settings-row-label" id="gsCornersLabel">Corners</span>
+                            <span class="settings-row-help" id="gsCornersHelp"></span>
+                        </span>
+                        <select class="settings-select" id="gsCornerStyle" onchange="onGalleryAppearanceChange()">
+                            <option value="square" id="gsCornerSquareOpt">Square</option>
+                            <option value="rounded" id="gsCornerRoundedOpt">Rounded</option>
+                        </select>
+                    </div>
+                </section>
             </div>
-        </div>
+        </aside>
     </div>
 
     <!-- Page-level in-app confirm dialog, reused by confirmDialog() everywhere -->
@@ -821,36 +893,45 @@
             });
 
             byId('gallerySettingsTitle', t.gallerySettingsTitle);
+            const gsCloseBtn = document.getElementById('gallerySettingsCloseBtn');
+            if (gsCloseBtn) gsCloseBtn.title = t.close;
             byId('gsAccessLabel', t.gsAccessLabel);
             byId('gsDownloadsLabel', t.allowDownloads);
             byId('gsCommentsLabel', t.allowComments);
+            byId('gsLanguageSectionLabel', t.language);
+            byId('gsLanguageLabel', t.clientLanguageTitle);
+            byId('gsLanguageHelp', t.gsLanguageHelp);
             byId('gsLangAutoOpt', t.autoLanguage);
             byId('gsSecurityLabel', t.gsSecurityLabel);
+            byId('gsPasswordLabel', t.gsPasswordLabel);
+            byId('gsPasswordHelp', t.gsPasswordHelp);
             byId('gsPasswordClearBtnText', t.clearPassword);
-            byId('gsPasswordSaveBtn', t.savePassword);
+            byId('gsPasswordSaveBtn', t.save);
+            byId('gsExpirationLabel', t.gsExpirationLabel);
+            byId('gsExpirationHelp', t.gsExpirationHelp);
             byId('gsExpirationClearBtnText', t.clearExpiration);
-            byId('gsExpirationSaveBtn', t.saveExpiration);
-            byId('gsAppearanceLabel', t.gsAppearanceLabel);
+            byId('gsExpirationSaveBtn', t.save);
             const gsPwInput = document.getElementById('gsPasswordInput');
             if (gsPwInput) gsPwInput.placeholder = t.gsPasswordPlaceholder;
-            byId('gsSizeSmallOpt', t.sizeSmall);
-            byId('gsSizeMediumOpt', t.sizeMedium);
-            byId('gsSizeLargeOpt', t.sizeLarge);
-            byId('gsSpacingSmallOpt', t.sizeSmall);
-            byId('gsSpacingMediumOpt', t.sizeMedium);
-            byId('gsSpacingLargeOpt', t.sizeLarge);
+            byId('gsAppearanceLabel', t.gsAppearanceLabel);
+            byId('gsAppearanceIntro', t.gsAppearanceIntro);
+            byId('gsSizeLabel', t.gsLightboxSizeLabel);
+            byId('gsSizeHelp', t.gsSizeHelp);
+            byId('gsSpacingLabel', t.gsGridSpacingLabel);
+            byId('gsSpacingHelp', t.gsSpacingHelp);
+            byId('gsCornersLabel', t.gsCornerStyleLabel);
+            byId('gsCornersHelp', t.gsCornersHelp);
+            byId('gsSizeSmallOpt', t.gsSizeSmall);
+            byId('gsSizeMediumOpt', t.gsSizeMedium);
+            byId('gsSizeLargeOpt', t.gsSizeLarge);
+            byId('gsSpacingSmallOpt', t.gsSpacingSmall);
+            byId('gsSpacingMediumOpt', t.gsSpacingMedium);
+            byId('gsSpacingLargeOpt', t.gsSpacingLarge);
             byId('gsCornerSquareOpt', t.cornerSquare);
             byId('gsCornerRoundedOpt', t.cornerRounded);
-            // Two <select>s (lightbox size / grid spacing) share the same three
-            // option labels, same reasoning as the slideshow selects above — their
-            // own purpose is carried by a title, since there is no separate heading
-            // per select in this compact three-up row.
-            const gsSizeSel = document.getElementById('gsLightboxSize');
-            if (gsSizeSel) gsSizeSel.title = t.gsLightboxSizeLabel;
-            const gsSpacingSel = document.getElementById('gsGridSpacing');
-            if (gsSpacingSel) gsSpacingSel.title = t.gsGridSpacingLabel;
-            const gsCornerSel = document.getElementById('gsCornerStyle');
-            if (gsCornerSel) gsCornerSel.title = t.gsCornerStyleLabel;
+            // The access help lines carry the collection override, the status
+            // pills their current state: both are rewritten for the open panel.
+            if (_galleryDetailId) syncGallerySettingsHelp();
 
             byId('uploadWarningText', t.uploadDontLeave);
             byId('uploadMiniTitle', t.uploadInProgress);
@@ -1046,6 +1127,9 @@
         // Hash of the page shown before the current one, for the comments page's
         // back link (see renderRoute()).
         let _currentRouteHash = null;
+        // Last GET /api/gallery/:id the settings panel loaded (collection, password,
+        // expiration), so a language switch can rewrite its help lines and status.
+        let _gallerySettings = null;
         const DEFAULT_DOCUMENT_TITLE = document.title;
 
         // Upload-activity state. Declared here — before the initial renderRoute() call
@@ -3092,6 +3176,7 @@
         async function loadGalleryDetailPage(galleryId) {
             _galleryDetailId = galleryId;
             _galleryDetailPhotos = [];
+            _gallerySettings = null;
             _photoFlagFilter = new Set();
             _photoFavoritedFilter = false;
             _photoCommentsFilter = false;
@@ -3151,29 +3236,33 @@
         }
 
         // ── Gallery settings panel ──────────────────────────────────────────
-        // Downloads/comments/language controls inside it call the SAME
-        // toggleDownloads/toggleComments/setGalleryClientLanguage used on the
-        // gallery card (see the modal's onchange handlers) — relocated, not
-        // reimplemented. Password/expiration/appearance are new here.
+        // A side panel (#gallerySettingsModal). Downloads/comments/language
+        // controls inside it call the SAME toggleDownloads/toggleComments/
+        // setGalleryClientLanguage used on the gallery list: relocated, not
+        // reimplemented. Every control saves on its own (password and expiration
+        // through their explicit buttons), so the panel has no global Save.
 
         async function openGallerySettingsPanel() {
             const galleryId = _galleryDetailId;
             if (!galleryId) return;
             document.getElementById('gallerySettingsModal').classList.add('active');
+            document.querySelector('#gallerySettingsModal .side-panel-body').scrollTop = 0;
             try {
                 const res = await fetch(`/api/gallery/${galleryId}`);
                 if (!res.ok) throw new Error('Failed');
                 const g = await res.json();
+                if (galleryId !== _galleryDetailId) return;
+                _gallerySettings = g;
                 document.getElementById('gsDownloadsCheckbox').checked = g.downloadsEnabled;
                 document.getElementById('gsCommentsCheckbox').checked = g.commentsEnabled;
                 document.getElementById('gsClientLanguage').value = g.clientLanguage || 'auto';
-                document.getElementById('gsPasswordStatus').textContent = g.hasPassword ? t.passwordIsSet : t.passwordNotSet;
-                document.getElementById('gsPasswordClearBtn').style.display = g.hasPassword ? '' : 'none';
                 document.getElementById('gsPasswordInput').value = '';
                 syncExpirationField(g.expiresAt);
                 document.getElementById('gsLightboxSize').value = g.lightboxSize;
                 document.getElementById('gsGridSpacing').value = g.gridSpacing;
                 document.getElementById('gsCornerStyle').value = g.cornerStyle;
+                syncGallerySettingsHelp();
+                renderClientGridPreview();
             } catch (err) {
                 showError(t.couldNotLoadGallery);
             }
@@ -3183,10 +3272,49 @@
             document.getElementById('gallerySettingsModal').classList.remove('active');
         }
 
+        // Escape closes the panel; a resize re-fits the grid preview to it.
+        document.addEventListener('keydown', e => {
+            if (e.key === 'Escape' && document.getElementById('gallerySettingsModal').classList.contains('active')) {
+                closeGallerySettingsPanel();
+            }
+        });
+        window.addEventListener('resize', () => {
+            if (document.getElementById('gallerySettingsModal').classList.contains('active')) renderClientGridPreview();
+        });
+
+        // Help lines and status pills, from the last loaded state. A collection
+        // with downloads or comments turned off overrides the gallery's own
+        // switch: the help line says so (the gallery list dims the switch for the
+        // same reason), since the switch alone would claim clients can download.
+        function syncGallerySettingsHelp() {
+            const g = _gallerySettings;
+            const col = g && g.collectionId ? (_collectionsData || []).find(c => c.id === g.collectionId) : null;
+            const dlBlocked = !!(col && col.downloadsEnabled === false);
+            const cmBlocked = !!(col && col.commentsEnabled === false);
+            const dlHelp = document.getElementById('gsDownloadsHelp');
+            dlHelp.textContent = dlBlocked ? t.downloadsBlockedByCollection(col.name) : t.gsDownloadsHelp;
+            dlHelp.classList.toggle('is-warning', dlBlocked);
+            const cmHelp = document.getElementById('gsCommentsHelp');
+            cmHelp.textContent = cmBlocked ? t.commentsBlockedByCollection(col.name) : t.gsCommentsHelp;
+            cmHelp.classList.toggle('is-warning', cmBlocked);
+            if (g) {
+                syncPasswordStatus(g.hasPassword);
+                syncExpirationField(g.expiresAt);
+            }
+        }
+
+        function syncPasswordStatus(hasPassword) {
+            if (_gallerySettings) _gallerySettings.hasPassword = hasPassword;
+            const status = document.getElementById('gsPasswordStatus');
+            status.textContent = hasPassword ? t.passwordIsSet : t.passwordNotSet;
+            status.className = 'settings-status' + (hasPassword ? ' is-on' : '');
+            document.getElementById('gsPasswordClearBtn').style.display = hasPassword ? '' : 'none';
+        }
+
         async function saveGalleryPassword() {
             const galleryId = _galleryDetailId;
             const password = document.getElementById('gsPasswordInput').value;
-            if (!password) return; // use the Clear button to remove a password, not an empty Save
+            if (!password) return; // removing a password is its own button, not an empty Save
             try {
                 const res = await fetch(`/api/gallery/${galleryId}/password`, {
                     method: 'PATCH',
@@ -3195,8 +3323,7 @@
                 });
                 if (!res.ok) throw new Error('Failed');
                 document.getElementById('gsPasswordInput').value = '';
-                document.getElementById('gsPasswordStatus').textContent = t.passwordIsSet;
-                document.getElementById('gsPasswordClearBtn').style.display = '';
+                syncPasswordStatus(true);
             } catch (err) {
                 showError(t.couldNotUpdatePassword);
             }
@@ -3212,8 +3339,7 @@
                 });
                 if (!res.ok) throw new Error('Failed');
                 document.getElementById('gsPasswordInput').value = '';
-                document.getElementById('gsPasswordStatus').textContent = t.passwordNotSet;
-                document.getElementById('gsPasswordClearBtn').style.display = 'none';
+                syncPasswordStatus(false);
             } catch (err) {
                 showError(t.couldNotUpdatePassword);
             }
@@ -3241,6 +3367,7 @@
                     throw new Error('Failed');
                 }
                 const data = await res.json();
+                if (_gallerySettings) _gallerySettings.expiresAt = data.expiresAt;
                 syncExpirationField(data.expiresAt);
             } catch (err) {
                 showError(t.couldNotUpdateExpiration);
@@ -3258,7 +3385,7 @@
             return { min: today, max };
         }
 
-        // Fills the expiration field and its status line from a stored expires_at
+        // Fills the expiration field and its status pill from a stored expires_at
         // (or null). The input reads expiresAt.slice(0, 10) directly: no Date
         // object, so no timezone shift (see formatExpirationDate()).
         function syncExpirationField(expiresAt) {
@@ -3269,9 +3396,16 @@
             input.value = expiresAt ? expiresAt.slice(0, 10) : '';
             document.getElementById('gsExpirationClearBtn').style.display = expiresAt ? '' : 'none';
             const status = document.getElementById('gsExpirationStatus');
+            const expired = !!expiresAt && expiresAt < new Date().toISOString();
             if (!expiresAt) status.textContent = t.noExpiration;
-            else if (expiresAt < new Date().toISOString()) status.textContent = t.galleryStatusExpired;
+            else if (expired) status.textContent = t.galleryStatusExpired;
             else status.textContent = t.galleryStatusExpires(formatExpirationDate(expiresAt));
+            status.className = 'settings-status' + (expired ? ' is-expired' : (expiresAt ? ' is-on' : ''));
+        }
+
+        function onGalleryAppearanceChange() {
+            renderClientGridPreview();
+            saveGalleryAppearance();
         }
 
         async function saveGalleryAppearance() {
@@ -3290,6 +3424,62 @@
             } catch (err) {
                 showError(t.couldNotUpdateAppearance);
             }
+        }
+
+        // Live preview of the CLIENT page's photo grid. It rebuilds that page's
+        // justified rows with the same numbers preview.html uses for a 1280px
+        // window (getTargetRowHeight() 240px, getRowGap() 10px, inside the 24px
+        // padding of .gallery-container, so a 1232px-wide grid), the same
+        // GALLERY_SIZE_MULTIPLIER / GALLERY_GAP_MULTIPLIER tables and 8px rounded
+        // corners, then scales the whole block down to the panel: a faithful
+        // miniature, gaps and corners included, made of this gallery's own
+        // thumbnails (_buildPhotoRows() is the same algorithm as the client's
+        // buildRows()). Keep these values in step with preview.html. Built with
+        // DOM nodes, so a filename is never written into markup.
+        const CLIENT_GRID = { width: 1232, rowHeight: 240, gap: 10, radius: 8, rows: 3 };
+        const CLIENT_SIZE_MULTIPLIER = { small: 0.75, medium: 1, large: 1.3 };
+        const CLIENT_GAP_MULTIPLIER = { small: 0.5, medium: 1, large: 1.5 };
+        // Ratios standing in for photos when the gallery is still empty.
+        const CLIENT_GRID_PLACEHOLDER_RATIOS = [1.5, 0.67, 1.5, 1.33, 0.75, 1.5, 1.5, 0.8, 1.33, 1.5, 0.67, 1.5, 1.5, 0.75, 1.33];
+
+        function renderClientGridPreview() {
+            const viewport = document.getElementById('gsGridPreviewViewport');
+            const inner = document.getElementById('gsGridPreviewInner');
+            if (!viewport || !inner) return;
+            const size = document.getElementById('gsLightboxSize').value;
+            const spacing = document.getElementById('gsGridSpacing').value;
+            const radius = document.getElementById('gsCornerStyle').value === 'rounded' ? CLIENT_GRID.radius : 0;
+            const targetH = Math.round(CLIENT_GRID.rowHeight * (CLIENT_SIZE_MULTIPLIER[size] ?? 1));
+            const gap = Math.round(CLIENT_GRID.gap * (CLIENT_GAP_MULTIPLIER[spacing] ?? 1));
+            const photos = _galleryDetailPhotos.length
+                ? _galleryDetailPhotos.slice(0, 40)
+                : CLIENT_GRID_PLACEHOLDER_RATIOS.map(r => ({ width: Math.round(r * 1000), height: 1000 }));
+            const rows = _buildPhotoRows(photos, CLIENT_GRID.width, targetH, gap).slice(0, CLIENT_GRID.rows);
+
+            inner.innerHTML = '';
+            inner.style.width = CLIENT_GRID.width + 'px';
+            let height = 0;
+            rows.forEach((row, i) => {
+                const rowEl = document.createElement('div');
+                rowEl.className = 'grid-preview-row';
+                rowEl.style.height = row.height + 'px';
+                rowEl.style.gap = gap + 'px';
+                if (i < rows.length - 1) rowEl.style.marginBottom = gap + 'px';
+                row.items.forEach(({ photo, ratio }) => {
+                    const cell = document.createElement(photo.thumbnailUrl ? 'img' : 'div');
+                    cell.className = 'grid-preview-cell';
+                    if (photo.thumbnailUrl) { cell.src = photo.thumbnailUrl; cell.alt = ''; }
+                    cell.style.width = (row.height * ratio) + 'px';
+                    cell.style.height = row.height + 'px';
+                    cell.style.borderRadius = radius + 'px';
+                    rowEl.appendChild(cell);
+                });
+                inner.appendChild(rowEl);
+                height += row.height + (i < rows.length - 1 ? gap : 0);
+            });
+            const scale = viewport.clientWidth / CLIENT_GRID.width;
+            inner.style.transform = `scale(${scale})`;
+            viewport.style.height = Math.ceil(height * scale) + 'px';
         }
 
         // ── Adding files: sent as soon as they are dropped or picked ───────
