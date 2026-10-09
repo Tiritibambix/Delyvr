@@ -91,7 +91,7 @@ delyvr/
 | `MAX_BACKGROUND_MB` | `25` | Size limit for background image uploads, in MB |
 | `MAX_AUDIO_MB` | `150` | Size limit for a collection's audio montage, in MB |
 | `INSTALL_DIR` | *(project dir)* | Set to `/data` in Docker. Controls where all data files are written. |
-| `TRUST_PROXY` | `0` | Set to `1` behind a single reverse proxy. Also accepts: integer hop count, IP, CIDR, comma-separated IPs/CIDRs, or `loopback`/`uniquelocal`. |
+| `TRUST_PROXY` | `0` | Set to `1` behind a single reverse proxy. Also accepts: integer hop count, IP, CIDR, comma-separated IPs/CIDRs, or `loopback`/`uniquelocal`. **Symptom of a wrong value:** `[AUTH]`/`[DOWNLOAD]` log lines show the proxy's own address for every visitor. Every rate limiter is keyed by that IP, so all visitors then share one bucket (one person mistyping a gallery password 10 times locks everyone out of every gallery unlock for 15 min), and unique-view counting, keyed by IP + User-Agent, collapses visitors together. Check the proxy also sends `X-Forwarded-For`. |
 | `ADMIN_ALLOWED_IPS` | *(unset — all IPs allowed)* | Comma-separated IPs or CIDR ranges. When set, all admin routes (including login) reject requests from unlisted IPs with 403. |
 
 ---
@@ -207,9 +207,33 @@ CIDR matching is implemented with BigInt bitwise arithmetic using the Node built
 A gallery may optionally carry a password (`galleries.password_hash`) and/or a link
 expiration date (`galleries.expires_at`), both `NULL` by default. This is **gallery-only**:
 collections do not have this feature in this version, deliberately. `GET /api/
-collection/:collectionId` already exposes every member gallery's name and cover with no
-gate of its own (a known, accepted limitation; the photos themselves stay protected, the
-name/cover do not), and extending password/expiration there would need its own leak audit.
+collection/:collectionId` still exposes every member gallery's name and cover with no
+gate of its own (a known, accepted limitation: covers are public on purpose, see below),
+and extending password/expiration to collections would need its own leak audit.
+
+**The photographer is never locked out of their own gallery.** The admin's gallery page
+loads its grid, thumbnails and ZIP through the same public routes visitors use, so both
+gates (and the view/download counters, and the client-facing `downloads_enabled` switch)
+consult `isAdminRequest(req)` first. This was missing in the first version: protecting or
+expiring a gallery made its own admin page fail with "could not load photos". The helper
+is side-effect free (no logging, no 401, no `sessions` mutation) and **accepts only the
+`delyvr_session` cookie, never the `X-Admin-Password` header** that `requireAuth` also
+honours. These are public routes under `publicReadLimiter`/`imageLimiter` (300 to 600 per
+minute); honouring the header there would turn each of them into an admin-password
+guessing oracle that bypasses `authLimiter`, the exact hole described in "Rate limiting".
+The session token is a CSPRNG `uuidv4()`, so honouring it is safe.
+
+**Every path that can hand out photos outside the per-gallery gates checks
+`galleryPhotosArePrivate(galleryId)`** (password set, or expiration passed):
+- the **collection ZIP** leaves such a member gallery out for visitors. In the first
+  version it did not, so downloading the collection bypassed a member gallery's password;
+- the **gallery OG image** never falls back to the first photo for such a gallery (a cover
+  is still used, covers are public); with no cover it returns 404;
+- the **collection OG image** skips such galleries when falling back to a first photo.
+
+Setting, clearing or changing a password or an expiration calls
+`invalidateShareImages(galleryId)`, which drops the gallery's cached OG image and its
+collection's: either may have been built from a photo before the gallery was protected.
 
 **Hashing**: `hashGalleryPassword`/`verifyGalleryPassword` use Node's built-in `crypto`
 (`scryptSync` with a random 16-byte salt, `timingSafeEqual` for comparison), no new
@@ -271,7 +295,16 @@ Settings panel (see `public/admin.html` section below).
 **The expiration date is a calendar date, not an instant: handle it as one everywhere.**
 `PATCH .../expiration` normalises the incoming `YYYY-MM-DD` to `${date}T23:59:59.999Z`
 before storing, specifically to avoid expiring the gallery at midnight UTC on the chosen day
-(which would make the day the photographer picked already inaccessible). The matching trap
+(which would make the day the photographer picked already inaccessible). It then rejects a
+date that does not round-trip through `toISOString()` (calendar overflow such as
+`2026-02-31`), a date already past (`expiration_in_past`) and one more than 10 years ahead
+(`expiration_too_far`). The settings panel saves the date **only through its explicit
+button, never on `change`**: while a date is typed on the keyboard the field can hold
+intermediate valid dates (a year of `0002` on the way to `2026`), and saving each one
+would expire the gallery at once. The panel applies the same bounds as `min`/`max` on the
+input (`expirationBounds()`, local calendar dates) and checks them before any request, and
+`syncExpirationField()` shows the stored state ("No expiration date", "Expires …",
+"Expired"). The matching trap
 is on **display**: `admin.html`'s `formatAdminDate()` uses local-time getters
 (`getDate()`/`getMonth()`), so in any timezone ahead of UTC, `23:59:59.999Z` has already
 rolled into the next calendar day locally, and the status-icon tooltip would show one day

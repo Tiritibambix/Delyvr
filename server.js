@@ -1079,11 +1079,27 @@ function verifyGalleryUnlockToken(token, galleryId, passwordHash) {
     return a.length === b.length && crypto.timingSafeEqual(a, b);
 }
 
+// True when a gallery's PHOTOS must not reach anyone but its unlocked visitors:
+// it has a password, or its link has expired. Used by the routes that can expose
+// photos WITHOUT going through the per-gallery gates below: the collection ZIP
+// (which bundles every member gallery) and the OG-image fallback to a first photo.
+// Covers are not covered by this; they stay public on purpose (see the
+// background route's comment).
+function galleryPhotosArePrivate(galleryId) {
+    const row = db.prepare(`SELECT password_hash, expires_at FROM galleries WHERE id = ?`).get(galleryId);
+    if (!row) return false;
+    return !!row.password_hash || !!(row.expires_at && row.expires_at < new Date().toISOString());
+}
+
 // 410 if expires_at is set and in the past. A missing/deleted gallery falls
 // through untouched so the route's own existence check still produces its
 // usual 404 — this middleware only ever narrows, never widens, what a request
 // can reach.
 function checkGalleryExpiration(req, res, next) {
+    // The admin's own gallery page loads photos, thumbnails and the ZIP through
+    // these same public routes, so the photographer must never be locked out of
+    // their own expired gallery.
+    if (isAdminRequest(req)) return next();
     const row = db.prepare(`SELECT expires_at FROM galleries WHERE id = ? AND deleted = 0`).get(req.params.galleryId);
     if (row && row.expires_at && row.expires_at < new Date().toISOString()) {
         return res.status(410).json({ error: 'gallery_expired' });
@@ -1095,6 +1111,7 @@ function checkGalleryExpiration(req, res, next) {
 // with no password_hash is a pure no-op — this is the opt-in guarantee that
 // keeps every existing gallery's public routes behaving exactly as before.
 function requireGalleryUnlock(req, res, next) {
+    if (isAdminRequest(req)) return next(); // same reason as checkGalleryExpiration above
     const row = db.prepare(`SELECT password_hash FROM galleries WHERE id = ? AND deleted = 0`).get(req.params.galleryId);
     if (!row || !row.password_hash) return next();
     const cookies = parseCookies(req.headers.cookie);
@@ -1162,6 +1179,31 @@ function requireAllowedIP(req, res, next) {
 // ── Authentication ───────────────────────────────────────────────────────────
 
 // Simple password authentication middleware — header only, never query param
+// Side-effect-free "is this the logged-in admin?" check, for PUBLIC routes that
+// must treat the photographer differently from a visitor: the per-gallery
+// password/expiration gates (the admin must always see their own gallery), the
+// view and download counters (the admin's own visits must not inflate them) and
+// the client-facing downloads_enabled switch (it restricts clients, not the
+// photographer). Unlike requireAuth it never rejects, never logs and never
+// mutates the sessions Map.
+//
+// It deliberately accepts ONLY the session cookie, never the X-Admin-Password
+// header that requireAuth also honours. These are public routes behind
+// publicReadLimiter/imageLimiter (300-600/min): accepting the header here would
+// turn every one of them into an admin-password guessing oracle that bypasses
+// authLimiter's 10 per 15 min entirely (see CLAUDE.md, "Rate limiting"). The
+// session token is a CSPRNG uuidv4, not guessable, so it is safe to honour.
+function isAdminRequest(req) {
+    if (ADMIN_ALLOWED_IPS.length > 0) {
+        const ip = resolveClientIp(req);
+        if (!ADMIN_ALLOWED_IPS.some(entry => ipMatchesCIDR(ip, entry))) return false;
+    }
+    const token = parseCookies(req.headers.cookie)['delyvr_session'];
+    if (!token) return false;
+    const session = sessions.get(token);
+    return !!(session && Date.now() - session.createdAt < SESSION_TTL_MS);
+}
+
 function requireAuth(req, res, next) {
     // 1. IP allowlist — checked before credentials so blocked IPs never reach auth logic
     if (ADMIN_ALLOWED_IPS.length > 0) {
@@ -1609,6 +1651,19 @@ app.patch('/api/gallery/:galleryId/client-language', adminLimiter, requireAuth, 
     res.json({ success: true, clientLanguage: clientLanguage || 'auto' });
 });
 
+// A share image cached BEFORE a gallery was protected may have been built from
+// its first photo (the fallback when there is no cover). Protecting, unprotecting
+// or (un)expiring the gallery therefore drops both its own cached OG image and
+// its collection's, which can fall back to the same photo; they are rebuilt on
+// next request under the new rules (see galleryPhotosArePrivate()).
+function invalidateShareImages(galleryId) {
+    try { fs.unlinkSync(safeResolvePath(OG_CACHE_DIR, `${galleryId}.jpg`)); } catch (_) {}
+    const membership = db.prepare(`SELECT collection_id FROM collection_galleries WHERE gallery_id = ?`).get(galleryId);
+    if (membership) {
+        try { fs.unlinkSync(safeResolvePath(OG_CACHE_DIR, `collection-${membership.collection_id}.jpg`)); } catch (_) {}
+    }
+}
+
 // Set or clear a gallery's password. The hash is never echoed back — only
 // whether one is now set.
 app.patch('/api/gallery/:galleryId/password', adminLimiter, requireAuth, validateGalleryId, (req, res) => {
@@ -1619,12 +1674,14 @@ app.patch('/api/gallery/:galleryId/password', adminLimiter, requireAuth, validat
     const { password } = req.body;
     if (password === null || password === '' || password === undefined) {
         db.prepare(`UPDATE galleries SET password_hash = NULL WHERE id = ?`).run(galleryId);
+        invalidateShareImages(galleryId);
         return res.json({ hasPassword: false });
     }
     if (typeof password !== 'string') {
         return res.status(400).json({ error: 'password must be a string or null' });
     }
     db.prepare(`UPDATE galleries SET password_hash = ? WHERE id = ?`).run(hashGalleryPassword(password), galleryId);
+    invalidateShareImages(galleryId);
     res.json({ hasPassword: true });
 });
 
@@ -1641,16 +1698,31 @@ app.patch('/api/gallery/:galleryId/expiration', adminLimiter, requireAuth, valid
     const { expiresAt } = req.body;
     if (expiresAt === null || expiresAt === '' || expiresAt === undefined) {
         db.prepare(`UPDATE galleries SET expires_at = NULL WHERE id = ?`).run(galleryId);
+        invalidateShareImages(galleryId);
         return res.json({ expiresAt: null });
     }
     if (typeof expiresAt !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(expiresAt)) {
         return res.status(400).json({ error: 'expiresAt must be a YYYY-MM-DD string or null' });
     }
     const normalized = `${expiresAt}T23:59:59.999Z`;
-    if (Number.isNaN(Date.parse(normalized))) {
+    // Round-trip check rather than a bare Date.parse: it also rejects calendar
+    // overflow such as 2026-02-31, which would otherwise roll into March.
+    const parsed = new Date(normalized);
+    if (Number.isNaN(parsed.getTime()) || parsed.toISOString() !== normalized) {
         return res.status(400).json({ error: 'expiresAt is not a valid date' });
     }
+    // A date already past would expire the gallery the moment it is saved, which
+    // is never what setting an expiration means; a year far ahead is almost
+    // always a typo (or a half-typed year, e.g. "0002" while typing "2026").
+    const nowIso = new Date().toISOString();
+    if (normalized < nowIso) {
+        return res.status(400).json({ error: 'expiration_in_past' });
+    }
+    if (parsed.getUTCFullYear() > new Date().getUTCFullYear() + 10) {
+        return res.status(400).json({ error: 'expiration_too_far' });
+    }
     db.prepare(`UPDATE galleries SET expires_at = ? WHERE id = ?`).run(normalized, galleryId);
+    invalidateShareImages(galleryId);
     res.json({ expiresAt: normalized });
 });
 
@@ -1961,10 +2033,12 @@ app.get('/api/gallery/:galleryId/download/:filename', downloadLimiter, validateG
     const { galleryId, filename } = req.params;
 
     const gallery = db.prepare(`SELECT downloads_enabled FROM galleries WHERE id = ?`).get(galleryId);
-    if (gallery && gallery.downloads_enabled === 0) {
+    // Same rule as the gallery ZIP: downloads_enabled restricts clients, not the admin.
+    const isAdmin = isAdminRequest(req);
+    if (!isAdmin && gallery && gallery.downloads_enabled === 0) {
         return res.status(403).json({ error: 'Downloads are disabled for this gallery' });
     }
-    if (isGalleryBlockedByCollection(galleryId)) {
+    if (!isAdmin && isGalleryBlockedByCollection(galleryId)) {
         return res.status(403).json({ error: 'Downloads are disabled for this collection' });
     }
 
@@ -2045,6 +2119,10 @@ app.get('/api/gallery/:galleryId/og-image', imageLimiter, validateGalleryId, asy
     }
 
     if (!sourceFile) {
+        // No cover: the usual fallback is the first photo, which would publish a
+        // protected gallery's content to anyone (and to every crawler) through
+        // its share preview. A protected gallery without a cover gets no image.
+        if (galleryPhotosArePrivate(galleryId)) return res.status(404).send('No public image');
         const galleryPath = safeResolvePath(path.join(DATA_DIR, 'uploads'), galleryId);
         if (!fs.existsSync(galleryPath)) return res.status(404).send('Gallery not found');
         const files = fs.readdirSync(galleryPath).filter(f => !f.startsWith('.'));
@@ -2104,6 +2182,9 @@ app.get('/api/collection/:collectionId/og-image', imageLimiter, validateCollecti
                 const gbg = fs.readdirSync(backgroundsDir).find(f => f.startsWith(gid));
                 if (gbg) { sourceFile = safeResolvePath(backgroundsDir, gbg); break; }
             }
+            // A member gallery's cover (above) is public on purpose; its photos are
+            // not when it is password-protected or expired.
+            if (galleryPhotosArePrivate(gid)) continue;
             const gPath = safeResolvePath(path.join(DATA_DIR, 'uploads'), gid);
             if (fs.existsSync(gPath)) {
                 const files = fs.readdirSync(gPath).filter(f => !f.startsWith('.'));
@@ -2176,8 +2257,9 @@ app.get('/api/gallery/:galleryId/info', publicReadLimiter, validateGalleryId, ch
     const eventName = gallery ? gallery.event_name : 'Your Photos';
     let viewCount = gallery ? gallery.view_count : 0;
 
-    // Track unique views via hash of IP + User-Agent
-    if (gallery) {
+    // Track unique views via hash of IP + User-Agent. The admin's own visits
+    // (e.g. the gallery page's "Preview" button) are not counted.
+    if (gallery && !isAdminRequest(req)) {
         const ip = resolveClientIp(req);
         const ua = req.headers['user-agent'] || '';
         const hash = crypto.createHash('sha256').update(ip + ua).digest('hex');
@@ -2243,16 +2325,19 @@ app.get('/api/gallery/:galleryId/download', downloadLimiter, validateGalleryId, 
     }
 
     const gallery = db.prepare(`SELECT event_name, downloads_enabled, download_count, audio_filename FROM galleries WHERE id = ?`).get(galleryId);
-    if (gallery && gallery.downloads_enabled === 0) {
+    // downloads_enabled restricts CLIENTS. The photographer downloading their own
+    // gallery from the admin page is neither blocked by it nor counted.
+    const isAdmin = isAdminRequest(req);
+    if (!isAdmin && gallery && gallery.downloads_enabled === 0) {
         return res.status(403).json({ error: 'Downloads are disabled for this gallery' });
     }
-    if (isGalleryBlockedByCollection(galleryId)) {
+    if (!isAdmin && isGalleryBlockedByCollection(galleryId)) {
         return res.status(403).json({ error: 'Downloads are disabled for this collection' });
     }
 
     // Track download count
     let newCount = gallery ? gallery.download_count : 0;
-    if (gallery) {
+    if (gallery && !isAdmin) {
         db.prepare(`UPDATE galleries SET download_count = download_count + 1 WHERE id = ?`).run(galleryId);
         newCount += 1;
         console.log(`[DOWNLOAD] Gallery "${gallery.event_name}" (${galleryId}) — #${newCount} from ${resolveClientIp(req)}`);
@@ -2971,7 +3056,12 @@ app.get('/api/collection/:collectionId/download', downloadLimiter, validateColle
     // Pre-scan files for Content-Length and folder names (store mode)
     const entries = [];
     const includedGalleryIds = [];
+    const isAdmin = isAdminRequest(req);
     for (const galleryId of memberGalleryIds) {
+        // A password-protected or expired member gallery is left out for visitors:
+        // otherwise this ZIP would hand out photos the gallery's own gates refuse,
+        // and the password would be bypassable by downloading the collection.
+        if (!isAdmin && galleryPhotosArePrivate(galleryId)) continue;
         const gallery = db.prepare(`SELECT event_name FROM galleries WHERE id = ?`).get(galleryId);
         const galleryPath = safeResolvePath(path.join(DATA_DIR, 'uploads'), galleryId);
         if (!fs.existsSync(galleryPath)) continue;
@@ -2996,7 +3086,7 @@ app.get('/api/collection/:collectionId/download', downloadLimiter, validateColle
         }
     }
 
-    if (includedGalleryIds.length) {
+    if (includedGalleryIds.length && !isAdmin) { // the admin's own downloads are not counted
         ops.bumpGalleryDownloadCounts(db, includedGalleryIds);
     }
 

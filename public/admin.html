@@ -113,11 +113,18 @@
 
             <div class="profile-field">
                 <span class="profile-field-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg></span>
-                <input type="date" id="gsExpirationInput" onchange="saveGalleryExpiration(this.value)">
+                <!-- Saved only by the explicit button, never on `change`: while a date is
+                     typed on the keyboard, the field can hold intermediate valid dates (a
+                     year of 0002 on the way to 2026), and saving on every change risks
+                     storing one, which expires the gallery at once. The server also
+                     rejects past and implausibly distant dates as a backstop. -->
+                <input type="date" id="gsExpirationInput">
                 <button class="btn-nav" id="gsExpirationClearBtn" onclick="saveGalleryExpiration(null)" style="display:none">
                     <span id="gsExpirationClearBtnText">Clear</span>
                 </button>
             </div>
+            <p class="logo-hint-sub" id="gsExpirationStatus"></p>
+            <button class="btn-primary" id="gsExpirationSaveBtn" onclick="saveGalleryExpiration(document.getElementById('gsExpirationInput').value)" style="margin-bottom:8px">Save date</button>
 
             <div class="profile-section-label" id="gsAppearanceLabel">Lightbox appearance</div>
             <div class="profile-field">
@@ -759,6 +766,7 @@
             byId('gsPasswordClearBtnText', t.clearPassword);
             byId('gsPasswordSaveBtn', t.savePassword);
             byId('gsExpirationClearBtnText', t.clearExpiration);
+            byId('gsExpirationSaveBtn', t.saveExpiration);
             byId('gsAppearanceLabel', t.gsAppearanceLabel);
             const gsPwInput = document.getElementById('gsPasswordInput');
             if (gsPwInput) gsPwInput.placeholder = t.gsPasswordPlaceholder;
@@ -3182,8 +3190,7 @@
                 document.getElementById('gsPasswordStatus').textContent = g.hasPassword ? t.passwordIsSet : t.passwordNotSet;
                 document.getElementById('gsPasswordClearBtn').style.display = g.hasPassword ? '' : 'none';
                 document.getElementById('gsPasswordInput').value = '';
-                document.getElementById('gsExpirationInput').value = g.expiresAt ? g.expiresAt.slice(0, 10) : '';
-                document.getElementById('gsExpirationClearBtn').style.display = g.expiresAt ? '' : 'none';
+                syncExpirationField(g.expiresAt);
                 document.getElementById('gsLightboxSize').value = g.lightboxSize;
                 document.getElementById('gsGridSpacing').value = g.gridSpacing;
                 document.getElementById('gsCornerStyle').value = g.cornerStyle;
@@ -3234,19 +3241,57 @@
 
         async function saveGalleryExpiration(value) {
             const galleryId = _galleryDetailId;
+            // Same bounds the server enforces, checked first so a half-typed year
+            // is caught here with a clear message instead of a round trip.
+            if (value) {
+                const { min, max } = expirationBounds();
+                if (value < min) { showError(t.expirationInPast); return; }
+                if (value > max) { showError(t.expirationTooFar); return; }
+            }
             try {
                 const res = await fetch(`/api/gallery/${galleryId}/expiration`, {
                     method: 'PATCH',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ expiresAt: value || null })
                 });
-                if (!res.ok) throw new Error('Failed');
+                if (!res.ok) {
+                    const err = await res.json().catch(() => ({}));
+                    if (err.error === 'expiration_in_past') { showError(t.expirationInPast); return; }
+                    if (err.error === 'expiration_too_far') { showError(t.expirationTooFar); return; }
+                    throw new Error('Failed');
+                }
                 const data = await res.json();
-                document.getElementById('gsExpirationInput').value = data.expiresAt ? data.expiresAt.slice(0, 10) : '';
-                document.getElementById('gsExpirationClearBtn').style.display = data.expiresAt ? '' : 'none';
+                syncExpirationField(data.expiresAt);
             } catch (err) {
                 showError(t.couldNotUpdateExpiration);
             }
+        }
+
+        // Today (local calendar date) to ten years ahead, as YYYY-MM-DD: the shape
+        // an <input type="date"> uses for value/min/max. Local, not UTC: these are
+        // the dates the photographer sees in their own calendar.
+        function expirationBounds() {
+            const p = n => String(n).padStart(2, '0');
+            const d = new Date();
+            const today = `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+            const max = `${d.getFullYear() + 10}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+            return { min: today, max };
+        }
+
+        // Fills the expiration field and its status line from a stored expires_at
+        // (or null). The input reads expiresAt.slice(0, 10) directly: no Date
+        // object, so no timezone shift (see formatExpirationDate()).
+        function syncExpirationField(expiresAt) {
+            const input = document.getElementById('gsExpirationInput');
+            const { min, max } = expirationBounds();
+            input.min = min;
+            input.max = max;
+            input.value = expiresAt ? expiresAt.slice(0, 10) : '';
+            document.getElementById('gsExpirationClearBtn').style.display = expiresAt ? '' : 'none';
+            const status = document.getElementById('gsExpirationStatus');
+            if (!expiresAt) status.textContent = t.noExpiration;
+            else if (expiresAt < new Date().toISOString()) status.textContent = t.galleryStatusExpired;
+            else status.textContent = t.galleryStatusExpires(formatExpirationDate(expiresAt));
         }
 
         async function saveGalleryAppearance() {
