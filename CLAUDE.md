@@ -61,6 +61,7 @@ delyvr/
 │   ├── preview.html    # THE client document: gallery view + collection index + audio player
 │   │                   # (also serves /collection/:id — see "One client document")
 │   ├── favorites.html  # Public favorites ranking page (/favorites/:id)
+│   ├── favicon.svg     # Default favicon (Delyvr's badge); a custom one lives in DATA_DIR
 │   └── shared.js       # Shared client JS — SOCIAL_ICONS, applyTheme(), renderSocialFooter()
 └── data/               # Runtime data root (Docker volume mount at /data)
     ├── uploads/        # Gallery photos, organised as uploads/{galleryId}/
@@ -899,6 +900,9 @@ Gallery names use `contenteditable="false"` by default. Double-clicking (or clic
 | `GET` | `/api/settings` | | Get site settings |
 | `POST` | `/api/settings` | ✓ | Update theme, website, socials, languages, date format, slideshow |
 | `PATCH` | `/api/settings/theme` | ✓ | Update theme only |
+| `GET` | `/api/favicon` (+ `/favicon.ico`) | | Custom favicon, else the default rendered to PNG |
+| `POST` | `/api/favicon` | ✓ | Upload a favicon (normalised to a 64px PNG; `.ico` kept) |
+| `DELETE` | `/api/favicon` | ✓ | Back to the default favicon |
 
 ---
 
@@ -1013,9 +1017,13 @@ Loaded by all client pages via `<script src="/shared.js">` before their inline `
     `login()` therefore reloads the current `gallery-detail`/`gallery-comments` page once the
     session exists. `loadGalleryDetailPage()` and `refreshPhotosGrid()` also drop a response
     that arrives after the user has moved to another gallery.
-  - **Back link**: a single "← Back" link (`t.backLink`) to `#/galleries`, the only list a
+  - **Back link**: a single "Back" link (`t.backLink`) to `#/galleries`, the only list a
     gallery page is reached from. It used to show the owning collection's name, which read
     as a link to that collection while it led to the galleries list; don't bring that back.
+    It and the comments page's back link are a `.back-link`: a compact 32px gold button with
+    a drawn arrow 8px from the word. They were a `.client-btn.accent` (40px tall beside
+    the title) with a literal "←" in the label, glued to the word; the label no longer
+    carries an arrow, the SVG does.
   - **Left-panel actions**, in this order, in three groups separated by thin rules:
     Settings; Preview, Copy client link, Copy critique link; Add files, Download ZIP;
     Select. **Settings lives here, first**, not in the page header. Every one of them is a
@@ -1128,17 +1136,24 @@ Loaded by all client pages via `<script src="/shared.js">` before their inline `
   as true cards (cover, name, count, date, status icons) once the gallery page has
   settled. Its icon cluster stays extracted in `renderGalleryActionsHtml(g, manual)` so a
   future second layout reuses it instead of copying it.
-  - **Cursor**: a row keeps the plain arrow and shows a light hover highlight
-    (`@media (hover: hover)`, `var(--bg3)`). The grab hand is set only on
-    `.gallery-item[draggable="true"]`, which `renderGalleryItemHtml` emits in manual order
-    alone. It used to be `cursor: grab` on every row, which advertised a drag that did
-    nothing outside manual order.
+  - **Cursor**: a row shows the pointing hand, like the collection group headers above the
+    rows, plus a light hover highlight (`@media (hover: hover)`, `var(--bg3)`). The grab
+    hand is set only on `.gallery-item[draggable="true"]`, which `renderGalleryItemHtml`
+    emits in manual order alone. It used to be `cursor: grab` on every row, which
+    advertised a drag that did nothing outside manual order; the plain arrow tried next did
+    not read as clickable.
   - **Status icons** (`renderGalleryStatusIconsHtml(g)`) are appended to `.gallery-meta`
     and rendered **only when they say something**: a padlock when `g.hasPassword`, a clock
     when `g.expiresAt` is set (red once `g.isExpired`; its tooltip goes through
     `formatExpirationDate()`, **not** `formatAdminDate()`, see "Per-gallery password and
     expiration" above). There is no "public"/"online" icon and no open padlock: a gallery is
     reachable by its link by default, so that is not a status worth an icon on every row.
+- **The collections page has the galleries page's header**: the same `.section-header`
+  (icon, small uppercase label) with the search box on its own line below, 200px wide.
+  Both views force `.section-header-right` onto that second line (`flex-basis: 100%`):
+  left to wrap on its own, the galleries toolbar dropped below on most screens while the
+  lone collections search stayed on the first line, at the right and narrower. The
+  collections line gets the galleries line's 28px height so the box sits at the same spot.
 - **Collections search** (`#collectionSearch`, same `.gallery-search` style as the
   galleries toolbar): `renderCollections()` reads the box on every render and keeps a
   collection whose own name, or the name of any gallery inside it, contains the query.
@@ -1312,4 +1327,17 @@ resolved from `data.clientLanguage` via `resolveClientLocale()`, gallery covers 
   fullscreen. Anything else that must be usable in fullscreen has to live **inside** the
   fullscreened element (see `placeAudioButton()` / `audioHostFor()`).
 - **`public/shared.js`** is loaded by all client pages via `<script src="/shared.js">`. It provides `SOCIAL_ICONS`, `getSiteSettings()`, `applyTheme()`, `renderSocialFooter()` and `resolveClientLocale()`. `admin.html` loads it but overrides `applyTheme()` locally to also update the theme toggle button text. Do not duplicate these functions into individual HTML files, and read settings through `getSiteSettings()` rather than adding another `fetch('/api/settings')`.
+- **Favicon** (Settings modal, under the logo; `#adminFavicon`, `uploadFaviconFile()`,
+  `resetFavicon()`, `checkFaviconState()`): same model as the logo. The default is
+  `public/favicon.svg`, Delyvr's round badge redrawn as vectors with thicker strokes (the
+  full `logo.svg` carries the wordmark and is illegible at 16px); `GET /api/favicon`
+  rasterises it once to a 64px PNG with sharp, because Safari does not reliably use SVG
+  favicons, and falls back to the SVG if that fails. An upload is normalised server-side
+  to a 64px square PNG (`fit: contain`, transparent background), except an `.ico`, kept as
+  is after a signature check, so every client page loads a small file of a known type.
+  `admin.html`, `preview.html` and `favorites.html` link `"/api/favicon"`, which
+  `withAssetVersions()` versions **per request** with the custom file's mtime (it can
+  change while the server runs, unlike the CSS/JS hashed at startup), and the versioned
+  URL is served `immutable`. `refreshFavicon()` also swaps the admin tab's own
+  `<link rel="icon">`, so a change shows at once.
 - **The HTML pages load `/admin.css`, `/admin-i18n.js` and `/shared.js` through versioned URLs.** `server.js` hashes each file at startup (`ASSET_VERSIONS`) and `withAssetVersions()` rewrites the quoted references in `admin.html` (served by `GET /` with `Cache-Control: no-cache`), `preview.html` and `favorites.html` into `/admin.css?v=<hash>`. A reverse proxy may cache `.js`/`.css` while ignoring the server's headers (Nginx Proxy Manager's "Cache Assets" does, for 30 minutes): a deploy then paired the new `admin.html` with the old `admin-i18n.js`, which left new labels empty and threw on the first missing translation function, so an upload did nothing at all. Keep the references plain quoted absolute paths so the rewrite matches, and add any new shared asset to `VERSIONED_ASSETS`.

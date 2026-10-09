@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
+  <!-- Delyvr's mark (the round badge of logo.svg, without the wordmark), redrawn
+       as vectors with thicker strokes so it stays legible at 16px. Default
+       favicon, served by GET /api/favicon when no custom one is uploaded. -->
+  <circle cx="32" cy="32" r="28.5" fill="none" stroke="#c9a962" stroke-width="4"/>
+  <circle cx="23" cy="16.5" r="2.4" fill="#dcc58f"/>
+  <circle cx="32" cy="16.5" r="2.4" fill="#c9a962"/>
+  <circle cx="41" cy="16.5" r="2.4" fill="#dcc58f"/>
+  <g fill="none" stroke="#c9a962" stroke-width="4" stroke-linecap="round" stroke-linejoin="round">
+    <line x1="32" y1="23" x2="32" y2="39"/>
+    <polyline points="24.5,31.5 32,39 39.5,31.5"/>
+    <line x1="23" y1="45.5" x2="41" y2="45.5"/>
+  </g>
+</svg>

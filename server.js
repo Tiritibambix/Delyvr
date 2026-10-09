@@ -1026,9 +1026,13 @@ const ASSET_VERSIONS = Object.fromEntries(VERSIONED_ASSETS.map(name => {
         return [name, String(Date.now())];
     }
 }));
+// The favicon can change while the server runs (uploaded from the admin), so its
+// token is read per request: the custom file's mtime (see faviconVersion()).
 function withAssetVersions(html) {
-    return html.replace(/(["'])\/(admin\.css|admin-i18n\.js|shared\.js)\1/g,
-        (match, quote, name) => `${quote}/${name}?v=${ASSET_VERSIONS[name]}${quote}`);
+    return html
+        .replace(/(["'])\/(admin\.css|admin-i18n\.js|shared\.js)\1/g,
+            (match, quote, name) => `${quote}/${name}?v=${ASSET_VERSIONS[name]}${quote}`)
+        .replace(/(["'])\/api\/favicon\1/g, (match, quote) => `${quote}/api/favicon?v=${faviconVersion()}${quote}`);
 }
 
 function validateGalleryId(req, res, next) {
@@ -1365,6 +1369,121 @@ app.delete('/api/logo', adminLimiter, requireAuth, (_req, res) => {
         if (fs.existsSync(p)) fs.unlinkSync(p);
     }
     console.log('[SETTINGS] Logo reset to default');
+    res.json({ success: true });
+});
+
+// ── Favicon ──────────────────────────────────────────────────────────────
+// Same model as the logo: a custom file in DATA_DIR takes precedence over the
+// bundled default (public/favicon.svg, Delyvr's badge without its wordmark).
+// Uploads are normalised to a 64px square PNG (an .ico is kept as is, after a
+// signature check), so whatever was uploaded, every client page loads a small
+// file with a known type. The default is rasterised to PNG once, lazily: Safari
+// does not reliably use SVG favicons. The HTML pages link "/api/favicon", which
+// withAssetVersions() versions with the custom file's mtime, so a new favicon
+// shows up without waiting for a browser's favicon cache.
+const FAVICON_FILES = { '.png': 'image/png', '.ico': 'image/x-icon' };
+const FAVICON_UPLOAD_EXTS = ['.png', '.ico', '.svg', '.jpg', '.jpeg', '.gif', '.webp'];
+
+function findFaviconFile() {
+    for (const ext of Object.keys(FAVICON_FILES)) {
+        const p = path.join(DATA_DIR, `favicon${ext}`);
+        if (fs.existsSync(p)) return p;
+    }
+    return null;
+}
+
+function removeFaviconFiles() {
+    for (const ext of Object.keys(FAVICON_FILES)) {
+        const p = path.join(DATA_DIR, `favicon${ext}`);
+        if (fs.existsSync(p)) fs.unlinkSync(p);
+    }
+}
+
+// Version token for "/api/favicon" in the HTML pages (see withAssetVersions()).
+function faviconVersion() {
+    const custom = findFaviconFile();
+    if (!custom) return 'default';
+    try { return String(Math.round(fs.statSync(custom).mtimeMs)); } catch (_) { return 'default'; }
+}
+
+let _defaultFaviconPng = null;
+function defaultFaviconPng() {
+    if (!_defaultFaviconPng) {
+        _defaultFaviconPng = sharp(path.join(__dirname, 'public', 'favicon.svg'))
+            .resize(64, 64)
+            .png()
+            .toBuffer()
+            .catch(err => {
+                console.error(`[FAVICON] Could not rasterise the default favicon: ${err.message}`);
+                return null; // served as SVG instead
+            });
+    }
+    return _defaultFaviconPng;
+}
+
+const uploadFavicon = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: 2 * 1024 * 1024 },
+    fileFilter: (req, file, cb) => {
+        const ext = path.extname(file.originalname).toLowerCase();
+        if (FAVICON_UPLOAD_EXTS.includes(ext)) return cb(null, true);
+        const err = new Error('Only PNG, ICO, SVG, JPEG, GIF or WebP files are allowed for the favicon');
+        err.status = 400;
+        cb(err, false);
+    }
+});
+
+async function serveFavicon(req, res) {
+    const custom = findFaviconFile();
+    res.setHeader('X-Custom-Favicon', custom ? '1' : '0');
+    // A versioned URL (?v=) never changes content; the bare one is revalidated.
+    res.setHeader('Cache-Control', req.query.v ? 'public, max-age=31536000, immutable' : 'no-cache');
+    if (custom) {
+        res.setHeader('Content-Type', FAVICON_FILES[path.extname(custom).toLowerCase()]);
+        return res.sendFile(custom);
+    }
+    const png = await defaultFaviconPng();
+    if (png) return res.type('png').send(png);
+    res.sendFile(path.join(__dirname, 'public', 'favicon.svg'));
+}
+
+app.get('/api/favicon', imageLimiter, serveFavicon);
+// Browsers also ask for /favicon.ico on their own, whatever the page links.
+app.get('/favicon.ico', imageLimiter, serveFavicon);
+
+// Replace the favicon (admin only)
+app.post('/api/favicon', adminLimiter, requireAuth, uploadFavicon.single('favicon'), async (req, res) => {
+    if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+    const ext = path.extname(req.file.originalname).toLowerCase();
+    try {
+        if (ext === '.ico') {
+            // ICO header: reserved 0, type 1 (icon). Anything else is not an icon.
+            const b = req.file.buffer;
+            if (b.length < 6 || b[0] !== 0 || b[1] !== 0 || b[2] !== 1 || b[3] !== 0) {
+                return res.status(400).json({ error: 'Not a valid .ico file' });
+            }
+            removeFaviconFiles();
+            fs.writeFileSync(path.join(DATA_DIR, 'favicon.ico'), b);
+        } else {
+            const png = await sharp(req.file.buffer)
+                .resize(64, 64, { fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 } })
+                .png()
+                .toBuffer();
+            removeFaviconFiles();
+            fs.writeFileSync(path.join(DATA_DIR, 'favicon.png'), png);
+        }
+    } catch (err) {
+        console.error(`[FAVICON] Upload failed: ${err.message}`);
+        return res.status(400).json({ error: 'Could not read this image' });
+    }
+    console.log(`[SETTINGS] Favicon updated (${req.file.originalname})`);
+    res.json({ success: true });
+});
+
+// Reset the favicon to the bundled default (admin only)
+app.delete('/api/favicon', adminLimiter, requireAuth, (_req, res) => {
+    removeFaviconFiles();
+    console.log('[SETTINGS] Favicon reset to default');
     res.json({ success: true });
 });
 
