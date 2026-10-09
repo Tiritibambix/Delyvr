@@ -755,7 +755,7 @@ Clients can leave a text comment on individual photos/videos from the lightbox. 
 - **Identification**: reuses the same anonymous `visitorId` (localStorage) already used for favorites — no accounts. Additionally, a self-declared display **name is optional**: the first time a visitor opens the comment drawer, an editable "Your name" field is shown; once they post, the name is saved to `localStorage` (`delyvr_commenter_name`, separate from `visitorId`) and reused for later comments (with a "change name" link to edit it). Empty name → displayed as "Guest". No verification of any kind.
 - **Storage**: one row per comment in the `comments` table (`id (uuidv4)`, `gallery_id`, `filename`, `visitor_id`, `name`, `text`, `created_at`), fetched `ORDER BY created_at ASC` for oldest-first. `POST /api/gallery/:id/comments` validates and trims `text` (required, max 500 chars) and `name` (optional, max 60 chars), strips control characters, and 403s if `comments_enabled = 0`.
 - **Routes**: `POST .../comments` (public, `publicWriteLimiter`) to add; `GET .../comments-public?filename=X` (public, `publicReadLimiter`) to fetch one photo's thread — fetched lazily only when its drawer is opened, never preloaded for the whole gallery; `GET .../comments` (admin) flattened across all photos; `DELETE .../comments/:filename/:commentId` (admin) removes a single spam comment; `DELETE .../comments` (admin) clears all, mirroring `resetFavorites()`. `GET .../photos` also returns `commentCount` per photo so the grid badge doesn't need an extra request.
-- **Admin moderation is a full page**, not a modal: route `#/gallery/:id/comments` (view `view-gallery-comments`). Delyvr is also used for **peer critique**, so the photo must be readable *beside* its thread — the old 700px modal with 48px cropped thumbnails and every thread in one scroll made that impossible. `loadGalleryCommentsPage()` fetches `GET .../comments` (the threads) and `GET .../photos` (gallery order) in parallel and joins them by `filename`; the photo's index supplies the **critique number**, matching `preview.html`'s numbering. Layout is a left rail of commented photos (uncropped thumbnails, `#N`, count) plus a right pane showing the selected photo large with its full thread. Comments whose photo was since deleted are still listed so they remain removable. `deleteComment()` mutates the local state and **re-renders** rather than doing DOM surgery, and `viewComments(galleryId)` on the gallery card simply sets the hash.
+- **Admin moderation is a full page**, not a modal: route `#/gallery/:id/comments` (view `view-gallery-comments`). Delyvr is also used for **peer critique**, so the photo must be readable *beside* its thread: the old 700px modal with 48px cropped thumbnails and every thread in one scroll made that impossible. `loadGalleryCommentsPage()` fetches `GET .../comments` (the threads) and `GET .../photos` (gallery order) in parallel and joins them by `filename`; the photo's index supplies the **critique number**, matching `preview.html`'s numbering. Layout is a left rail of commented photos (uncropped thumbnails, `#N`, count) plus a right pane showing the selected photo large with its full thread. Comments whose photo was since deleted are still listed so they remain removable. `deleteComment()` mutates the local state and **re-renders** rather than doing DOM surgery, and `viewComments(galleryId)` on the gallery card simply sets the hash. The page is also opened from the gallery page ("Read the comments", with the "Has comments" filter on), so its "← Back" link (`#commentsBackBtn`) returns to whichever page it came from: `renderRoute()` keeps the previous hash in `_currentRouteHash` and points the link at it, falling back to `#/galleries` on a direct load or a reload.
 - **UI**: a speech-bubble button (with an unread-style count badge) sits next to the favorite/download buttons in both the desktop cluster and the mobile bottom bar, opening a drawer — a fixed side panel on desktop, a bottom sheet on mobile — with the thread, an optional name field, and a textarea (Enter to send, Shift+Enter for newline). Posting is optimistic, matching `toggleFavorite()`'s update/revert-on-error shape, with a toast reusing the `#favToast` element (`showToast()` was generalized from `showFavToast()`).
 - **XSS safety**: `preview.html` has no `escapeHtml()` helper and intentionally doesn't need one for this feature — comment rows are built via `document.createElement` + `textContent` only, never `innerHTML`, since comment text is long-form and free-form. `admin.html` already has `escapeHtml()` (used for `eventName`/filenames elsewhere) and reuses it for the moderation modal's `innerHTML` rows.
 
@@ -996,7 +996,8 @@ Loaded by all client pages via `<script src="/shared.js">` before their inline `
     here is reflected back on `#/galleries`.
   - **All of this page's state is declared before the initial `renderRoute()` call**
     (`_galleryDetailId`, `_photosResizeObs`, the selection, the filters, the upload queue
-    `_photosUploadQueue`/`_photosUploading`, `_galleryDetailPhotos`), same temporal-dead-zone hazard
+    `_photosUploadQueue`/`_photosUploading`, `_galleryDetailPhotos`, `_galleryDetailShown`, the lightbox's
+    `_lbPhotos`/`_lbIndex`, `_currentRouteHash`), same temporal-dead-zone hazard
     as `_uploadInProgress`. On a direct load or reload of `#/gallery/:id`, that first
     `renderRoute()` runs `loadGalleryDetailPage()` while the script is still being
     evaluated, and it writes this state synchronously before its first `await`. The first
@@ -1062,6 +1063,37 @@ Loaded by all client pages via `<script src="/shared.js">` before their inline `
     bar has "Select all" and "Deselect all" (which stays in selection mode); "all" means the
     photos the grid currently shows. `applyPhotoFilters()` drops from the selection any photo
     a filter hides, so "Delete selected" can never reach a photo that is not on screen.
+  - **Lightbox** (`#adminLightbox`, `openAdminLightbox(filename)`): a click on a photo
+    outside selection mode opens it large; in selection mode the same click selects, and
+    the swatch and delete buttons on a card stop the click. It shows the 1920px preview
+    (an animated GIF/WebP plays, since `previewUrl` serves the original for those) or the
+    video with its controls, the filename, "n / total" and the vote/comment counts, and the
+    same flag swatch as the card (`cycleAdminLightboxFlag()` goes through
+    `cyclePhotoFlag()`, which updates the photo object both lists share). It steps through
+    `_galleryDetailShown`, the list `applyPhotoFilters()` last rendered, so active filters
+    apply, **from its own copy** (`_lbPhotos`, taken on open): a flag change that drops the
+    photo out of a flag filter must not shift the sequence under it. Arrows wrap around;
+    keys are handled in the capture phase (a focused `<video>` would take the arrows for
+    seeking) and stop propagation, so its Escape never reaches the gallery list's
+    selection-mode handler. A horizontal swipe steps on a phone, except when it starts on
+    the video (that is a seek). It sits at page level, outside `.admin-main`, with
+    `z-index: 8100`: above the mobile sidebar and burger (8000/8001), below the confirm
+    dialog (8500), and `.upload-toast` was raised to 8200 so an error stays visible over
+    it. Its backdrop is solid and dark in both themes, like the client lightbox.
+    `closeAdminLightbox()` runs from `loadGalleryDetailPage()` and
+    `teardownGalleryDetailPage()`, which is why `_lbPhotos`/`_lbIndex` are declared with
+    the page's other early state.
+  - **Favorites and comments actions follow the filters** (`syncFilterActions()`): with
+    "Favorited" on, a bar under the filters offers the favorites download by minimum votes
+    (`favDownloadOptionsHtml()`, shared with the favorites modal), the CSV export and the
+    ranking link; with "Has comments" on, "Read the comments" (`#/gallery/:id/comments`).
+    The same filters put "♥ n" / "💬 n" badges on the cards. Everything is built from the
+    counts `/photos` already returns, no extra request, and a group only shows when there
+    is something to act on. It is called from the two filter toggles, after
+    `refreshPhotosGrid()` and on a language change, **not** from `applyPhotoFilters()`,
+    which also runs on every resize and would rebuild the download `<select>` under the
+    cursor. The download and ranking buttons reuse `handleFavDownloadSelect()` /
+    `copyFavoritesRankingLink()` after pointing `_favGalleryId` at this gallery.
   - **Settings panel** (`#gallerySettingsModal`, opened from the left panel's first button):
     same `.profile-*` markup/classes as the global Settings modal (`#profileModal`) for
     visual consistency. Downloads/comments/client-language controls call the **same**

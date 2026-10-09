@@ -177,6 +177,29 @@
         </div>
     </div>
 
+    <!-- Admin lightbox: a photo of the gallery page, large (openAdminLightbox()).
+         At page level, outside .admin-main, so it covers the sidebar too and a
+         wheel over it does not scroll the grid underneath. -->
+    <div class="admin-lightbox" id="adminLightbox" aria-hidden="true">
+        <div class="admin-lightbox-top">
+            <button class="photo-flag-btn photo-flag-btn-empty" id="adminLightboxFlag" onclick="cycleAdminLightboxFlag(event)"></button>
+            <div class="admin-lightbox-info">
+                <span class="admin-lightbox-name" id="adminLightboxName"></span>
+                <span class="admin-lightbox-meta" id="adminLightboxMeta"></span>
+            </div>
+            <button class="admin-lightbox-btn" id="adminLightboxClose" onclick="closeAdminLightbox()" title="Close">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+        </div>
+        <div class="admin-lightbox-stage" id="adminLightboxStage" onclick="if (event.target === this) closeAdminLightbox()"></div>
+        <button class="admin-lightbox-btn admin-lightbox-nav admin-lightbox-prev" id="adminLightboxPrev" onclick="stepAdminLightbox(-1)" title="Previous photo">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
+        </button>
+        <button class="admin-lightbox-btn admin-lightbox-nav admin-lightbox-next" id="adminLightboxNext" onclick="stepAdminLightbox(1)" title="Next photo">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
+        </button>
+    </div>
+
     <!-- Profile Modal -->
     <div class="profile-modal" id="profileModal" onclick="if(event.target===this) closeProfileModal()">
         <div class="profile-modal-card">
@@ -526,7 +549,7 @@
                  photo large with its whole thread. -->
             <section class="view" id="view-gallery-comments">
                 <div class="view-header">
-                    <a class="client-btn accent" href="#/galleries" id="commentsBackBtn">Back to galleries</a>
+                    <a class="client-btn accent" href="#/galleries" id="commentsBackBtn">← Back</a>
                     <h1 class="view-title" id="commentsPageTitle">Comments</h1>
                     <button class="client-btn danger view-header-action" id="commentsPageClearBtn" onclick="clearAllCommentsFromPage()">Clear all</button>
                 </div>
@@ -613,6 +636,28 @@
                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
                                 <span id="filterCommentsText">Has comments</span>
                             </button>
+                        </div>
+
+                        <!-- What the gallery list offers for favorites and comments, shown
+                             here only while the matching filter is on (syncFilterActions()). -->
+                        <div class="gallery-detail-filter-actions" id="galleryDetailFilterActions" style="display:none">
+                            <div class="filter-actions-group" id="galleryDetailFavActions">
+                                <select class="gallery-sort-select" id="gdFavDownloadSelect" onchange="downloadGalleryDetailFavorites(this)"></select>
+                                <a class="filter-chip" id="gdFavExportBtn" href="#" download>
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="16" y2="17"/></svg>
+                                    <span id="gdFavExportText">Export CSV</span>
+                                </a>
+                                <button class="filter-chip" id="gdFavRankingBtn" onclick="copyGalleryDetailRankingLink(this)">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                                    <span id="gdFavRankingText">Copy ranking link</span>
+                                </button>
+                            </div>
+                            <div class="filter-actions-group" id="galleryDetailCommentActions">
+                                <a class="filter-chip" id="gdReadCommentsBtn" href="#">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                                    <span id="gdReadCommentsText">Read the comments</span>
+                                </a>
+                            </div>
                         </div>
 
                         <!-- Normal meta -->
@@ -750,7 +795,7 @@
             byId('favCopyRankingBtnText', t.copyRankingLink);
             byId('favExportBtn', t.exportCsv);
             byId('favDownloadPlaceholderOption', t.downloadPhotos);
-            byId('commentsBackBtn', t.backToGalleries);
+            byId('commentsBackBtn', t.backLink);
             byId('commentsPageClearBtn', t.clearAll);
 
             byId('galleryDetailBackBtn', t.backLink);
@@ -764,6 +809,12 @@
             byId('galleryDetailDownloadText', t.galleryDetailDownloadZip);
             byId('filterFavoritedText', t.filterFavorited);
             byId('filterCommentsText', t.filterHasComments);
+            byId('gdFavExportText', t.exportCsv);
+            byId('gdFavRankingText', t.copyRankingLink);
+            byId('gdReadCommentsText', t.readComments);
+            const lbTitles = { adminLightboxClose: t.close, adminLightboxPrev: t.previousPhoto, adminLightboxNext: t.nextPhoto, adminLightboxFlag: t.cyclePhotoFlag };
+            Object.entries(lbTitles).forEach(([id, title]) => { const el = document.getElementById(id); if (el) el.title = title; });
+            if (_galleryDetailId) syncFilterActions();
             ['red', 'orange', 'green', 'white'].forEach(color => {
                 const chip = document.querySelector(`.flag-filter-chip[data-flag="${color}"]`);
                 if (chip) chip.title = t['filterFlag' + color[0].toUpperCase() + color.slice(1)];
@@ -946,6 +997,16 @@
             if (sb) sb.classList.remove('open');
             const main = document.querySelector('.admin-main');
             if (main) main.scrollTop = 0;
+            // The comments page is opened from the galleries list or from the
+            // gallery's own page; its back link returns to whichever it was (to the
+            // list when the page was opened directly or reloaded).
+            const fromHash = _currentRouteHash;
+            _currentRouteHash = location.hash;
+            if (route === 'gallery-comments') {
+                const back = document.getElementById('commentsBackBtn');
+                const cameFromElsewhere = fromHash && fromHash !== location.hash && !/\/comments$/.test(fromHash);
+                if (back) back.setAttribute('href', cameFromElsewhere ? fromHash : '#/galleries');
+            }
             if (route === 'gallery-comments') loadGalleryCommentsPage(params.galleryId);
             if (route === 'gallery-detail') loadGalleryDetailPage(params.galleryId);
             else teardownGalleryDetailPage();
@@ -979,6 +1040,12 @@
         let _photoFavoritedFilter = false;
         let _photoCommentsFilter = false;
         let _galleryDetailPhotos = []; // last fetched, unfiltered: filters re-render from this without a refetch
+        let _galleryDetailShown = [];  // what the grid shows (filters applied): the lightbox steps through this
+        let _lbPhotos = [];            // the lightbox's own copy of that list, taken when it opens
+        let _lbIndex = -1;             // -1 = lightbox closed
+        // Hash of the page shown before the current one, for the comments page's
+        // back link (see renderRoute()).
+        let _currentRouteHash = null;
         const DEFAULT_DOCUMENT_TITLE = document.title;
 
         // Upload-activity state. Declared here — before the initial renderRoute() call
@@ -3030,9 +3097,11 @@
             _photoCommentsFilter = false;
             setPhotoSelectionMode(false);
             hidePhotosDropOverlay();
+            closeAdminLightbox();
             document.querySelectorAll('.flag-filter-chip.active').forEach(c => c.classList.remove('active'));
             document.getElementById('filterFavoritedBtn').classList.remove('active');
             document.getElementById('filterCommentsBtn').classList.remove('active');
+            syncFilterActions();
             document.getElementById('photosModalMeta').textContent = '';
             document.getElementById('photosGrid').innerHTML = `<p style="color:var(--muted);font-size:13px">${t.loading}</p>`;
             // An upload still running for the gallery just left keeps going (see
@@ -3068,6 +3137,7 @@
         function teardownGalleryDetailPage() {
             if (_photosResizeObs) { _photosResizeObs.disconnect(); _photosResizeObs = null; }
             hidePhotosDropOverlay();
+            closeAdminLightbox();
             if (_galleryDetailId) {
                 _galleryDetailId = null;
                 closeGallerySettingsPanel();
@@ -3561,6 +3631,7 @@
                 _galleryDetailPhotos = photos; // unfiltered: applyPhotoFilters() re-renders from this
                 const grid = document.getElementById('photosGrid');
                 applyPhotoFilters();
+                syncFilterActions(); // the vote and comment counts may have changed
                 if (_photosResizeObs) { _photosResizeObs.disconnect(); _photosResizeObs = null; }
                 _photosResizeObs = new ResizeObserver(() => applyPhotoFilters());
                 _photosResizeObs.observe(grid);
@@ -3580,6 +3651,7 @@
                 if (_photoCommentsFilter && !(p.commentCount > 0)) return false;
                 return true;
             });
+            _galleryDetailShown = filtered;
             const total = _galleryDetailPhotos.length;
             const shown = filtered.length;
             // A filter must never leave a hidden photo selected: "Delete selected"
@@ -3619,12 +3691,49 @@
             _photoFavoritedFilter = !_photoFavoritedFilter;
             document.getElementById('filterFavoritedBtn').classList.toggle('active', _photoFavoritedFilter);
             applyPhotoFilters();
+            syncFilterActions();
         }
 
         function togglePhotoCommentsFilter() {
             _photoCommentsFilter = !_photoCommentsFilter;
             document.getElementById('filterCommentsBtn').classList.toggle('active', _photoCommentsFilter);
             applyPhotoFilters();
+            syncFilterActions();
+        }
+
+        // ── Actions tied to the "Favorited" / "Has comments" filters ───────
+        // The same things the gallery list offers for a gallery's favorites and
+        // comments, shown under the filters only while the matching filter is on
+        // and only when there is something to act on. Built from the counts
+        // /photos already returns, so no extra request. Not called from
+        // applyPhotoFilters(): that one also runs on every resize, and rebuilding
+        // the download <select> there would close it under the cursor.
+        function syncFilterActions() {
+            const bar = document.getElementById('galleryDetailFilterActions');
+            const favGroup = document.getElementById('galleryDetailFavActions');
+            const commentGroup = document.getElementById('galleryDetailCommentActions');
+            const id = _galleryDetailId;
+            const votes = _galleryDetailPhotos.map(p => p.favoriteCount || 0).filter(n => n > 0);
+            const showFav = !!id && _photoFavoritedFilter && votes.length > 0;
+            const showComments = !!id && _photoCommentsFilter && _galleryDetailPhotos.some(p => p.commentCount > 0);
+            favGroup.style.display = showFav ? '' : 'none';
+            commentGroup.style.display = showComments ? '' : 'none';
+            bar.style.display = (showFav || showComments) ? '' : 'none';
+            if (showFav) {
+                document.getElementById('gdFavDownloadSelect').innerHTML = favDownloadOptionsHtml(votes, t.downloadFavorites);
+                document.getElementById('gdFavExportBtn').href = `/api/gallery/${id}/favorites/export`;
+            }
+            if (showComments) document.getElementById('gdReadCommentsBtn').href = `#/gallery/${id}/comments`;
+        }
+
+        function downloadGalleryDetailFavorites(selectEl) {
+            _favGalleryId = _galleryDetailId; // handleFavDownloadSelect() targets the favorites modal's gallery
+            handleFavDownloadSelect(selectEl);
+        }
+
+        function copyGalleryDetailRankingLink(btn) {
+            _favGalleryId = _galleryDetailId;
+            copyFavoritesRankingLink(btn);
         }
 
         // null -> red -> orange -> green -> white -> null. One click, no popover —
@@ -3669,15 +3778,28 @@
                     card.dataset.filename = photo.filename;
                     card.style.width = Math.round(row.height * ratio) + 'px';
                     card.style.height = Math.round(row.height) + 'px';
-                    card.onclick = () => { if (_photosSelectionMode) togglePhotoCard(photo.filename); };
+                    // Selection mode: a click selects. Otherwise it opens the photo large.
+                    card.onclick = () => {
+                        if (_photosSelectionMode) togglePhotoCard(photo.filename);
+                        else openAdminLightbox(photo.filename);
+                    };
                     const videoBadge = isVideoFilename(photo.filename)
                         ? `<div class="video-badge"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg></div>`
                         : '';
                     const flagAttr = photo.flag ? ` data-flag="${photo.flag}"` : '';
                     const flagClass = photo.flag ? '' : ' photo-flag-btn-empty';
+                    // Vote / comment counts, only while the matching filter is on:
+                    // that is when they are what the photographer is looking at.
+                    const counts = [];
+                    if (_photoFavoritedFilter && photo.favoriteCount) counts.push(`♥ ${photo.favoriteCount}`);
+                    if (_photoCommentsFilter && photo.commentCount) counts.push(`💬 ${photo.commentCount}`);
+                    const countBadges = counts.length
+                        ? `<div class="photo-count-badges">${counts.map(c => `<span class="photo-count-badge">${c}</span>`).join('')}</div>`
+                        : '';
                     card.innerHTML = `<img src="${photo.thumbnailUrl}" alt="" loading="lazy">
                         <button class="photo-flag-btn${flagClass}"${flagAttr} title="${t.cyclePhotoFlag}"></button>
                         ${videoBadge}
+                        ${countBadges}
                         <div class="photo-overlay-info">
                             <span class="photo-filename">${escapeHtml(photo.filename)}</span>
                             <button class="photo-delete-btn" title="${t.delete}">${trashSvg}</button>
@@ -3712,6 +3834,128 @@
                 if (item) item.classList.remove('deleting');
                 showError(t.couldNotDeletePhoto(err.message));
             }
+        }
+
+        // ── Admin lightbox ────────────────────────────────────────────────
+        // A click on a photo (outside selection mode) opens it large: the 1920px
+        // preview (an animated GIF/WebP plays, since previewUrl serves the original
+        // for those), or the video itself with its controls. It steps through what
+        // the grid showed when it opened (_galleryDetailShown, so active filters
+        // apply), from its own copy: a flag change that takes the photo out of a
+        // flag filter must not shift the sequence under it. Keys: arrows to move,
+        // Escape to close; on a phone, a horizontal swipe. Its state is declared
+        // with the page's, before the initial renderRoute(), because
+        // closeAdminLightbox() runs from teardownGalleryDetailPage().
+
+        function openAdminLightbox(filename) {
+            const index = _galleryDetailShown.findIndex(p => p.filename === filename);
+            if (index === -1) return;
+            _lbPhotos = _galleryDetailShown.slice();
+            _lbIndex = index;
+            setupAdminLightbox();
+            const lb = document.getElementById('adminLightbox');
+            lb.classList.add('active');
+            lb.setAttribute('aria-hidden', 'false');
+            renderAdminLightbox();
+        }
+
+        function closeAdminLightbox() {
+            const lb = document.getElementById('adminLightbox');
+            if (!lb || !lb.classList.contains('active')) return;
+            lb.classList.remove('active');
+            lb.setAttribute('aria-hidden', 'true');
+            document.getElementById('adminLightboxStage').innerHTML = ''; // also stops a playing video
+            _lbIndex = -1;
+        }
+
+        function stepAdminLightbox(delta) {
+            if (_lbIndex < 0 || _lbPhotos.length < 2) return;
+            _lbIndex = (_lbIndex + delta + _lbPhotos.length) % _lbPhotos.length;
+            renderAdminLightbox();
+        }
+
+        function renderAdminLightbox() {
+            const photo = _lbPhotos[_lbIndex];
+            if (!photo) { closeAdminLightbox(); return; }
+            const stage = document.getElementById('adminLightboxStage');
+            stage.innerHTML = '';
+            let media;
+            if (isVideoFilename(photo.filename)) {
+                media = document.createElement('video');
+                media.src = photo.url;
+                media.poster = photo.previewUrl;
+                media.controls = true;
+                media.playsInline = true;
+                media.preload = 'metadata';
+            } else {
+                media = document.createElement('img');
+                media.src = photo.previewUrl;
+                media.alt = '';
+            }
+            media.className = 'admin-lightbox-media';
+            stage.appendChild(media);
+            document.getElementById('adminLightboxName').textContent = photo.filename;
+            const meta = [`${_lbIndex + 1} / ${_lbPhotos.length}`];
+            if (photo.favoriteCount) meta.push(`♥ ${photo.favoriteCount}`);
+            if (photo.commentCount) meta.push(`💬 ${photo.commentCount}`);
+            document.getElementById('adminLightboxMeta').textContent = meta.join(' · ');
+            syncAdminLightboxFlag();
+            const single = _lbPhotos.length < 2;
+            document.getElementById('adminLightboxPrev').style.display = single ? 'none' : '';
+            document.getElementById('adminLightboxNext').style.display = single ? 'none' : '';
+            // Warm the neighbours so stepping feels instant (stills only).
+            [-1, 1].forEach(d => {
+                const next = _lbPhotos[(_lbIndex + d + _lbPhotos.length) % _lbPhotos.length];
+                if (next && next !== photo && !isVideoFilename(next.filename)) new Image().src = next.previewUrl;
+            });
+        }
+
+        function syncAdminLightboxFlag() {
+            const photo = _lbPhotos[_lbIndex];
+            const btn = document.getElementById('adminLightboxFlag');
+            if (!photo || !btn) return;
+            if (photo.flag) btn.dataset.flag = photo.flag;
+            else delete btn.dataset.flag;
+            btn.classList.toggle('photo-flag-btn-empty', !photo.flag);
+        }
+
+        // Same cycle and request as the swatch on the grid card; cyclePhotoFlag()
+        // updates the shared photo object, which the lightbox's copy points to.
+        async function cycleAdminLightboxFlag(event) {
+            const photo = _lbPhotos[_lbIndex];
+            if (!photo) return;
+            await cyclePhotoFlag(_galleryDetailId, photo.filename, photo.flag, event);
+            syncAdminLightboxFlag();
+        }
+
+        function setupAdminLightbox() {
+            const lb = document.getElementById('adminLightbox');
+            if (lb._initialized) return;
+            lb._initialized = true;
+            // Capture phase, like preview.html's lightbox: a focused <video> would
+            // otherwise take the arrow keys for seeking. stopPropagation also keeps
+            // this Escape from reaching the gallery list's selection-mode handler.
+            document.addEventListener('keydown', e => {
+                if (_lbIndex < 0) return;
+                const step = { ArrowLeft: -1, ArrowRight: 1 }[e.key];
+                if (e.key !== 'Escape' && !step) return;
+                e.preventDefault();
+                e.stopPropagation();
+                if (step) stepAdminLightbox(step); else closeAdminLightbox();
+            }, true);
+            let startX = null, startY = 0;
+            lb.addEventListener('touchstart', e => {
+                // A swipe on the video's own controls is a seek, not a step.
+                startX = (e.touches.length === 1 && !e.target.closest('video')) ? e.touches[0].clientX : null;
+                startY = e.touches.length ? e.touches[0].clientY : 0;
+            }, { passive: true });
+            lb.addEventListener('touchend', e => {
+                if (startX === null) return;
+                const dx = e.changedTouches[0].clientX - startX;
+                const dy = e.changedTouches[0].clientY - startY;
+                startX = null;
+                if (Math.abs(dx) > 45 && Math.abs(dx) > Math.abs(dy)) stepAdminLightbox(dx < 0 ? 1 : -1);
+            });
         }
 
         let _favGalleryId = null;
@@ -3763,15 +4007,7 @@
                     exportBtn.href = `/api/gallery/${galleryId}/favorites/export`;
                     exportBtn.style.display = 'inline';
 
-                    // favData.favorites is sorted by votes descending (server-side), so [0] holds the max.
-                    const maxVotes = favData.favorites[0].votes;
-                    const options = [`<option value="" selected disabled id="favDownloadPlaceholderOption">${t.downloadPhotos}</option>`];
-                    for (let n = 1; n <= maxVotes; n++) {
-                        const count = favData.favorites.filter(f => f.votes >= n).length;
-                        const label = n === 1 ? t.favDownloadAllOption(count) : t.minVotesOption(n, count);
-                        options.push(`<option value="${n}">${label}</option>`);
-                    }
-                    downloadSelect.innerHTML = options.join('');
+                    downloadSelect.innerHTML = favDownloadOptionsHtml(favData.favorites.map(f => f.votes), t.downloadPhotos, 'favDownloadPlaceholderOption');
                     downloadSelect.style.display = 'inline';
                     rankingBtn.style.display = 'inline';
                 }
@@ -3780,6 +4016,22 @@
             } catch (err) {
                 showError(t.couldNotLoadFavorites);
             }
+        }
+
+        // Options for a "download favorites" <select> used as an action menu: a
+        // disabled placeholder, then "All (n)" and one "≥k votes (n)" per vote
+        // level up to the highest. `votes` holds one vote count per favorited photo.
+        // Shared by the favorites modal and the gallery page's favorites actions.
+        function favDownloadOptionsHtml(votes, placeholder, placeholderId) {
+            const maxVotes = Math.max(0, ...votes);
+            const idAttr = placeholderId ? ` id="${placeholderId}"` : '';
+            const options = [`<option value="" selected disabled${idAttr}>${placeholder}</option>`];
+            for (let n = 1; n <= maxVotes; n++) {
+                const count = votes.filter(v => v >= n).length;
+                const label = n === 1 ? t.favDownloadAllOption(count) : t.minVotesOption(n, count);
+                options.push(`<option value="${n}">${label}</option>`);
+            }
+            return options.join('');
         }
 
         function handleFavDownloadSelect(selectEl) {
