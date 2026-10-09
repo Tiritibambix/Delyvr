@@ -171,12 +171,25 @@
                 <!-- Stored as galleries.lightbox_size / grid_spacing / corner_style for
                      history, but these drive the CLIENT page's photo grid (row height,
                      gaps, corners), not its lightbox: see renderClientGridPreview(). -->
-                <section class="settings-section">
+                <section class="settings-section" id="gsGridSection">
                     <h4 class="settings-section-title">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/></svg>
                         <span id="gsAppearanceLabel">Photo grid (client page)</span>
                     </h4>
                     <p class="settings-section-intro" id="gsAppearanceIntro"></p>
+                    <!-- Only for a gallery in a collection: off, it follows the collection's
+                         grid (the four menus below show it, greyed out); on, it uses its own.
+                         One switch for the whole grid, see syncGalleryGridSection(). -->
+                    <label class="settings-row settings-row-own" for="gsGridOwnCheckbox" id="gsGridOwnRow" style="display:none">
+                        <span class="settings-row-text">
+                            <span class="settings-row-label" id="gsGridOwnLabel">Use its own grid</span>
+                            <span class="settings-row-help" id="gsGridOwnHelp"></span>
+                        </span>
+                        <span class="toggle-switch">
+                            <input type="checkbox" id="gsGridOwnCheckbox" onchange="onGalleryGridOwnChange(this.checked)">
+                            <span class="toggle-track"></span>
+                        </span>
+                    </label>
                     <div class="grid-preview" id="gsGridPreview" aria-hidden="true">
                         <div class="grid-preview-viewport" id="gsGridPreviewViewport">
                             <div class="grid-preview-inner" id="gsGridPreviewInner"></div>
@@ -289,6 +302,66 @@
                             <option value="it">Italiano</option>
                         </select>
                     </div>
+                </section>
+                <!-- The default client grid of the collection's galleries: every gallery
+                     without a grid of its own (galleries.grid_own = 0) is shown with it.
+                     Same controls and preview code as the gallery panel, ids prefixed cs. -->
+                <section class="settings-section">
+                    <h4 class="settings-section-title">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/></svg>
+                        <span id="csAppearanceLabel">Photo grid (client page)</span>
+                    </h4>
+                    <p class="settings-section-intro" id="csAppearanceIntro"></p>
+                    <div class="grid-preview" aria-hidden="true">
+                        <div class="grid-preview-viewport" id="csGridPreviewViewport">
+                            <div class="grid-preview-inner" id="csGridPreviewInner"></div>
+                        </div>
+                    </div>
+                    <div class="settings-row settings-row-select">
+                        <span class="settings-row-text">
+                            <span class="settings-row-label" id="csLayoutLabel">Layout</span>
+                            <span class="settings-row-help" id="csLayoutHelp"></span>
+                        </span>
+                        <select class="settings-select" id="csGridLayout" onchange="onCollectionAppearanceChange()">
+                            <option value="justified" id="csLayoutJustifiedOpt">Justified (default)</option>
+                            <option value="masonry" id="csLayoutMasonryOpt">Masonry</option>
+                            <option value="square" id="csLayoutSquareOpt">Square grid</option>
+                            <option value="column" id="csLayoutColumnOpt">One per row</option>
+                        </select>
+                    </div>
+                    <div class="settings-row settings-row-select">
+                        <span class="settings-row-text">
+                            <span class="settings-row-label" id="csSizeLabel">Photo size</span>
+                            <span class="settings-row-help" id="csSizeHelp"></span>
+                        </span>
+                        <select class="settings-select" id="csLightboxSize" onchange="onCollectionAppearanceChange()">
+                            <option value="small" id="csSizeSmallOpt">Small</option>
+                            <option value="medium" id="csSizeMediumOpt">Medium</option>
+                            <option value="large" id="csSizeLargeOpt">Large</option>
+                        </select>
+                    </div>
+                    <div class="settings-row settings-row-select">
+                        <span class="settings-row-text">
+                            <span class="settings-row-label" id="csSpacingLabel">Spacing</span>
+                            <span class="settings-row-help" id="csSpacingHelp"></span>
+                        </span>
+                        <select class="settings-select" id="csGridSpacing" onchange="onCollectionAppearanceChange()">
+                            <option value="small" id="csSpacingSmallOpt">Tight</option>
+                            <option value="medium" id="csSpacingMediumOpt">Normal</option>
+                            <option value="large" id="csSpacingLargeOpt">Wide</option>
+                        </select>
+                    </div>
+                    <div class="settings-row settings-row-select">
+                        <span class="settings-row-text">
+                            <span class="settings-row-label" id="csCornersLabel">Corners</span>
+                            <span class="settings-row-help" id="csCornersHelp"></span>
+                        </span>
+                        <select class="settings-select" id="csCornerStyle" onchange="onCollectionAppearanceChange()">
+                            <option value="square" id="csCornerSquareOpt">Square</option>
+                            <option value="rounded" id="csCornerRoundedOpt">Rounded</option>
+                        </select>
+                    </div>
+                    <p class="settings-row-help collection-grid-followers" id="csGridFollowers"></p>
                 </section>
             </div>
         </aside>
@@ -1102,6 +1175,30 @@
             byId('csLanguageLabel', t.clientLanguageTitle);
             byId('csLanguageHelp', t.csLanguageHelp);
             byId('csLangAutoOpt', t.autoLanguage);
+            // Collection grid: same labels as the gallery panel's grid section.
+            byId('csAppearanceLabel', t.gsAppearanceLabel);
+            byId('csAppearanceIntro', t.csAppearanceIntro);
+            byId('csLayoutLabel', t.gsLayoutLabel);
+            byId('csSizeLabel', t.gsLightboxSizeLabel);
+            byId('csSizeHelp', t.gsSizeHelp);
+            byId('csSpacingLabel', t.gsGridSpacingLabel);
+            byId('csSpacingHelp', t.gsSpacingHelp);
+            byId('csCornersLabel', t.gsCornerStyleLabel);
+            byId('csCornersHelp', t.gsCornersHelp);
+            byId('csLayoutJustifiedOpt', t.gsLayoutJustified);
+            byId('csLayoutMasonryOpt', t.gsLayoutMasonry);
+            byId('csLayoutSquareOpt', t.gsLayoutSquare);
+            byId('csLayoutColumnOpt', t.gsLayoutColumn);
+            byId('csSizeSmallOpt', t.gsSizeSmall);
+            byId('csSizeMediumOpt', t.gsSizeMedium);
+            byId('csSizeLargeOpt', t.gsSizeLarge);
+            byId('csSpacingSmallOpt', t.gsSpacingSmall);
+            byId('csSpacingMediumOpt', t.gsSpacingMedium);
+            byId('csSpacingLargeOpt', t.gsSpacingLarge);
+            byId('csCornerSquareOpt', t.cornerSquare);
+            byId('csCornerRoundedOpt', t.cornerRounded);
+            byId('gsGridOwnLabel', t.gsGridOwnLabel);
+            if (document.getElementById('collectionSettingsModal').classList.contains('active')) syncCollectionGridSection();
             if (_collectionDetailId) renderCollectionDetailPage();
             byId('galleryDetailDownloadText', t.galleryDetailDownloadZip);
             byId('filterFavoritedText', t.filterFavorited);
@@ -1163,7 +1260,7 @@
             syncGalleryLayoutHelp();
             // The access help lines carry the collection override, the status
             // pills their current state: both are rewritten for the open panel.
-            if (_galleryDetailId) syncGallerySettingsHelp();
+            if (_galleryDetailId) { syncGallerySettingsHelp(); syncGalleryGridSection(); }
 
             byId('uploadWarningText', t.uploadDontLeave);
             byId('uploadMiniTitle', t.uploadInProgress);
@@ -3602,16 +3699,61 @@
                 document.getElementById('gsClientLanguage').value = g.clientLanguage || 'auto';
                 document.getElementById('gsPasswordInput').value = '';
                 syncExpirationField(g.expiresAt);
-                document.getElementById('gsLightboxSize').value = g.lightboxSize;
-                document.getElementById('gsGridSpacing').value = g.gridSpacing;
-                document.getElementById('gsCornerStyle').value = g.cornerStyle;
-                document.getElementById('gsGridLayout').value = g.gridLayout || 'justified';
-                syncGalleryLayoutHelp();
                 syncGallerySettingsHelp();
-                renderClientGridPreview();
+                syncGalleryGridSection();
             } catch (err) {
                 showError(t.couldNotLoadGallery);
             }
+        }
+
+        // The grid section of a gallery's panel, from _gallerySettings. In a
+        // collection and following it (gridOwn false): the switch is off, the four
+        // menus show the COLLECTION's grid, greyed out, and the preview draws it.
+        // Otherwise the menus show and edit the gallery's own grid. In no
+        // collection there is nothing to follow: no switch, own grid.
+        function syncGalleryGridSection() {
+            const g = _gallerySettings;
+            if (!g) return;
+            const col = g.collectionId ? (_collectionsData || []).find(c => c.id === g.collectionId) : null;
+            const inCollection = !!g.collectionGrid;
+            const following = inCollection && !g.gridOwn;
+            const grid = following ? g.collectionGrid : g;
+            document.getElementById('gsGridOwnRow').style.display = inCollection ? '' : 'none';
+            document.getElementById('gsGridOwnCheckbox').checked = !following;
+            document.getElementById('gsGridOwnHelp').textContent = inCollection
+                ? (following ? t.gsGridFollowHelp(col ? col.name : '') : t.gsGridOwnHelp(col ? col.name : ''))
+                : '';
+            const values = { gsGridLayout: grid.gridLayout || 'justified', gsLightboxSize: grid.lightboxSize, gsGridSpacing: grid.gridSpacing, gsCornerStyle: grid.cornerStyle };
+            Object.entries(values).forEach(([id, value]) => {
+                const select = document.getElementById(id);
+                select.value = value;
+                select.disabled = following;
+            });
+            document.getElementById('gsGridSection').classList.toggle('is-following', following);
+            syncGalleryLayoutHelp();
+            renderClientGridPreview();
+        }
+
+        // Turning the switch on starts the gallery's own grid FROM the collection's
+        // (always, even if older own values are stored), so nothing jumps on screen:
+        // the photographer then changes only what differs. Turning it off goes back
+        // to following the collection.
+        async function onGalleryGridOwnChange(own) {
+            const g = _gallerySettings;
+            if (!g) return;
+            const body = own && g.collectionGrid ? { gridOwn: true, ...g.collectionGrid } : { gridOwn: own };
+            try {
+                const res = await fetch(`/api/gallery/${_galleryDetailId}/appearance`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(body)
+                });
+                if (!res.ok) throw new Error('Failed');
+                Object.assign(g, await res.json());
+            } catch (err) {
+                showError(t.couldNotUpdateAppearance);
+            }
+            syncGalleryGridSection();
         }
 
         function closeGallerySettingsPanel() {
@@ -3643,6 +3785,10 @@
             const cmHelp = document.getElementById('gsCommentsHelp');
             cmHelp.textContent = cmBlocked ? t.commentsBlockedByCollection(col.name) : t.gsCommentsHelp;
             cmHelp.classList.toggle('is-warning', cmBlocked);
+            // A gallery's "auto" language is NULL, which means "as the collection"
+            // when it is in one (resolveGalleryClientLanguage() server-side): say so.
+            const autoOpt = document.getElementById('gsLangAutoOpt');
+            if (autoOpt) autoOpt.textContent = col ? t.gsLangFollowCollection(col.name) : t.autoLanguage;
             if (g) {
                 syncPasswordStatus(g.hasPassword);
                 syncExpirationField(g.expiresAt);
@@ -3769,15 +3915,19 @@
                     })
                 });
                 if (!res.ok) throw new Error('Failed');
+                // Keep the panel's state in step, or the next syncGalleryGridSection()
+                // would put the previous values back in the menus.
+                if (_gallerySettings) Object.assign(_gallerySettings, await res.json());
             } catch (err) {
                 showError(t.couldNotUpdateAppearance);
             }
         }
 
-        // The layout's help line describes the selected layout.
-        function syncGalleryLayoutHelp() {
-            const select = document.getElementById('gsGridLayout');
-            const help = document.getElementById('gsLayoutHelp');
+        // The layout's help line describes the selected layout. `prefix` picks the
+        // panel: 'gs' (gallery settings) or 'cs' (collection settings).
+        function syncGalleryLayoutHelp(prefix = 'gs') {
+            const select = document.getElementById(`${prefix}GridLayout`);
+            const help = document.getElementById(`${prefix}LayoutHelp`);
             if (!select || !help) return;
             const keys = { justified: 'gsLayoutJustifiedHelp', masonry: 'gsLayoutMasonryHelp', square: 'gsLayoutSquareHelp', column: 'gsLayoutColumnHelp' };
             help.textContent = t[keys[select.value] || keys.justified];
@@ -3874,16 +4024,18 @@
         }
         // ── end of computeGalleryLayout ──
 
-        function renderClientGridPreview() {
-            const viewport = document.getElementById('gsGridPreviewViewport');
-            const inner = document.getElementById('gsGridPreviewInner');
+        // `prefix` picks the panel ('gs' gallery, 'cs' collection) and `source` the
+        // photos to draw (the gallery's own by default).
+        function renderClientGridPreview(prefix = 'gs', source = _galleryDetailPhotos) {
+            const viewport = document.getElementById(`${prefix}GridPreviewViewport`);
+            const inner = document.getElementById(`${prefix}GridPreviewInner`);
             if (!viewport || !inner) return;
-            const layout = document.getElementById('gsGridLayout').value;
-            const size = document.getElementById('gsLightboxSize').value;
-            const spacing = document.getElementById('gsGridSpacing').value;
-            const radius = document.getElementById('gsCornerStyle').value === 'rounded' ? CLIENT_PREVIEW.radius : 0;
-            const photos = _galleryDetailPhotos.length
-                ? _galleryDetailPhotos.slice(0, 40)
+            const layout = document.getElementById(`${prefix}GridLayout`).value;
+            const size = document.getElementById(`${prefix}LightboxSize`).value;
+            const spacing = document.getElementById(`${prefix}GridSpacing`).value;
+            const radius = document.getElementById(`${prefix}CornerStyle`).value === 'rounded' ? CLIENT_PREVIEW.radius : 0;
+            const photos = source && source.length
+                ? source.slice(0, 40)
                 : CLIENT_PREVIEW_PLACEHOLDER_RATIOS.map(r => ({ width: Math.round(r * 1000), height: 1000 }));
             const geo = computeGalleryLayout(layout, photos, CLIENT_PREVIEW.width, CLIENT_PREVIEW.vw, size, spacing);
 
@@ -5289,7 +5441,76 @@
             document.getElementById('csIntro').textContent = t.collectionSettingsIntro;
             document.getElementById('collectionSettingsModal').classList.add('active');
             document.querySelector('#collectionSettingsModal .side-panel-body').scrollTop = 0;
+            syncCollectionGridSection();
+            loadCollectionPreviewPhotos(c);
         }
+
+        // ── Collection grid (collection settings panel) ──
+        // The menus show the collection's grid; the follower line counts its
+        // galleries that use it (gridOwn false) and those that have their own.
+        function syncCollectionGridSection() {
+            const c = (_collectionsData || []).find(x => x.id === _collectionDetailId);
+            if (!c) return;
+            const values = { csGridLayout: c.gridLayout || 'justified', csLightboxSize: c.lightboxSize || 'medium', csGridSpacing: c.gridSpacing || 'medium', csCornerStyle: c.cornerStyle || 'square' };
+            Object.entries(values).forEach(([id, value]) => { document.getElementById(id).value = value; });
+            const members = c.galleryIds.map(gid => (_galleriesData || []).find(g => g.id === gid)).filter(Boolean);
+            const own = members.filter(g => g.gridOwn).length;
+            document.getElementById('csGridFollowers').textContent = members.length ? t.csGridFollowers(members.length - own, own) : '';
+            syncGalleryLayoutHelp('cs');
+            renderClientGridPreview('cs', _collectionPreviewPhotos.photos);
+        }
+
+        // Photos for the collection preview: those of its galleries, in order, up to
+        // 40, fetched once per opening of the panel (the collection has no photo list
+        // of its own).
+        let _collectionPreviewPhotos = { id: null, photos: [] };
+        async function loadCollectionPreviewPhotos(c) {
+            if (_collectionPreviewPhotos.id !== c.id) _collectionPreviewPhotos = { id: c.id, photos: [] };
+            const photos = [];
+            for (const gid of c.galleryIds) {
+                if (photos.length >= 40) break;
+                try {
+                    const res = await fetch(`/api/gallery/${gid}/photos`);
+                    if (res.ok) photos.push(...((await res.json()).photos || []));
+                } catch (_) {}
+            }
+            if (_collectionDetailId !== c.id) return;
+            _collectionPreviewPhotos = { id: c.id, photos };
+            renderClientGridPreview('cs', photos);
+        }
+
+        function onCollectionAppearanceChange() {
+            syncGalleryLayoutHelp('cs');
+            renderClientGridPreview('cs', _collectionPreviewPhotos.photos);
+            saveCollectionAppearance();
+        }
+
+        async function saveCollectionAppearance() {
+            const id = _collectionDetailId;
+            try {
+                const res = await fetch(`/api/collection/${id}/appearance`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        gridLayout: document.getElementById('csGridLayout').value,
+                        lightboxSize: document.getElementById('csLightboxSize').value,
+                        gridSpacing: document.getElementById('csGridSpacing').value,
+                        cornerStyle: document.getElementById('csCornerStyle').value
+                    })
+                });
+                if (!res.ok) throw new Error('Failed');
+                const c = (_collectionsData || []).find(x => x.id === id);
+                if (c) Object.assign(c, await res.json());
+            } catch (err) {
+                showError(t.couldNotUpdateAppearance);
+            }
+        }
+
+        window.addEventListener('resize', () => {
+            if (document.getElementById('collectionSettingsModal').classList.contains('active')) {
+                renderClientGridPreview('cs', _collectionPreviewPhotos.photos);
+            }
+        });
 
         function closeCollectionSettingsPanel() {
             const panel = document.getElementById('collectionSettingsModal');

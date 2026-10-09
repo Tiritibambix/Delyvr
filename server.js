@@ -448,6 +448,37 @@ function resolveCollectionClientLanguage(collectionId) {
     return getSettings().clientLanguage || 'auto';
 }
 
+// The client photo grid a gallery is shown with. A gallery in a collection
+// follows the collection's grid unless it has its own (galleries.grid_own = 1);
+// a gallery in no collection always uses its own four columns. Same "most
+// specific wins" idea as resolveGalleryClientLanguage(), but for the four grid
+// settings as one block: a gallery takes all of them or none.
+const GRID_DEFAULTS = { gridLayout: 'justified', lightboxSize: 'medium', gridSpacing: 'medium', cornerStyle: 'square' };
+function gridFromRow(row) {
+    return {
+        gridLayout: row.grid_layout,
+        lightboxSize: row.lightbox_size,
+        gridSpacing: row.grid_spacing,
+        cornerStyle: row.corner_style
+    };
+}
+function collectionGridOf(galleryId) {
+    const row = db.prepare(`
+        SELECT c.grid_layout, c.lightbox_size, c.grid_spacing, c.corner_style
+        FROM collection_galleries cg JOIN collections c ON c.id = cg.collection_id
+        WHERE cg.gallery_id = ?`).get(galleryId);
+    return row ? gridFromRow(row) : null;
+}
+function resolveGalleryGrid(galleryId) {
+    const gallery = db.prepare(`SELECT grid_layout, lightbox_size, grid_spacing, corner_style, grid_own FROM galleries WHERE id = ?`).get(galleryId);
+    if (!gallery) return { ...GRID_DEFAULTS };
+    if (!gallery.grid_own) {
+        const inherited = collectionGridOf(galleryId);
+        if (inherited) return inherited;
+    }
+    return gridFromRow(gallery);
+}
+
 // --- Helper functions ---
 
 // Find a custom logo stored in DATA_DIR (any extension). Returns null if none exists.
@@ -1874,32 +1905,50 @@ app.patch('/api/gallery/:galleryId/expiration', adminLimiter, requireAuth, valid
     res.json({ expiresAt: normalized });
 });
 
-// Set a gallery's per-gallery lightbox appearance (preview size, grid
-// spacing, photo corners). Patches only the keys present, same idiom as
-// updateSettings() — route handlers validate each field before it is passed
-// through.
+// The four client grid settings, validated and patched (only the keys present,
+// same idiom as updateSettings()), on a gallery or a collection: both tables
+// have the same four columns. `table` is always one of the two literals below,
+// never a request value. Returns the row's settings after the update.
+const GRID_COLUMNS = [
+    ['gridLayout',   'grid_layout',   ['justified', 'masonry', 'square', 'column']],
+    ['lightboxSize', 'lightbox_size', ['small', 'medium', 'large']],
+    ['gridSpacing',  'grid_spacing',  ['small', 'medium', 'large']],
+    ['cornerStyle',  'corner_style',  ['rounded', 'square']]
+];
+function patchGridColumns(table, id, body) {
+    const sets = [];
+    const params = { id };
+    for (const [key, column, allowed] of GRID_COLUMNS) {
+        if (allowed.includes(body[key])) { sets.push(`${column} = @${column}`); params[column] = body[key]; }
+    }
+    if (sets.length > 0) db.prepare(`UPDATE ${table} SET ${sets.join(', ')} WHERE id = @id`).run(params);
+    return gridFromRow(db.prepare(`SELECT grid_layout, lightbox_size, grid_spacing, corner_style FROM ${table} WHERE id = ?`).get(id));
+}
+
+// A gallery's own client grid, and whether it uses it (gridOwn) or follows
+// its collection's. gridOwn only matters while the gallery is in a collection.
 app.patch('/api/gallery/:galleryId/appearance', adminLimiter, requireAuth, validateGalleryId, (req, res) => {
     const { galleryId } = req.params;
     const galleryExists = db.prepare(`SELECT 1 FROM galleries WHERE id = ?`).get(galleryId);
     if (!galleryExists) return res.status(404).json({ error: 'Gallery not found' });
 
-    const SIZES = ['small', 'medium', 'large'];
-    const CORNERS = ['rounded', 'square'];
-    const LAYOUTS = ['justified', 'masonry', 'square', 'column'];
-    const { lightboxSize, gridSpacing, cornerStyle, gridLayout } = req.body;
-    // Same "patch only the keys present" idiom as updateSettings() above.
-    const sets = [];
-    const params = { id: galleryId };
-    if (SIZES.includes(lightboxSize)) { sets.push('lightbox_size = @lightbox_size'); params.lightbox_size = lightboxSize; }
-    if (SIZES.includes(gridSpacing)) { sets.push('grid_spacing = @grid_spacing'); params.grid_spacing = gridSpacing; }
-    if (CORNERS.includes(cornerStyle)) { sets.push('corner_style = @corner_style'); params.corner_style = cornerStyle; }
-    if (LAYOUTS.includes(gridLayout)) { sets.push('grid_layout = @grid_layout'); params.grid_layout = gridLayout; }
-    if (sets.length > 0) {
-        db.prepare(`UPDATE galleries SET ${sets.join(', ')} WHERE id = @id`).run(params);
-    }
+    db.transaction(() => {
+        if (typeof req.body.gridOwn === 'boolean') {
+            db.prepare(`UPDATE galleries SET grid_own = ? WHERE id = ?`).run(req.body.gridOwn ? 1 : 0, galleryId);
+        }
+        patchGridColumns('galleries', galleryId, req.body);
+    })();
+    const own = db.prepare(`SELECT grid_own FROM galleries WHERE id = ?`).get(galleryId).grid_own;
+    res.json({ ...patchGridColumns('galleries', galleryId, {}), gridOwn: !!own });
+});
 
-    const row = db.prepare(`SELECT lightbox_size, grid_spacing, corner_style, grid_layout FROM galleries WHERE id = ?`).get(galleryId);
-    res.json({ lightboxSize: row.lightbox_size, gridSpacing: row.grid_spacing, cornerStyle: row.corner_style, gridLayout: row.grid_layout });
+// A collection's client grid: the default of every gallery in it that has no
+// grid of its own.
+app.patch('/api/collection/:collectionId/appearance', adminLimiter, requireAuth, validateCollectionId, (req, res) => {
+    const { collectionId } = req.params;
+    const exists = db.prepare(`SELECT 1 FROM collections WHERE id = ?`).get(collectionId);
+    if (!exists) return res.status(404).json({ error: 'Collection not found' });
+    res.json(patchGridColumns('collections', collectionId, req.body));
 });
 
 // Full admin-shape single-gallery object — needed so the gallery detail page
@@ -1911,7 +1960,7 @@ app.get('/api/gallery/:galleryId', adminLimiter, requireAuth, validateGalleryId,
     const row = db.prepare(`
         SELECT id, event_name, created_at, downloads_enabled, comments_enabled, client_language,
                download_count, view_count, password_hash, expires_at,
-               lightbox_size, grid_spacing, corner_style, grid_layout
+               lightbox_size, grid_spacing, corner_style, grid_layout, grid_own
         FROM galleries WHERE id = ? AND deleted = 0
     `).get(galleryId);
     if (!row) return res.status(404).json({ error: 'Gallery not found' });
@@ -1937,7 +1986,12 @@ app.get('/api/gallery/:galleryId', adminLimiter, requireAuth, validateGalleryId,
         lightboxSize: row.lightbox_size,
         gridSpacing: row.grid_spacing,
         cornerStyle: row.corner_style,
-        gridLayout: row.grid_layout
+        gridLayout: row.grid_layout,
+        // The four values above are the gallery's OWN grid. gridOwn says whether
+        // it uses them; collectionGrid is what it follows otherwise (null when the
+        // gallery is in no collection, where its own grid always applies).
+        gridOwn: !!row.grid_own,
+        collectionGrid: collectionGridOf(galleryId)
     });
 });
 
@@ -2456,13 +2510,11 @@ app.get('/api/gallery/:galleryId/info', publicReadLimiter, validateGalleryId, ch
         viewCount,
         commentsEnabled: gallery ? (!!gallery.comments_enabled && !isGalleryBlockedByCollectionForComments(galleryId)) : true,
         clientLanguage: resolveGalleryClientLanguage(galleryId),
-        // The client photo grid settings, read by preview.html's applyGalleryAppearance().
-        // They were missing from this response at first, so the settings were saved but
-        // never reached the client page.
-        gridLayout: gallery ? gallery.grid_layout : 'justified',
-        lightboxSize: gallery ? gallery.lightbox_size : 'medium',
-        gridSpacing: gallery ? gallery.grid_spacing : 'medium',
-        cornerStyle: gallery ? gallery.corner_style : 'square'
+        // The client photo grid the gallery is shown with (its own, or its
+        // collection's: resolveGalleryGrid()), read by preview.html's
+        // applyGalleryAppearance(). These were missing from this response at first,
+        // so the settings were saved but never reached the client page.
+        ...resolveGalleryGrid(galleryId)
     });
 });
 
@@ -2916,6 +2968,8 @@ app.get('/api/collections', adminLimiter, requireAuth, (req, res) => {
             downloadsEnabled: !!c.downloads_enabled,
             commentsEnabled: !!c.comments_enabled,
             clientLanguage: c.client_language || 'auto',
+            // The default client grid of its galleries (collection settings panel).
+            ...gridFromRow(c),
             // Audio montage, so the collection card can show / replace / remove it.
             // Reported only when the file is actually still on disk.
             audio: (c.audio_filename && findAudioFile(`collection-${c.id}`))
@@ -3435,7 +3489,11 @@ app.get('/api/galleries', adminLimiter, requireAuth, (req, res) => {
                 isExpired: !!(gallery.expires_at && gallery.expires_at < nowIso),
                 lightboxSize: gallery.lightbox_size,
                 gridSpacing: gallery.grid_spacing,
-                cornerStyle: gallery.corner_style
+                cornerStyle: gallery.corner_style,
+                gridLayout: gallery.grid_layout,
+                // Read by the collection settings panel: how many of its galleries
+                // follow its grid and how many have their own.
+                gridOwn: !!gallery.grid_own
             });
         });
     }

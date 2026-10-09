@@ -34,6 +34,7 @@ CREATE TABLE IF NOT EXISTS galleries (
     grid_spacing       TEXT NOT NULL DEFAULT 'medium' CHECK (grid_spacing  IN ('small','medium','large')),
     corner_style       TEXT NOT NULL DEFAULT 'square'  CHECK (corner_style IN ('rounded','square')),  -- 'medium'/'square' are exact no-ops against pre-existing visual output — see preview.html
     grid_layout        TEXT NOT NULL DEFAULT 'justified' CHECK (grid_layout IN ('justified','masonry','square','column')),  -- client photo grid layout; 'justified' is the layout every gallery had before this column
+    grid_own           INTEGER NOT NULL DEFAULT 0 CHECK (grid_own IN (0,1)),  -- 0 = follows its collection's grid (when in one), 1 = uses the four columns above; see db/index.js for how existing rows were set
     CHECK ( (deleted = 0 AND deleted_at IS NULL) OR (deleted = 1 AND deleted_at IS NOT NULL) ),
     CHECK ( (audio_filename IS NULL AND audio_stored IS NULL AND audio_size IS NULL AND audio_uploaded_at IS NULL)
          OR (audio_filename IS NOT NULL AND audio_stored IS NOT NULL AND audio_size IS NOT NULL AND audio_uploaded_at IS NOT NULL) )
@@ -52,7 +53,13 @@ CREATE TABLE IF NOT EXISTS collections (
     audio_stored       TEXT,
     audio_size         INTEGER CHECK (audio_size IS NULL OR audio_size >= 0),
     audio_duration     REAL CHECK (audio_duration IS NULL OR audio_duration >= 0),
-    audio_uploaded_at  TEXT
+    audio_uploaded_at  TEXT,
+    -- Default client photo grid of the collection's galleries (a gallery with
+    -- galleries.grid_own = 0 uses these); same values and defaults as galleries.
+    grid_layout        TEXT NOT NULL DEFAULT 'justified' CHECK (grid_layout IN ('justified','masonry','square','column')),
+    lightbox_size      TEXT NOT NULL DEFAULT 'medium' CHECK (lightbox_size IN ('small','medium','large')),
+    grid_spacing       TEXT NOT NULL DEFAULT 'medium' CHECK (grid_spacing  IN ('small','medium','large')),
+    corner_style       TEXT NOT NULL DEFAULT 'square'  CHECK (corner_style IN ('rounded','square'))
     -- Deliberately NO deleted/deleted_at/sort_order columns: collections have no
     -- trash and no manual card ordering today — DELETE /api/collection/:id is a
     -- straight hard delete that never touches member galleries.

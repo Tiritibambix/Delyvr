@@ -55,14 +55,46 @@ const GALLERIES_ADDED_COLUMNS = [
     ['lightbox_size', `lightbox_size TEXT NOT NULL DEFAULT 'medium' CHECK (lightbox_size IN ('small','medium','large'))`],
     ['grid_spacing',  `grid_spacing TEXT NOT NULL DEFAULT 'medium' CHECK (grid_spacing  IN ('small','medium','large'))`],
     ['corner_style',  `corner_style TEXT NOT NULL DEFAULT 'square' CHECK (corner_style IN ('rounded','square'))`],
-    ['grid_layout',   `grid_layout TEXT NOT NULL DEFAULT 'justified' CHECK (grid_layout IN ('justified','masonry','square','column'))`]
+    ['grid_layout',   `grid_layout TEXT NOT NULL DEFAULT 'justified' CHECK (grid_layout IN ('justified','masonry','square','column'))`],
+    ['grid_own',      `grid_own INTEGER NOT NULL DEFAULT 0 CHECK (grid_own IN (0,1))`]
 ];
 
 function ensureGalleriesColumns(db) {
     const existing = db.pragma('table_info(galleries)').map(c => c.name);
     if (existing.length === 0) return;
+    const added = [];
     for (const [name, ddl] of GALLERIES_ADDED_COLUMNS) {
-        if (!existing.includes(name)) db.exec(`ALTER TABLE galleries ADD COLUMN ${ddl}`);
+        if (!existing.includes(name)) {
+            db.exec(`ALTER TABLE galleries ADD COLUMN ${ddl}`);
+            added.push(name);
+        }
+    }
+    // grid_own arrives with 0 ("follows its collection's grid") on every row. A
+    // gallery whose grid was already customised must keep it, so at the moment
+    // the column is created, and only then, any row off the defaults becomes
+    // grid_own = 1. Running this again later would undo a photographer's own
+    // "follow the collection" choice, hence the `added` guard.
+    if (added.includes('grid_own')) {
+        db.exec(`UPDATE galleries SET grid_own = 1
+                 WHERE grid_layout <> 'justified' OR lightbox_size <> 'medium'
+                    OR grid_spacing <> 'medium' OR corner_style <> 'square'`);
+    }
+}
+
+// Collections gained the galleries' client grid settings: the default grid of
+// their galleries. Byte-identical to schema.sql, same rules as above.
+const COLLECTIONS_ADDED_COLUMNS = [
+    ['grid_layout',   `grid_layout TEXT NOT NULL DEFAULT 'justified' CHECK (grid_layout IN ('justified','masonry','square','column'))`],
+    ['lightbox_size', `lightbox_size TEXT NOT NULL DEFAULT 'medium' CHECK (lightbox_size IN ('small','medium','large'))`],
+    ['grid_spacing',  `grid_spacing TEXT NOT NULL DEFAULT 'medium' CHECK (grid_spacing  IN ('small','medium','large'))`],
+    ['corner_style',  `corner_style TEXT NOT NULL DEFAULT 'square' CHECK (corner_style IN ('rounded','square'))`]
+];
+
+function ensureCollectionsColumns(db) {
+    const existing = db.pragma('table_info(collections)').map(c => c.name);
+    if (existing.length === 0) return;
+    for (const [name, ddl] of COLLECTIONS_ADDED_COLUMNS) {
+        if (!existing.includes(name)) db.exec(`ALTER TABLE collections ADD COLUMN ${ddl}`);
     }
 }
 
@@ -89,6 +121,7 @@ function applySchema(db) {
     db.exec(fs.readFileSync(SCHEMA_PATH, 'utf8'));
     ensureSettingsColumns(db);
     ensureGalleriesColumns(db);
+    ensureCollectionsColumns(db);
     ensureFilesColumns(db);
 }
 
@@ -126,4 +159,4 @@ function openDatabase(dbPath) {
     return db;
 }
 
-module.exports = { openDatabase, applySchema, ensureSettingsColumns, ensureGalleriesColumns, ensureFilesColumns, SCHEMA_PATH };
+module.exports = { openDatabase, applySchema, ensureSettingsColumns, ensureGalleriesColumns, ensureCollectionsColumns, ensureFilesColumns, SCHEMA_PATH };

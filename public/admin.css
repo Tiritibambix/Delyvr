@@ -879,6 +879,13 @@ html:not(.light) .settings-inline input[type="date"]::-webkit-calendar-picker-in
 .grid-preview-inner { transform-origin: top left; }
 .grid-preview-row { display: flex; }
 .grid-preview-column { display: flex; flex-direction: column; flex-shrink: 0; }
+/* A gallery following its collection's grid: the switch row is set apart, the
+   four menus show the collection's values greyed out (syncGalleryGridSection()). */
+.settings-row-own { border: 1px solid var(--border2); border-radius: 6px; padding: 10px 12px; margin-bottom: 12px; }
+.settings-row-own + .grid-preview { margin-top: 0; }
+#gsGridSection.is-following .settings-row-select { opacity: 0.55; }
+.settings-select:disabled { cursor: not-allowed; }
+.collection-grid-followers { margin-top: 10px; }
 .grid-preview-cell { display: block; flex-shrink: 0; object-fit: cover; background: var(--bg3); }
 
 @media (max-width: 480px) {

@@ -232,6 +232,50 @@ describe('ensureGalleriesColumns / ensureFilesColumns — upgrading an already-m
         assert.equal(fileCols.filter(c => c === 'flag').length, 1);
         db.close();
     });
+
+    test('grid_own: a gallery already off the default grid keeps it, the others follow their collection', () => {
+        const db = legacyDb();
+        // An install upgraded before grid_own existed: the four grid columns are
+        // there, grid_own is not.
+        for (const ddl of [
+            `lightbox_size TEXT NOT NULL DEFAULT 'medium' CHECK (lightbox_size IN ('small','medium','large'))`,
+            `grid_spacing TEXT NOT NULL DEFAULT 'medium' CHECK (grid_spacing  IN ('small','medium','large'))`,
+            `corner_style TEXT NOT NULL DEFAULT 'square' CHECK (corner_style IN ('rounded','square'))`,
+            `grid_layout TEXT NOT NULL DEFAULT 'justified' CHECK (grid_layout IN ('justified','masonry','square','column'))`
+        ]) db.exec(`ALTER TABLE galleries ADD COLUMN ${ddl}`);
+        db.prepare(`INSERT INTO galleries (id, created_at, grid_layout) VALUES ('g2', ?, 'masonry')`).run(new Date().toISOString());
+        db.prepare(`INSERT INTO galleries (id, created_at, corner_style) VALUES ('g3', ?, 'rounded')`).run(new Date().toISOString());
+
+        applySchema(db);
+
+        const own = id => db.prepare(`SELECT grid_own FROM galleries WHERE id = ?`).get(id).grid_own;
+        assert.equal(own('g1'), 0);
+        assert.equal(own('g2'), 1);
+        assert.equal(own('g3'), 1);
+
+        // The backfill runs only when the column is created: a later choice to
+        // follow the collection is never overwritten by the next start.
+        db.prepare(`UPDATE galleries SET grid_own = 0 WHERE id = 'g2'`).run();
+        applySchema(db);
+        assert.equal(own('g2'), 0);
+        assert.throws(() => {
+            db.prepare(`UPDATE galleries SET grid_own = 2 WHERE id = 'g1'`).run();
+        }, /CHECK constraint failed/);
+        db.close();
+    });
+
+    test('collections get the grid columns, with the gallery defaults and their CHECKs', () => {
+        const db = legacyDb();
+        db.prepare(`INSERT INTO collections (id, created_at) VALUES ('c1', ?)`).run(new Date().toISOString());
+        applySchema(db);
+        const col = db.prepare(`SELECT grid_layout, lightbox_size, grid_spacing, corner_style FROM collections WHERE id = 'c1'`).get();
+        assert.deepEqual(col, { grid_layout: 'justified', lightbox_size: 'medium', grid_spacing: 'medium', corner_style: 'square' });
+        assert.throws(() => {
+            db.prepare(`UPDATE collections SET grid_layout = 'carousel' WHERE id = 'c1'`).run();
+        }, /CHECK constraint failed/);
+        assert.doesNotThrow(() => applySchema(db));
+        db.close();
+    });
 });
 
 describe('CHECK constraints — enums', () => {

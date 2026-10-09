@@ -171,6 +171,14 @@ non-constant defaults, `REFERENCES` while `foreign_keys` is on, and `STORED` gen
 columns; a `NOT NULL` column needs a non-null default (existing rows take it, which is also
 what satisfies any `CHECK` by construction). `CHECK` itself is allowed.
 `test/schema.test.js` covers this against a hand-built pre-change `settings` table.
+`GALLERIES_ADDED_COLUMNS`, `COLLECTIONS_ADDED_COLUMNS` and `FILES_ADDED_COLUMNS` do the same
+for those tables (`ensureGalleriesColumns()` etc., all called by `applySchema()`).
+**A column whose right value for existing rows is not its default needs a one-shot
+backfill, run only when the column is created**: `ensureGalleriesColumns()` collects the
+names it actually added, and only if `grid_own` is among them sets it to 1 on the galleries
+whose grid was already off the defaults (they keep their customised grid; the others start
+following their collection). Running such a backfill on every start would undo later
+choices; `test/schema.test.js` checks both halves.
 
 **`db/operations.js`** holds only the handful of operations that touch more than one table
 — `deleteGalleryRow`, `softDeleteGallery`, `restoreGallery`, `addGalleryToCollection`,
@@ -406,7 +414,7 @@ Two independent language concerns, with different scopes:
   function resolveGalleryClientLanguage(galleryId) { /* gallery's client_language → its single collection's client_language (one indexed lookup) → settings.clientLanguage */ }
   function resolveCollectionClientLanguage(collectionId) { /* collection's client_language → settings.clientLanguage */ }
   ```
-  Set via `PATCH /api/gallery/:id/client-language` / `PATCH /api/collection/:id/client-language` (body `{ language }`, `'auto'` stored as `NULL`). The admin UI exposes this as a compact `<select>` on each gallery/collection card's `.gallery-bottom` row, plus a "Default client language" `<select>` (global) in the Settings modal.
+  Set via `PATCH /api/gallery/:id/client-language` / `PATCH /api/collection/:id/client-language` (body `{ language }`, `'auto'` stored as `NULL`). The admin UI exposes this as a compact `<select>` on each gallery/collection card's `.gallery-bottom` row, plus a "Default client language" `<select>` (global) in the Settings modal. In the settings panel of a gallery that belongs to a collection, the `'auto'` option reads "As the collection «name»" (`t.gsLangFollowCollection`), since for such a gallery NULL means following the collection, not the visitor's browser.
 
   Client pages no longer detect the browser language themselves. `GET /api/gallery/:id/info` and `GET /api/collection/:id` both include the resolved `clientLanguage` (`'auto'` or a specific code) in their response; each page reads `locale = resolveClientLocale(info.clientLanguage)` (defined in `shared.js`) only after that fetch resolves, then re-applies its static translations via an `applyStaticTranslations()` helper. `resolveClientLocale()` only handles the final `'auto'` → browser-detection step — the gallery/collection/global precedence itself lives server-side as the single source of truth, shared with the OG-tag generation below. `favorites.html` has no client-side i18n today and was left untouched.
 - **OG share-preview localization**: `OG_DESCRIPTIONS` (server.js) is a 3-key × 5-language map (`preview`, `collection`, `favorites`) read via `ogDescription(key, language)`, applied at all OG injection sites using the resolver functions above (gallery routes use `resolveGalleryClientLanguage`, the collection route uses `resolveCollectionClientLanguage`). `'auto'` falls back to English since OG crawlers have no browser to detect from.
@@ -837,7 +845,8 @@ Gallery names use `contenteditable="false"` by default. Double-clicking (or clic
 | `GET` | `/api/gallery/:id` | ✓ | Full admin-shape single-gallery object (title, collection, password/expiration/appearance state) |
 | `PATCH` | `/api/gallery/:id/password` | ✓ | Set or clear the gallery's password |
 | `PATCH` | `/api/gallery/:id/expiration` | ✓ | Set or clear the link expiration date |
-| `PATCH` | `/api/gallery/:id/appearance` | ✓ | Set the client photo grid's layout, photo size, spacing and corners (columns `grid_layout`/`lightbox_size`/`grid_spacing`/`corner_style`) |
+| `PATCH` | `/api/gallery/:id/appearance` | ✓ | Set the client photo grid's layout, photo size, spacing and corners (columns `grid_layout`/`lightbox_size`/`grid_spacing`/`corner_style`), and `gridOwn` (follow the collection's grid or not) |
+| `PATCH` | `/api/collection/:id/appearance` | ✓ | Set the default client photo grid of the collection's galleries |
 | `POST` | `/api/gallery/:id/unlock` | | Submit a gallery password; sets the per-gallery unlock cookie |
 | `PATCH` | `/api/gallery/:id/photo/:filename/flag` | ✓ | Set or clear a photo's proofing flag |
 | `GET` | `/api/gallery/:id/info` | | Metadata + totalSizeBytes (410 if expired, 401 if password-protected and locked) |
@@ -1220,9 +1229,11 @@ Loaded by all client pages via `<script src="/shared.js">` before their inline `
     bootstrap on every other route, so it touches only the DOM and `_collectionDetailId`.
     `login()` reloads the page when it was opened while logged out.
   - **Settings panel** (`#collectionSettingsModal`, same side panel as the gallery's):
-    downloads and comments (master switches for every gallery of the collection, as before)
-    and the client language (the default its galleries inherit). It says up front that the
-    settings apply to every gallery of the collection, including those added later.
+    downloads and comments (master switches for every gallery of the collection, as before),
+    the client language (the default its galleries inherit) and the client photo grid (the
+    default grid of its galleries; see "Photo grid appearance" in the `preview.html`
+    section). It says up front that the settings apply to every gallery of the collection,
+    including those added later.
     `setCollectionClientLanguage()` now checks the response and updates the cache, which
     both the list row and the panel read.
   - **Back links**: a gallery page opened from its collection's page returns there;
@@ -1288,6 +1299,31 @@ Loaded by all client pages via `<script src="/shared.js">` before their inline `
   **`GET /info` did not return these four values at first**, so they were saved but
   never reached the client page, which always drew the defaults. It does now; a setting
   read by `preview.html` must be in that response.
+  - **Inherited from the collection, as one block.** A collection carries the same four
+    columns (its galleries' default grid, `PATCH /api/collection/:id/appearance`). A gallery
+    in a collection follows the collection's grid unless `galleries.grid_own = 1`; a gallery
+    in no collection always uses its own columns. `resolveGalleryGrid()` (server.js, next to
+    `resolveGalleryClientLanguage()`) is the single place that decides, and `/info` sends
+    its result, so `preview.html` never knows where the grid came from. The four settings
+    are inherited **together**, never one by one: a gallery that wants a different look
+    almost always wants a different grid as a whole, and one switch reads far better than
+    four. `patchGridColumns(table, …)` validates and writes the four columns for either
+    table.
+  - **Admin**: the gallery panel's grid section has a "Use its own grid" switch
+    (`#gsGridOwnRow`, shown only in a collection; `syncGalleryGridSection()`). Off, the four
+    menus show the collection's grid, disabled, and the preview draws it; on, they edit the
+    gallery's own. Switching on starts the own grid **from the collection's**
+    (`onGalleryGridOwnChange()` sends `gridOwn: true` with the collection's four values),
+    so nothing jumps on screen. `GET /api/gallery/:id` returns the gallery's own four values
+    plus `gridOwn` and `collectionGrid` (null outside a collection). The collection panel
+    has the same four menus and preview (ids prefixed `cs`, drawn from the photos of its
+    first galleries, `loadCollectionPreviewPhotos()`), and counts its galleries that follow
+    the grid and those that have their own (`gridOwn` in `/api/galleries`).
+    `syncGalleryLayoutHelp(prefix)` and `renderClientGridPreview(prefix, photos)` serve
+    both panels.
+  - **Migration**: see "Adding a column to an existing table": galleries already off the
+    default grid got `grid_own = 1` when the column was created, so the deploy changed no
+    gallery's look.
   - **Layouts** (`computeGalleryLayout(layout, photos, W, vw, size, spacing)`, pure
     geometry, returns rows or columns of `{ photo, index, w, h }`): `justified` (greedy
     rows at a target height, each full row scaled to fill the width, the last one kept at
