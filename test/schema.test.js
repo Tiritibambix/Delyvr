@@ -171,12 +171,13 @@ describe('ensureGalleriesColumns / ensureFilesColumns — upgrading an already-m
 
         applySchema(db);
 
-        const gal = db.prepare(`SELECT password_hash, expires_at, lightbox_size, grid_spacing, corner_style FROM galleries WHERE id = 'g1'`).get();
+        const gal = db.prepare(`SELECT password_hash, expires_at, lightbox_size, grid_spacing, corner_style, grid_layout FROM galleries WHERE id = 'g1'`).get();
         assert.equal(gal.password_hash, null);
         assert.equal(gal.expires_at, null);
         assert.equal(gal.lightbox_size, 'medium');
         assert.equal(gal.grid_spacing, 'medium');
         assert.equal(gal.corner_style, 'square');
+        assert.equal(gal.grid_layout, 'justified');
 
         const file = db.prepare(`SELECT flag FROM files WHERE gallery_id = 'g1' AND filename = 'a.jpg'`).get();
         assert.equal(file.flag, null);
@@ -194,6 +195,9 @@ describe('ensureGalleriesColumns / ensureFilesColumns — upgrading an already-m
         }, /CHECK constraint failed/);
         assert.throws(() => {
             db.prepare(`UPDATE galleries SET corner_style = 'triangle' WHERE id = 'g1'`).run();
+        }, /CHECK constraint failed/);
+        assert.throws(() => {
+            db.prepare(`UPDATE galleries SET grid_layout = 'carousel' WHERE id = 'g1'`).run();
         }, /CHECK constraint failed/);
         assert.throws(() => {
             db.prepare(`UPDATE files SET flag = 'blue' WHERE gallery_id = 'g1' AND filename = 'a.jpg'`).run();
@@ -322,11 +326,11 @@ describe('CHECK constraints — enums', () => {
         db.close();
     });
 
-    test('a gallery row with no explicit appearance columns takes medium/medium/square defaults (exact no-op for existing galleries)', () => {
+    test('a gallery row with no explicit appearance columns takes medium/medium/square/justified defaults (exact no-op for existing galleries)', () => {
         const db = freshDb();
         const id = seedGallery(db);
-        const row = db.prepare(`SELECT lightbox_size, grid_spacing, corner_style, password_hash, expires_at FROM galleries WHERE id = ?`).get(id);
-        assert.deepEqual(row, { lightbox_size: 'medium', grid_spacing: 'medium', corner_style: 'square', password_hash: null, expires_at: null });
+        const row = db.prepare(`SELECT lightbox_size, grid_spacing, corner_style, grid_layout, password_hash, expires_at FROM galleries WHERE id = ?`).get(id);
+        assert.deepEqual(row, { lightbox_size: 'medium', grid_spacing: 'medium', corner_style: 'square', grid_layout: 'justified', password_hash: null, expires_at: null });
         db.close();
     });
 });

@@ -1885,19 +1885,21 @@ app.patch('/api/gallery/:galleryId/appearance', adminLimiter, requireAuth, valid
 
     const SIZES = ['small', 'medium', 'large'];
     const CORNERS = ['rounded', 'square'];
-    const { lightboxSize, gridSpacing, cornerStyle } = req.body;
+    const LAYOUTS = ['justified', 'masonry', 'square', 'column'];
+    const { lightboxSize, gridSpacing, cornerStyle, gridLayout } = req.body;
     // Same "patch only the keys present" idiom as updateSettings() above.
     const sets = [];
     const params = { id: galleryId };
     if (SIZES.includes(lightboxSize)) { sets.push('lightbox_size = @lightbox_size'); params.lightbox_size = lightboxSize; }
     if (SIZES.includes(gridSpacing)) { sets.push('grid_spacing = @grid_spacing'); params.grid_spacing = gridSpacing; }
     if (CORNERS.includes(cornerStyle)) { sets.push('corner_style = @corner_style'); params.corner_style = cornerStyle; }
+    if (LAYOUTS.includes(gridLayout)) { sets.push('grid_layout = @grid_layout'); params.grid_layout = gridLayout; }
     if (sets.length > 0) {
         db.prepare(`UPDATE galleries SET ${sets.join(', ')} WHERE id = @id`).run(params);
     }
 
-    const row = db.prepare(`SELECT lightbox_size, grid_spacing, corner_style FROM galleries WHERE id = ?`).get(galleryId);
-    res.json({ lightboxSize: row.lightbox_size, gridSpacing: row.grid_spacing, cornerStyle: row.corner_style });
+    const row = db.prepare(`SELECT lightbox_size, grid_spacing, corner_style, grid_layout FROM galleries WHERE id = ?`).get(galleryId);
+    res.json({ lightboxSize: row.lightbox_size, gridSpacing: row.grid_spacing, cornerStyle: row.corner_style, gridLayout: row.grid_layout });
 });
 
 // Full admin-shape single-gallery object — needed so the gallery detail page
@@ -1909,7 +1911,7 @@ app.get('/api/gallery/:galleryId', adminLimiter, requireAuth, validateGalleryId,
     const row = db.prepare(`
         SELECT id, event_name, created_at, downloads_enabled, comments_enabled, client_language,
                download_count, view_count, password_hash, expires_at,
-               lightbox_size, grid_spacing, corner_style
+               lightbox_size, grid_spacing, corner_style, grid_layout
         FROM galleries WHERE id = ? AND deleted = 0
     `).get(galleryId);
     if (!row) return res.status(404).json({ error: 'Gallery not found' });
@@ -1934,7 +1936,8 @@ app.get('/api/gallery/:galleryId', adminLimiter, requireAuth, validateGalleryId,
         isExpired: !!(row.expires_at && row.expires_at < nowIso),
         lightboxSize: row.lightbox_size,
         gridSpacing: row.grid_spacing,
-        cornerStyle: row.corner_style
+        cornerStyle: row.corner_style,
+        gridLayout: row.grid_layout
     });
 });
 
@@ -2452,7 +2455,14 @@ app.get('/api/gallery/:galleryId/info', publicReadLimiter, validateGalleryId, ch
         downloadCount: gallery ? gallery.download_count : 0,
         viewCount,
         commentsEnabled: gallery ? (!!gallery.comments_enabled && !isGalleryBlockedByCollectionForComments(galleryId)) : true,
-        clientLanguage: resolveGalleryClientLanguage(galleryId)
+        clientLanguage: resolveGalleryClientLanguage(galleryId),
+        // The client photo grid settings, read by preview.html's applyGalleryAppearance().
+        // They were missing from this response at first, so the settings were saved but
+        // never reached the client page.
+        gridLayout: gallery ? gallery.grid_layout : 'justified',
+        lightboxSize: gallery ? gallery.lightbox_size : 'medium',
+        gridSpacing: gallery ? gallery.grid_spacing : 'medium',
+        cornerStyle: gallery ? gallery.corner_style : 'square'
     });
 });
 

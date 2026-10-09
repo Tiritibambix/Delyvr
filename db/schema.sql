@@ -33,6 +33,7 @@ CREATE TABLE IF NOT EXISTS galleries (
     lightbox_size      TEXT NOT NULL DEFAULT 'medium' CHECK (lightbox_size IN ('small','medium','large')),
     grid_spacing       TEXT NOT NULL DEFAULT 'medium' CHECK (grid_spacing  IN ('small','medium','large')),
     corner_style       TEXT NOT NULL DEFAULT 'square'  CHECK (corner_style IN ('rounded','square')),  -- 'medium'/'square' are exact no-ops against pre-existing visual output — see preview.html
+    grid_layout        TEXT NOT NULL DEFAULT 'justified' CHECK (grid_layout IN ('justified','masonry','square','column')),  -- client photo grid layout; 'justified' is the layout every gallery had before this column
     CHECK ( (deleted = 0 AND deleted_at IS NULL) OR (deleted = 1 AND deleted_at IS NOT NULL) ),
     CHECK ( (audio_filename IS NULL AND audio_stored IS NULL AND audio_size IS NULL AND audio_uploaded_at IS NULL)
          OR (audio_filename IS NOT NULL AND audio_stored IS NOT NULL AND audio_size IS NOT NULL AND audio_uploaded_at IS NOT NULL) )

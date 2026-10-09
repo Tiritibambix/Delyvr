@@ -54,7 +54,8 @@ const GALLERIES_ADDED_COLUMNS = [
     ['expires_at',    `expires_at TEXT`],
     ['lightbox_size', `lightbox_size TEXT NOT NULL DEFAULT 'medium' CHECK (lightbox_size IN ('small','medium','large'))`],
     ['grid_spacing',  `grid_spacing TEXT NOT NULL DEFAULT 'medium' CHECK (grid_spacing  IN ('small','medium','large'))`],
-    ['corner_style',  `corner_style TEXT NOT NULL DEFAULT 'square' CHECK (corner_style IN ('rounded','square'))`]
+    ['corner_style',  `corner_style TEXT NOT NULL DEFAULT 'square' CHECK (corner_style IN ('rounded','square'))`],
+    ['grid_layout',   `grid_layout TEXT NOT NULL DEFAULT 'justified' CHECK (grid_layout IN ('justified','masonry','square','column'))`]
 ];
 
 function ensureGalleriesColumns(db) {

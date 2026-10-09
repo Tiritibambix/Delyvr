@@ -709,9 +709,14 @@ share nothing but the audio button host.
 - `#kbHintWidget` is **not** extended for this: that list lives inside `.lightbox` and
   describes *its* shortcuts. The slideshow's own toolbar carries the tooltips instead.
 
-### Justified gallery layout
+### Gallery grid layouts
 
-`preview.html` uses a JS-built justified/row-based layout: photos are grouped into `.gallery-row` flex rows whose children preserve the photo's aspect ratio and together fill the row width. Each row is recomputed on resize. This replaces the previous CSS `columns` masonry so photos are never split and rows always justify edge-to-edge. Photos in the preview page are sorted by filename **stem (name without extension)**, `localeCompare` with `{ numeric: true, sensitivity: 'base' }`, with the full name as a tiebreaker — so a companion file named after the photo it follows (e.g. a GIF `mariage-…-36-gif.gif` beside photo `mariage-…-36.jpg`) sorts right after that photo, matching a file explorer. Sorting on the full name instead lets the differing extension reorder such a pair. This route (`GET /api/gallery/:id/photos`) is the single source of display order — the critique numbering and the admin comments page derive from it.
+A gallery's client grid has four layouts (`galleries.grid_layout`, see "Photo grid
+appearance" in the `preview.html` section below): **justified** (the default, described
+here), **masonry**, **square** and **column**. Their geometry is computed by one pure
+function, `computeGalleryLayout()`, and `renderGallery()` only turns its result into DOM.
+
+The justified layout is JS-built and row-based: photos are grouped into `.gallery-row` flex rows whose children preserve the photo's aspect ratio and together fill the row width. Each row is recomputed on resize. This replaces the previous CSS `columns` masonry so photos are never split and rows always justify edge-to-edge. Photos in the preview page are sorted by filename **stem (name without extension)**, `localeCompare` with `{ numeric: true, sensitivity: 'base' }`, with the full name as a tiebreaker, so a companion file named after the photo it follows (e.g. a GIF `mariage-…-36-gif.gif` beside photo `mariage-…-36.jpg`) sorts right after that photo, matching a file explorer. Sorting on the full name instead lets the differing extension reorder such a pair. This route (`GET /api/gallery/:id/photos`) is the single source of display order: the critique numbering and the admin comments page derive from it.
 
 ### Mobile lightbox — swipe, pinch-to-zoom, pan
 
@@ -833,7 +838,7 @@ Gallery names use `contenteditable="false"` by default. Double-clicking (or clic
 | `GET` | `/api/gallery/:id` | ✓ | Full admin-shape single-gallery object (title, collection, password/expiration/appearance state) |
 | `PATCH` | `/api/gallery/:id/password` | ✓ | Set or clear the gallery's password |
 | `PATCH` | `/api/gallery/:id/expiration` | ✓ | Set or clear the link expiration date |
-| `PATCH` | `/api/gallery/:id/appearance` | ✓ | Set the client photo grid's row size, spacing and corners (columns `lightbox_size`/`grid_spacing`/`corner_style`) |
+| `PATCH` | `/api/gallery/:id/appearance` | ✓ | Set the client photo grid's layout, photo size, spacing and corners (columns `grid_layout`/`lightbox_size`/`grid_spacing`/`corner_style`) |
 | `POST` | `/api/gallery/:id/unlock` | | Submit a gallery password; sets the per-gallery unlock cookie |
 | `PATCH` | `/api/gallery/:id/photo/:filename/flag` | ✓ | Set or clear a photo's proofing flag |
 | `GET` | `/api/gallery/:id/info` | | Metadata + totalSizeBytes (410 if expired, 401 if password-protected and locked) |
@@ -1026,9 +1031,11 @@ Loaded by all client pages via `<script src="/shared.js">` before their inline `
     carries an arrow, the SVG does.
   - **Left-panel actions**, in this order, in four groups separated by thin rules:
     Settings; Preview, Copy client link, Copy critique link, Regenerate share preview;
-    Add files, audio file, collection, Download ZIP; Select. The page offers everything
-    the gallery's row in the list offers. **Settings lives here, first**, not in the page
-    header. Every one of them is a
+    Add files, audio file, collection, Download ZIP; Select; then, last and apart, Move to
+    trash in red (`deleteGalleryFromDetailPage()`: the list's own `deleteGallery()`, with
+    its confirmation, which now resolves true on success so the page can return to
+    `#/galleries`). The page offers everything the gallery's row in the list offers.
+    **Settings lives here, first**, not in the page header. Every one of them is a
     `.gallery-detail-action`, `<a>` (Preview, Download ZIP) and `<button>` alike, and that
     class declares its own height, font and line-height instead of borrowing `.client-btn`
     or `.section-select-btn`: an `<a>` inherits the body's `line-height: 1.5` while a
@@ -1136,7 +1143,10 @@ Loaded by all client pages via `<script src="/shared.js">` before their inline `
     - **Protection**: password and expiration, each with a status pill
       (`syncPasswordStatus()`, `syncExpirationField()`: accent when set, red once expired),
       a help line, the field with its own Save button (Enter saves the password), and a
-      "Remove" link. See "Per-gallery password and expiration" above.
+      "Remove" link. See "Per-gallery password and expiration" above. The date field
+      sets no `color-scheme`: it is the one thing a page passes to the browser's own
+      calendar popup, and with `dark` some browsers drew a calendar whose day numbers
+      could not be read. Only its calendar icon is lightened, in the dark theme.
     - **Photo grid (client page)**: see "Photo grid appearance" in the `preview.html`
       section below. The live preview is `renderClientGridPreview()`.
     `syncGallerySettingsHelp()` rewrites the help lines and pills from `_gallerySettings`
@@ -1226,29 +1236,49 @@ Loaded by all client pages via `<script src="/shared.js">` before their inline `
   - **No extra height is needed, and `inset: 0` must stay.** Shifting down by `D = k · scrollY` with `k ≤ 1` keeps `D ≤ scrollY`, while the still-visible slice of the hero starts at `scrollY` — so the photo's top edge is always above it and no gap can open; the bottom overflow is clipped by `.hero`'s existing `overflow: hidden`. Leaving `inset: 0` alone also preserves the photographer's chosen framing exactly, at rest. `transform` is deliberately **absent** from `.hero-bg`'s `transition` list (opacity only), or every frame would lag behind the scroll.
 
   It hooks into the file's **single** scroll listener (`updateFooterVisibility`) and coalesces into one `requestAnimationFrame` write — which also keeps the write out of the handler that reads layout via `placeAudioButton()`, so there is no thrash. `scrollToGallery()`'s `behavior: 'smooth'` emits scroll events, so the button path gets the effect for free. This is the **first and only** `prefers-reduced-motion` guard in the file; the smooth scroll, the `fadeUp` title animation and the slideshow remain unguarded.
-- **Photo grid appearance is a per-gallery setting** (`galleries.lightbox_size`/
-  `grid_spacing`/`corner_style`, default `'medium'`/`'medium'`/`'square'`, chosen so a
-  default gallery looks pixel-identical to before this setting existed), set from the
-  gallery's settings panel in `admin.html` and read from `GET /info`. **It shapes the
-  client page's photo grid, not its lightbox**: `lightbox_size` is a historical column
-  name for the grid's row height, and the admin UI calls the section "Photo grid (client
-  page)" with "Photo size / Spacing / Corners" rows (it was labelled "Lightbox appearance"
-  at first, which described nothing it does).
-  `applyGalleryAppearance(info)` runs right after that fetch, before `renderGallery()`
-  reads layout. Size and spacing are **multipliers** (`{small:0.75, medium:1, large:1.3}`
-  and `{small:0.5, medium:1, large:1.5}`) applied inside `getTargetRowHeight()`/
-  `getRowGap()`, so `'medium'` is an exact no-op against the existing breakpoint tables.
-  Corners are pure CSS: a `--photo-radius` custom property (`8px` or `0px`) consumed
-  by `.photo-card`'s `border-radius`.
-  **The admin panel shows a live preview that mirrors these numbers**:
-  `renderClientGridPreview()` rebuilds the justified rows from the gallery's own
-  thumbnails with the values of a 1280px window (240px rows, 10px gaps, a 1232px grid
-  inside `.gallery-container`'s 24px padding), the same two multiplier tables
-  (`CLIENT_SIZE_MULTIPLIER`/`CLIENT_GAP_MULTIPLIER`) and the 8px radius, then scales the
-  block down to the panel with a CSS transform, so gaps and corners shrink in proportion.
-  An empty gallery gets placeholder ratios. **Change the tables, breakpoints or radius in
-  both files together**; a comment in each points at the other.
-- Justified/row-based gallery: photos grouped into `.gallery-row` flex rows built in JS, recomputed on resize.
+- **Photo grid appearance is a per-gallery setting** (`galleries.grid_layout`/
+  `lightbox_size`/`grid_spacing`/`corner_style`, default `'justified'`/`'medium'`/
+  `'medium'`/`'square'`, chosen so a default gallery looks pixel-identical to before these
+  settings existed), set from the gallery's settings panel in `admin.html` and read from
+  `GET /info`. **It shapes the client page's photo grid, not its lightbox**:
+  `lightbox_size` is a historical column name for the photo size, and the admin UI calls
+  the section "Photo grid (client page)" with "Layout / Photo size / Spacing / Corners"
+  rows (it was labelled "Lightbox appearance" at first, which described nothing it does).
+  **`GET /info` did not return these four values at first**, so they were saved but
+  never reached the client page, which always drew the defaults. It does now; a setting
+  read by `preview.html` must be in that response.
+  - **Layouts** (`computeGalleryLayout(layout, photos, W, vw, size, spacing)`, pure
+    geometry, returns rows or columns of `{ photo, index, w, h }`): `justified` (greedy
+    rows at a target height, each full row scaled to fill the width, the last one kept at
+    the target height), `masonry` (equal-width columns, each photo dropped into the
+    shortest; 4/3/2 columns above 1400/900px and below), `square` (equal square cells,
+    photos cropped; 5/4/3/2 columns above 1400/900/480px and below) and `column` (one
+    photo per row, at most 1100px wide, centred, with a double gap). `index` is the
+    photo's position in `photos`: the lightbox and the critique numbers use it in every
+    layout, whatever the visual order. Every card comes from `buildPhotoCard()`, so the
+    overlay, favorites, download, badges and numbers are the same in all four.
+  - **Size and spacing**: spacing multiplies the gap (`{small:0.5, medium:1, large:1.5}`
+    on 10/4/2px above 900/480px and below). Size multiplies the justified row height
+    (`{small:0.75, medium:1, large:1.3}` on 280/240/180/140px) and the column width, and
+    shifts the masonry/square column count by one (small adds one, large removes one).
+    `'medium'` is an exact no-op. **The gap is applied inline** to the grid, its rows and
+    columns, from the same computation as the geometry: the stylesheet's fixed 10/4/2px
+    gaps would not match once spacing is not `'medium'` (the rows would overflow or fall
+    short of the edge), which went unnoticed only because the setting never arrived.
+  - Corners are pure CSS: a `--photo-radius` custom property (`8px` or `0px`) consumed
+    by `.photo-card`'s `border-radius`.
+  - **The admin panel's live preview runs the same code**: `computeGalleryLayout()` and
+    its two multiplier tables are copied **verbatim** into `admin.html`, between the
+    markers `// ── computeGalleryLayout: keep identical to the copy in …` and
+    `// ── end of computeGalleryLayout ──`. Change one, change the other (a plain diff of
+    the two blocks, minus their first line, must be empty).
+    `renderClientGridPreview()` calls it for a 1280px window (a 1232px grid inside
+    `.gallery-container`'s 24px padding) with the gallery's own thumbnails (placeholder
+    ratios when empty), shows the top 760px, and scales the block down to the panel with
+    a CSS transform, so gaps and corners shrink in proportion. The layout's help line
+    (`syncGalleryLayoutHelp()`) describes the selected layout, including whether photos
+    are cropped.
+- Photo grid: four layouts computed in JS by `computeGalleryLayout()` (justified rows by default), recomputed on resize.
 - Photos sorted server-side by filename stem (name without extension), extension as tiebreaker — see the preview.html layout section above.
 - Lightbox preloads N-1 and N+1 previews via `new Image()` on each navigation.
 - Fullscreen slideshow launched from `.actions-bar` — see "Gallery slideshow" above for the overlay, the transitions and the three integration points.
@@ -1310,7 +1340,7 @@ resolved from `data.clientLanguage` via `resolveClientLocale()`, gallery covers 
 - **`[AUTH]` log prefix** — all auth failures and IP blocks are logged with this prefix for easy filtering: `docker logs delyvr | grep '\[AUTH\]'`.
 - **Settings defaults** — enforced by the schema itself (`settings` row's column `DEFAULT`s), not by a JS merge step. `getSettings()`/`updateSettings()` just read/patch the singleton row.
 - **Social footer** hidden entirely when no links are configured — `container.style.display = 'none'` if `links.length === 0`.
-- **Justified gallery layout is JS-driven.** Rows in `.gallery-grid` are built in `buildJustifiedRows()` and recomputed on resize. Do not reintroduce CSS `columns` masonry here.
+- **Gallery grid layouts are JS-driven.** `computeGalleryLayout()` returns the geometry and `renderGallery()` builds `.gallery-row`s (justified, square, column) or `.gallery-column`s (masonry), recomputed on resize. Do not reintroduce CSS `columns` masonry: it fills column by column, so the order runs down the first column before the second, and a photo can be split across columns. The masonry layout places photos in JS, shortest column first. `computeGalleryLayout()` has a verbatim copy in `admin.html` for the settings preview.
 - **Mobile pinch-zoom uses `transform: translate(...) scale(...)`** on `.lightbox-img`, clamped to the real rendered image bounds (via `naturalWidth`/`naturalHeight` + `object-fit: contain` math). Always call `resetZoom()` from `openLightbox` / `closeLightbox` / `navigateLightbox`. See "Mobile lightbox" section for the zoom-toward-midpoint formula.
 - **`express.json()` must be registered before all routes in `server.js`.** It is placed immediately after `app.set('trust proxy', ...)` at the top of the setup block. If you add routes above it, `req.body` will be `undefined` and any body destructuring will throw a TypeError → 500 response.
 - **Theme toggle (`toggleTheme`) uses optimistic update.** It applies the CSS class change immediately on click, then reverts if the server returns non-ok. Do not make the UI update conditional on `res.ok` — the fetch to `PATCH /api/settings/theme` would need to fail silently for the user to see no response.

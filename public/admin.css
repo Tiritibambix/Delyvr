@@ -468,6 +468,16 @@ body { display: flex; flex-direction: column; height: 100%; }
 .gallery-detail-action-icon { width: 36px; flex-shrink: 0; padding: 0; justify-content: center; }
 .gallery-detail-action-icon:hover { color: var(--error); border-color: var(--error); }
 .gallery-detail-action-icon:hover svg { color: var(--error); }
+/* Move to trash: last, apart, red. Filled red only on hover, like the other
+   destructive buttons of the dashboard. */
+.gallery-detail-action-danger,
+.gallery-detail-action-danger svg { color: var(--error); }
+.gallery-detail-action-danger { border-color: color-mix(in srgb, var(--error) 55%, transparent); }
+.gallery-detail-action-danger:hover { background: var(--error); border-color: var(--error); color: #fff; }
+.gallery-detail-action-danger:hover svg { color: #fff; }
+@media (max-width: 900px) {
+    .gallery-detail-action-danger { grid-column: 1 / -1; }
+}
 
 /* Under 900px the panel sits above the grid: two columns of equal buttons
    instead of seven full-width rows, and labels may wrap onto a second line
@@ -781,9 +791,16 @@ label.settings-row { cursor: pointer; }
     flex: 1; min-width: 0; height: 36px;
     background: var(--bg3); border: 1px solid var(--border2); border-radius: 4px;
     padding: 0 10px; font-size: 13px; color: var(--text); font-family: inherit; outline: none;
-    color-scheme: dark;
 }
-html.light .settings-inline input { color-scheme: light; }
+/* No `color-scheme: dark` on the date field: it is the one thing a page can
+   pass to the browser's own calendar popup, and with it some browsers drew a
+   calendar whose day numbers could not be read. The popup keeps the browser's
+   default look; only the field's calendar icon (dark by default, invisible on
+   the dark field) is lightened, in the dark theme. */
+html:not(.light) .settings-inline input[type="date"]::-webkit-calendar-picker-indicator {
+    filter: invert(0.85);
+    cursor: pointer;
+}
 .settings-inline input:focus { border-color: var(--accent); }
 .settings-inline input::placeholder { color: var(--muted2); }
 .settings-btn {
@@ -808,6 +825,7 @@ html.light .settings-inline input { color-scheme: light; }
 .grid-preview-viewport { position: relative; overflow: hidden; }
 .grid-preview-inner { transform-origin: top left; }
 .grid-preview-row { display: flex; }
+.grid-preview-column { display: flex; flex-direction: column; flex-shrink: 0; }
 .grid-preview-cell { display: block; flex-shrink: 0; object-fit: cover; background: var(--bg3); }
 
 @media (max-width: 480px) {

@@ -184,6 +184,18 @@
                     </div>
                     <div class="settings-row settings-row-select">
                         <span class="settings-row-text">
+                            <span class="settings-row-label" id="gsLayoutLabel">Layout</span>
+                            <span class="settings-row-help" id="gsLayoutHelp"></span>
+                        </span>
+                        <select class="settings-select" id="gsGridLayout" onchange="onGalleryAppearanceChange()">
+                            <option value="justified" id="gsLayoutJustifiedOpt">Justified (default)</option>
+                            <option value="masonry" id="gsLayoutMasonryOpt">Masonry</option>
+                            <option value="square" id="gsLayoutSquareOpt">Square grid</option>
+                            <option value="column" id="gsLayoutColumnOpt">One per row</option>
+                        </select>
+                    </div>
+                    <div class="settings-row settings-row-select">
+                        <span class="settings-row-text">
                             <span class="settings-row-label" id="gsSizeLabel">Photo size</span>
                             <span class="settings-row-help" id="gsSizeHelp"></span>
                         </span>
@@ -721,6 +733,13 @@
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
                             <span id="photosSelectBtnText">Select</span>
                         </button>
+                        <span class="gallery-detail-actions-sep" aria-hidden="true"></span>
+                        <!-- Last and apart, in red: the one destructive action. Same
+                             confirmation and soft delete as the gallery list's trash icon. -->
+                        <button class="gallery-detail-action gallery-detail-action-danger" id="galleryDetailTrashBtn" onclick="deleteGalleryFromDetailPage()">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
+                            <span id="galleryDetailTrashText">Move to trash</span>
+                        </button>
                     </aside>
                     <div class="gallery-detail-main">
                         <!-- Bulk delete bar (selection mode). -->
@@ -926,6 +945,7 @@
             const critiqueBtn = document.getElementById('galleryDetailCopyCritiqueBtn');
             if (critiqueBtn) critiqueBtn.title = t.critiqueLinkHint;
             byId('galleryDetailAddFilesText', t.galleryDetailAddFiles);
+            byId('galleryDetailTrashText', t.moveToTrash);
             byId('galleryDetailDownloadText', t.galleryDetailDownloadZip);
             byId('filterFavoritedText', t.filterFavorited);
             byId('filterCommentsText', t.filterHasComments);
@@ -978,6 +998,12 @@
             byId('gsSpacingLargeOpt', t.gsSpacingLarge);
             byId('gsCornerSquareOpt', t.cornerSquare);
             byId('gsCornerRoundedOpt', t.cornerRounded);
+            byId('gsLayoutLabel', t.gsLayoutLabel);
+            byId('gsLayoutJustifiedOpt', t.gsLayoutJustified);
+            byId('gsLayoutMasonryOpt', t.gsLayoutMasonry);
+            byId('gsLayoutSquareOpt', t.gsLayoutSquare);
+            byId('gsLayoutColumnOpt', t.gsLayoutColumn);
+            syncGalleryLayoutHelp();
             // The access help lines carry the collection override, the status
             // pills their current state: both are rewritten for the open panel.
             if (_galleryDetailId) syncGallerySettingsHelp();
@@ -3366,6 +3392,10 @@
             removeBtn.title = t.removeAudio;
         }
 
+        async function deleteGalleryFromDetailPage() {
+            if (await deleteGallery(_galleryDetailId)) location.hash = '#/galleries';
+        }
+
         function copyGalleryDetailLink(btn) {
             copyGalleryLink(_galleryDetailId, 'preview', btn);
         }
@@ -3396,6 +3426,8 @@
                 document.getElementById('gsLightboxSize').value = g.lightboxSize;
                 document.getElementById('gsGridSpacing').value = g.gridSpacing;
                 document.getElementById('gsCornerStyle').value = g.cornerStyle;
+                document.getElementById('gsGridLayout').value = g.gridLayout || 'justified';
+                syncGalleryLayoutHelp();
                 syncGallerySettingsHelp();
                 renderClientGridPreview();
             } catch (err) {
@@ -3539,6 +3571,7 @@
         }
 
         function onGalleryAppearanceChange() {
+            syncGalleryLayoutHelp();
             renderClientGridPreview();
             saveGalleryAppearance();
         }
@@ -3552,7 +3585,8 @@
                     body: JSON.stringify({
                         lightboxSize: document.getElementById('gsLightboxSize').value,
                         gridSpacing: document.getElementById('gsGridSpacing').value,
-                        cornerStyle: document.getElementById('gsCornerStyle').value
+                        cornerStyle: document.getElementById('gsCornerStyle').value,
+                        gridLayout: document.getElementById('gsGridLayout').value
                     })
                 });
                 if (!res.ok) throw new Error('Failed');
@@ -3561,60 +3595,167 @@
             }
         }
 
-        // Live preview of the CLIENT page's photo grid. It rebuilds that page's
-        // justified rows with the same numbers preview.html uses for a 1280px
-        // window (getTargetRowHeight() 240px, getRowGap() 10px, inside the 24px
-        // padding of .gallery-container, so a 1232px-wide grid), the same
-        // GALLERY_SIZE_MULTIPLIER / GALLERY_GAP_MULTIPLIER tables and 8px rounded
-        // corners, then scales the whole block down to the panel: a faithful
-        // miniature, gaps and corners included, made of this gallery's own
-        // thumbnails (_buildPhotoRows() is the same algorithm as the client's
-        // buildRows()). Keep these values in step with preview.html. Built with
-        // DOM nodes, so a filename is never written into markup.
-        const CLIENT_GRID = { width: 1232, rowHeight: 240, gap: 10, radius: 8, rows: 3 };
-        const CLIENT_SIZE_MULTIPLIER = { small: 0.75, medium: 1, large: 1.3 };
-        const CLIENT_GAP_MULTIPLIER = { small: 0.5, medium: 1, large: 1.5 };
+        // The layout's help line describes the selected layout.
+        function syncGalleryLayoutHelp() {
+            const select = document.getElementById('gsGridLayout');
+            const help = document.getElementById('gsLayoutHelp');
+            if (!select || !help) return;
+            const keys = { justified: 'gsLayoutJustifiedHelp', masonry: 'gsLayoutMasonryHelp', square: 'gsLayoutSquareHelp', column: 'gsLayoutColumnHelp' };
+            help.textContent = t[keys[select.value] || keys.justified];
+        }
+
+        // Live preview of the CLIENT page's photo grid. It runs the client's own
+        // layout code, computeGalleryLayout() below, copied verbatim from
+        // preview.html (change both together), for a 1280px window: a 1232px-wide
+        // grid inside .gallery-container's 24px padding. The result is drawn with
+        // this gallery's thumbnails, 8px corners when rounded, and scaled down to
+        // the panel with a CSS transform, so gaps and corners shrink in proportion.
+        // It shows the top CLIENT_PREVIEW.maxHeight px of the page. Built with DOM
+        // nodes, so a filename is never written into markup.
+        const CLIENT_PREVIEW = { width: 1232, vw: 1280, radius: 8, maxHeight: 760 };
         // Ratios standing in for photos when the gallery is still empty.
-        const CLIENT_GRID_PLACEHOLDER_RATIOS = [1.5, 0.67, 1.5, 1.33, 0.75, 1.5, 1.5, 0.8, 1.33, 1.5, 0.67, 1.5, 1.5, 0.75, 1.33];
+        const CLIENT_PREVIEW_PLACEHOLDER_RATIOS = [1.5, 0.67, 1.5, 1.33, 0.75, 1.5, 1.5, 0.8, 1.33, 1.5, 0.67, 1.5, 1.5, 0.75, 1.33];
+
+        // ── computeGalleryLayout: keep identical to the copy in preview.html ──
+        // Pure geometry, no DOM. `W` is the grid's width, `vw` the window width (the
+        // breakpoints), `layout`/`size`/`spacing` the gallery's settings. Returns
+        //   { kind: 'rows', gap, rows: [{ height, items }], centered }
+        //   { kind: 'columns', gap, columns: [items] }
+        // where each item is { photo, index, w, h } and `index` is the photo's
+        // position in `photos`, which the lightbox and critique numbers use.
+        //  - justified (default): greedy rows at a target height, each full row then
+        //    scaled to fill the width exactly; the last row keeps the target height.
+        //  - masonry: equal-width columns, each photo dropped into the shortest one.
+        //  - square: equal square cells, photos cropped to fill them.
+        //  - column: one photo per row, as wide as `size` allows, centred.
+        // `size` scales the row height (justified), the column count (masonry,
+        // square: small adds one, large removes one) or the width (column).
+        const GALLERY_SIZE_MULTIPLIER = { small: 0.75, medium: 1, large: 1.3 };
+        const GALLERY_GAP_MULTIPLIER = { small: 0.5, medium: 1, large: 1.5 };
+        function computeGalleryLayout(layout, photos, W, vw, size, spacing) {
+            const sizeMult = GALLERY_SIZE_MULTIPLIER[size] ?? 1;
+            const colStep = size === 'small' ? 1 : (size === 'large' ? -1 : 0);
+            const gap = Math.round((vw <= 480 ? 2 : (vw <= 900 ? 4 : 10)) * (GALLERY_GAP_MULTIPLIER[spacing] ?? 1));
+            const ratio = p => (p.width || 4) / (p.height || 3);
+
+            if (layout === 'masonry') {
+                const n = Math.max(1, (vw > 1400 ? 4 : (vw > 900 ? 3 : 2)) + colStep);
+                const colW = (W - gap * (n - 1)) / n;
+                const cols = Array.from({ length: n }, () => ({ height: 0, items: [] }));
+                photos.forEach((photo, index) => {
+                    const col = cols.reduce((a, b) => (b.height < a.height ? b : a));
+                    const h = colW / ratio(photo);
+                    col.items.push({ photo, index, w: colW, h });
+                    col.height += h + gap;
+                });
+                return { kind: 'columns', gap, columns: cols.map(c => c.items) };
+            }
+
+            if (layout === 'square') {
+                const n = Math.max(1, (vw > 1400 ? 5 : (vw > 900 ? 4 : (vw > 480 ? 3 : 2))) + colStep);
+                const cell = (W - gap * (n - 1)) / n;
+                const rows = [];
+                photos.forEach((photo, index) => {
+                    if (index % n === 0) rows.push({ height: cell, items: [] });
+                    rows[rows.length - 1].items.push({ photo, index, w: cell, h: cell });
+                });
+                return { kind: 'rows', gap, rows, centered: false };
+            }
+
+            if (layout === 'column') {
+                const w = Math.min(W, Math.round(1100 * sizeMult));
+                const rows = photos.map((photo, index) => {
+                    const h = w / ratio(photo);
+                    return { height: h, items: [{ photo, index, w, h }] };
+                });
+                // A taller vertical rhythm than the grids: a photo per row reads as a story.
+                return { kind: 'rows', gap: Math.max(gap * 2, 8), rows, centered: true };
+            }
+
+            // justified
+            const targetH = Math.round((vw <= 480 ? 140 : (vw <= 900 ? 180 : (vw <= 1400 ? 240 : 280))) * sizeMult);
+            const rows = [];
+            let current = [];
+            let sumRatio = 0;
+            photos.forEach((photo, index) => {
+                const r = ratio(photo);
+                current.push({ photo, index, r });
+                sumRatio += r;
+                const gapsWidth = gap * (current.length - 1);
+                if (sumRatio * targetH + gapsWidth >= W) {
+                    const h = (W - gapsWidth) / sumRatio;
+                    rows.push({ height: h, items: current.map(c => ({ photo: c.photo, index: c.index, w: h * c.r, h })) });
+                    current = [];
+                    sumRatio = 0;
+                }
+            });
+            // Last partial row: keep the target height (don't stretch widows)
+            if (current.length) rows.push({ height: targetH, items: current.map(c => ({ photo: c.photo, index: c.index, w: targetH * c.r, h: targetH })) });
+            return { kind: 'rows', gap, rows, centered: false };
+        }
+        // ── end of computeGalleryLayout ──
 
         function renderClientGridPreview() {
             const viewport = document.getElementById('gsGridPreviewViewport');
             const inner = document.getElementById('gsGridPreviewInner');
             if (!viewport || !inner) return;
+            const layout = document.getElementById('gsGridLayout').value;
             const size = document.getElementById('gsLightboxSize').value;
             const spacing = document.getElementById('gsGridSpacing').value;
-            const radius = document.getElementById('gsCornerStyle').value === 'rounded' ? CLIENT_GRID.radius : 0;
-            const targetH = Math.round(CLIENT_GRID.rowHeight * (CLIENT_SIZE_MULTIPLIER[size] ?? 1));
-            const gap = Math.round(CLIENT_GRID.gap * (CLIENT_GAP_MULTIPLIER[spacing] ?? 1));
+            const radius = document.getElementById('gsCornerStyle').value === 'rounded' ? CLIENT_PREVIEW.radius : 0;
             const photos = _galleryDetailPhotos.length
                 ? _galleryDetailPhotos.slice(0, 40)
-                : CLIENT_GRID_PLACEHOLDER_RATIOS.map(r => ({ width: Math.round(r * 1000), height: 1000 }));
-            const rows = _buildPhotoRows(photos, CLIENT_GRID.width, targetH, gap).slice(0, CLIENT_GRID.rows);
+                : CLIENT_PREVIEW_PLACEHOLDER_RATIOS.map(r => ({ width: Math.round(r * 1000), height: 1000 }));
+            const geo = computeGalleryLayout(layout, photos, CLIENT_PREVIEW.width, CLIENT_PREVIEW.vw, size, spacing);
+
+            const cell = ({ photo, w, h }) => {
+                const el = document.createElement(photo.thumbnailUrl ? 'img' : 'div');
+                el.className = 'grid-preview-cell';
+                if (photo.thumbnailUrl) { el.src = photo.thumbnailUrl; el.alt = ''; }
+                el.style.width = w + 'px';
+                el.style.height = h + 'px';
+                el.style.borderRadius = radius + 'px';
+                return el;
+            };
 
             inner.innerHTML = '';
-            inner.style.width = CLIENT_GRID.width + 'px';
+            inner.style.width = CLIENT_PREVIEW.width + 'px';
+            inner.style.display = 'flex';
+            inner.style.gap = geo.gap + 'px';
+            inner.style.flexDirection = geo.kind === 'columns' ? 'row' : 'column';
+            inner.style.alignItems = 'flex-start';
             let height = 0;
-            rows.forEach((row, i) => {
-                const rowEl = document.createElement('div');
-                rowEl.className = 'grid-preview-row';
-                rowEl.style.height = row.height + 'px';
-                rowEl.style.gap = gap + 'px';
-                if (i < rows.length - 1) rowEl.style.marginBottom = gap + 'px';
-                row.items.forEach(({ photo, ratio }) => {
-                    const cell = document.createElement(photo.thumbnailUrl ? 'img' : 'div');
-                    cell.className = 'grid-preview-cell';
-                    if (photo.thumbnailUrl) { cell.src = photo.thumbnailUrl; cell.alt = ''; }
-                    cell.style.width = (row.height * ratio) + 'px';
-                    cell.style.height = row.height + 'px';
-                    cell.style.borderRadius = radius + 'px';
-                    rowEl.appendChild(cell);
+            if (geo.kind === 'columns') {
+                geo.columns.forEach(items => {
+                    const col = document.createElement('div');
+                    col.className = 'grid-preview-column';
+                    col.style.gap = geo.gap + 'px';
+                    let colH = 0;
+                    for (const item of items) {
+                        if (colH > CLIENT_PREVIEW.maxHeight) break;
+                        col.appendChild(cell(item));
+                        colH += item.h + geo.gap;
+                    }
+                    inner.appendChild(col);
+                    height = Math.max(height, colH - geo.gap);
                 });
-                inner.appendChild(rowEl);
-                height += row.height + (i < rows.length - 1 ? gap : 0);
-            });
-            const scale = viewport.clientWidth / CLIENT_GRID.width;
+            } else {
+                for (const row of geo.rows) {
+                    if (height > CLIENT_PREVIEW.maxHeight) break;
+                    const rowEl = document.createElement('div');
+                    rowEl.className = 'grid-preview-row';
+                    rowEl.style.height = row.height + 'px';
+                    rowEl.style.gap = geo.gap + 'px';
+                    rowEl.style.width = '100%';
+                    if (geo.centered) rowEl.style.justifyContent = 'center';
+                    row.items.forEach(item => rowEl.appendChild(cell(item)));
+                    inner.appendChild(rowEl);
+                    height += (height ? geo.gap : 0) + row.height;
+                }
+            }
+            const scale = viewport.clientWidth / CLIENT_PREVIEW.width;
             inner.style.transform = `scale(${scale})`;
-            viewport.style.height = Math.ceil(height * scale) + 'px';
+            viewport.style.height = Math.ceil(Math.min(height, CLIENT_PREVIEW.maxHeight) * scale) + 'px';
         }
 
         // ── Adding files: sent as soon as they are dropped or picked ───────
@@ -5444,15 +5585,19 @@
             await addToCollection(collectionId, galleryId);
         }
 
+        // Resolves true once the gallery is in the trash, so the gallery page can
+        // leave it (deleteGalleryFromDetailPage()); false if cancelled or refused.
         async function deleteGallery(id) {
-            if (!(await confirmDialog(t.confirmMoveTrash, t.moveToTrash))) return;
+            if (!(await confirmDialog(t.confirmMoveTrash, t.moveToTrash))) return false;
             try {
                 const res = await fetch(`/api/gallery/${id}`, { method: 'DELETE' });
                 if (!res.ok) throw new Error('Failed');
                 loadGalleries();
                 loadTrash();
+                return true;
             } catch (err) {
                 showError(t.errorMovingGalleryToTrash);
+                return false;
             }
         }
 
